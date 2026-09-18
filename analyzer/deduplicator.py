@@ -1,7 +1,14 @@
 import hashlib
+import redis
 
 
-_seen_fingerprints = set()
+redis_client = redis.Redis(
+    host="localhost",
+    port=6379,
+    decode_responses=True
+)
+
+TTL_SECONDS = 86400  # 24 hours
 
 
 def create_fingerprint(event):
@@ -18,8 +25,17 @@ def create_fingerprint(event):
 def is_duplicate(event):
     fingerprint = create_fingerprint(event)
 
-    if fingerprint in _seen_fingerprints:
-        return True
+    key = f"mias:event:{fingerprint}"
 
-    _seen_fingerprints.add(fingerprint)
-    return False
+    # SET NX means: set only if key does not already exist
+    created = redis_client.set(
+        key,
+        "1",
+        nx=True,
+        ex=TTL_SECONDS
+    )
+
+    if created:
+        return False
+
+    return True
