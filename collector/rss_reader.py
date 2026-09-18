@@ -1,16 +1,11 @@
-import sys
-from pathlib import Path
 
 import feedparser
-
-# Allow collector code to import modules from the MIAS project root
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from analyzer.scoring_engine import calculate_impact_score
 from alert_engine.decision_engine import evaluate_alert
 from alert_engine.formatter import format_alert
 from analyzer.relevance_detector import detect_symbols
-from normalizer import normalize_entry
+from collector.normalizer import normalize_entry
 from analyzer.deduplicator import is_duplicate
 from alert_engine.telegram_notifier import send_telegram_alert
 from shared.logger import get_logger
@@ -20,7 +15,7 @@ from shared.config import RSS_ENTRY_LIMIT
 logger = get_logger("collector")
 
 
-def read_feed(feed_url):
+def read_feed(feed_url, source_label=None):
 
     stats = {
         "fetched": 0,
@@ -47,10 +42,11 @@ def read_feed(feed_url):
             feed.bozo_exception
         )
 
-    source_name = feed.feed.get(
-        "title",
-        "Unknown Feed"
-    )
+    source_name = (
+        source_label
+        or feed.feed.get("title", "Unknown Feed")
+
+    )    
 
     logger.info(
         "Feed loaded: %s",
