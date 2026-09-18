@@ -1,19 +1,30 @@
 import hashlib
 import redis
 
+from shared.config import (
+    REDIS_HOST,
+    REDIS_PORT,
+    DEDUP_TTL_SECONDS,
+)
+
 
 redis_client = redis.Redis(
-    host="localhost",
-    port=6379,
+    host=REDIS_HOST,
+    port=REDIS_PORT,
     decode_responses=True
 )
 
-TTL_SECONDS = 86400  # 24 hours
-
 
 def create_fingerprint(event):
-    headline = event.get("headline", "").strip().lower()
-    url = event.get("url", "").strip().lower()
+    headline = event.get(
+        "headline",
+        ""
+    ).strip().lower()
+
+    url = event.get(
+        "url",
+        ""
+    ).strip().lower()
 
     raw_value = f"{headline}|{url}"
 
@@ -27,15 +38,11 @@ def is_duplicate(event):
 
     key = f"mias:event:{fingerprint}"
 
-    # SET NX means: set only if key does not already exist
     created = redis_client.set(
         key,
         "1",
         nx=True,
-        ex=TTL_SECONDS
+        ex=DEDUP_TTL_SECONDS
     )
 
-    if created:
-        return False
-
-    return True
+    return not bool(created)

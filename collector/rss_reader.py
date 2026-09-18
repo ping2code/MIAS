@@ -13,19 +13,24 @@ from analyzer.relevance_detector import detect_symbols
 from normalizer import normalize_entry
 from analyzer.deduplicator import is_duplicate
 from alert_engine.telegram_notifier import send_telegram_alert
+from shared.logger import get_logger
+from shared.config import RSS_ENTRY_LIMIT
 
+logger = get_logger("collector")
 
 def read_feed(feed_url):
     feed = feedparser.parse(feed_url)
 
     source_name = feed.feed.get("title", "Unknown Feed")
-
-    print(f"\nFeed: {source_name}")
-    print("=" * 80)
+    
+    logger.info(
+        "Feed loaded: %s", 
+        source_name
+    )
 
     events = []
 
-    for entry in feed.entries[:10]:
+    for entry in feed.entries[:RSS_ENTRY_LIMIT]:    
 
         event = normalize_entry(
             entry,
@@ -37,20 +42,41 @@ def read_feed(feed_url):
         if event["relevant"]:
 
             if is_duplicate(event):
+                logger.info(
+                    "Duplicate skipped: %s",
+                    event["headline"]
+             )    
                 continue            
 
             event = calculate_impact_score(event)
             event = evaluate_alert(event)
 
+            logger.info(
+                "Processed event symbol=%s score=%s decision=%s",
+                event.get("symbols"),
+                event.get("impact_score"),
+                event.get("alert_decision")
+            )
+
             if event["alert_decision"] == "ALERT":
                 message = format_alert(event)
+                
                 print(message)
+
                 try:
                     
-                    send_telegram_alert(message)
-                    print("Telegram : SENT")
+                    result = send_telegram_alert(message)
+
+                    logger.info(
+                        "Telegram alert sent message_id=%s",
+                        result["result"]["message_id"]
+                    )
+                
                 except Exception as error:
-                    print(f"Telegram : FAILED - {error}")
+                    logger.error(
+                        "Telegram alert failed: %s",
+                        error
+                    )
 
         events.append(event)
 

@@ -1,10 +1,19 @@
+from shared.config import (
+    ALERT_THRESHOLD,
+    DISPLAY_THRESHOLD,
+)
+
+
+
 def evaluate_alert(event):
     score = event.get("impact_score", 0)
 
-    if score >= 70:
+    if score >= ALERT_THRESHOLD:
         decision = "ALERT"
-    elif score >= 40:
+    
+    elif score >= DISPLAY_THRESHOLD:
         decision = "DISPLAY_ONLY"
+
     else:
         decision = "IGNORE"
 
