@@ -6,12 +6,18 @@ from shared.config import (
     REDIS_PORT,
     DEDUP_TTL_SECONDS,
 )
+from shared.logger import get_logger
+
+
+logger = get_logger("deduplicator")
 
 
 redis_client = redis.Redis(
     host=REDIS_HOST,
     port=REDIS_PORT,
-    decode_responses=True
+    decode_responses=True,
+    socket_connect_timeout=3,
+    socket_timeout=3,
 )
 
 
@@ -38,11 +44,22 @@ def is_duplicate(event):
 
     key = f"mias:event:{fingerprint}"
 
-    created = redis_client.set(
-        key,
-        "1",
-        nx=True,
-        ex=DEDUP_TTL_SECONDS
-    )
+    try:
+        created = redis_client.set(
+            key,
+            "1",
+            nx=True,
+            ex=DEDUP_TTL_SECONDS
+        )
 
-    return not bool(created)
+        return not bool(created)
+
+    except redis.RedisError as error:
+        logger.error(
+            "Redis deduplication unavailable: %s",
+            error
+        )
+
+        # Fail open:
+        # continue processing instead of dropping the event
+        return False

@@ -1,11 +1,17 @@
 import os
+import time
 import requests
+
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 2
 
 
 def send_telegram_alert(message):
@@ -21,12 +27,27 @@ def send_telegram_alert(message):
         "text": message,
     }
 
-    response = requests.post(
-        url,
-        json=payload,
-        timeout=10
+    last_error = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=10
+            )
+
+            response.raise_for_status()
+
+            return response.json()
+
+        except requests.RequestException as error:
+            last_error = error
+
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SECONDS)
+
+    raise RuntimeError(
+        f"Telegram delivery failed after "
+        f"{MAX_RETRIES} attempts: {last_error}"
     )
-
-    response.raise_for_status()
-
-    return response.json()

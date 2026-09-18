@@ -16,21 +16,59 @@ from alert_engine.telegram_notifier import send_telegram_alert
 from shared.logger import get_logger
 from shared.config import RSS_ENTRY_LIMIT
 
+
 logger = get_logger("collector")
 
-def read_feed(feed_url):
-    feed = feedparser.parse(feed_url)
 
-    source_name = feed.feed.get("title", "Unknown Feed")
-    
+def read_feed(feed_url):
+
+    stats = {
+        "fetched": 0,
+        "relevant": 0,
+        "duplicates": 0,
+        "processed": 0,
+    }
+
+    try:
+        feed = feedparser.parse(feed_url)
+
+    except Exception as error:
+        logger.error(
+            "RSS fetch failed for %s: %s",
+            feed_url,
+            error
+        )
+        return [], stats
+
+    if feed.bozo:
+        logger.warning(
+            "RSS feed parse warning for %s: %s",
+            feed_url,
+            feed.bozo_exception
+        )
+
+    source_name = feed.feed.get(
+        "title",
+        "Unknown Feed"
+    )
+
     logger.info(
-        "Feed loaded: %s", 
+        "Feed loaded: %s",
         source_name
     )
 
+    if not feed.entries:
+        logger.warning(
+            "RSS feed returned no entries: %s",
+            feed_url
+        )
+        return [], stats
+
     events = []
 
-    for entry in feed.entries[:RSS_ENTRY_LIMIT]:    
+    for entry in feed.entries[:RSS_ENTRY_LIMIT]:
+
+        stats["fetched"] += 1
 
         event = normalize_entry(
             entry,
@@ -40,16 +78,22 @@ def read_feed(feed_url):
         event = detect_symbols(event)
 
         if event["relevant"]:
+            stats["relevant"] += 1
 
             if is_duplicate(event):
+                stats["duplicates"] += 1
+
                 logger.info(
                     "Duplicate skipped: %s",
                     event["headline"]
-             )    
-                continue            
+                )
+
+                continue
 
             event = calculate_impact_score(event)
             event = evaluate_alert(event)
+
+            stats["processed"] += 1
 
             logger.info(
                 "Processed event symbol=%s score=%s decision=%s",
@@ -60,18 +104,17 @@ def read_feed(feed_url):
 
             if event["alert_decision"] == "ALERT":
                 message = format_alert(event)
-                
+
                 print(message)
 
                 try:
-                    
                     result = send_telegram_alert(message)
 
                     logger.info(
                         "Telegram alert sent message_id=%s",
                         result["result"]["message_id"]
                     )
-                
+
                 except Exception as error:
                     logger.error(
                         "Telegram alert failed: %s",
@@ -80,7 +123,7 @@ def read_feed(feed_url):
 
         events.append(event)
 
-    return events
+    return events, stats
 
 
 if __name__ == "__main__":
@@ -90,19 +133,21 @@ if __name__ == "__main__":
         "headline?s=META,NVDA&region=US&lang=en-US"
     )
 
-    events = read_feed(feed_url)
+    events, stats = read_feed(feed_url)
 
-    # Only allow relevant META/NVDA events to continue
     relevant_events = [
         event
         for event in events
         if event["relevant"]
     ]
 
-    print(
-        f"\nCollected: {len(events)} | "
-        f"Relevant: {len(relevant_events)}"
-    )
+    print("\nMIAS PIPELINE STATS")
+    print("=" * 80)
+
+    print(f"Fetched     : {stats['fetched']}")
+    print(f"Relevant    : {stats['relevant']}")
+    print(f"Duplicates  : {stats['duplicates']}")
+    print(f"Processed   : {stats['processed']}")
 
     print("\nRELEVANT MIAS EVENTS")
     print("=" * 80)
@@ -120,4 +165,3 @@ if __name__ == "__main__":
         print(f"Reasons   : {event['score_reasons']}")
         print(f"URL       : {event['url']}")
         print("-" * 80)
-
