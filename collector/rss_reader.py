@@ -11,6 +11,7 @@ from alert_engine.decision_engine import evaluate_alert
 from alert_engine.formatter import format_alert
 from analyzer.relevance_detector import detect_symbols
 from normalizer import normalize_entry
+from analyzer.deduplicator import is_duplicate
 
 
 def read_feed(feed_url):
@@ -33,6 +34,10 @@ def read_feed(feed_url):
         event = detect_symbols(event)
 
         if event["relevant"]:
+
+            if is_duplicate(event):
+                continue            
+
             event = calculate_impact_score(event)
             event = evaluate_alert(event)
 
@@ -73,9 +78,12 @@ if __name__ == "__main__":
         print(f"Source    : {event['source']}")
         print(f"Headline  : {event['headline']}")
         print(f"Symbols   : {event['symbols']}")
+        print(f"Direct    : {event.get('direct_symbols', [])}")
+        print(f"Related   : {event.get('related_symbols', [])}")
         print(f"Published : {event['published_at']}")
         print(f"Impact    : {event['impact_score']}/100")
         print(f"Level     : {event['impact_level']}")
         print(f"Reasons   : {event['score_reasons']}")
         print(f"URL       : {event['url']}")
         print("-" * 80)
+

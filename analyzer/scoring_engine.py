@@ -32,12 +32,13 @@ def calculate_impact_score(event):
     ).lower()
 
     # 1. Direct company mention
-    for symbol in event.get("symbols", []):
-        company_terms = COMPANY_NAMES.get(symbol, [])
+    for symbol in event.get("direct_symbols", []):
+        score += 40
+        reasons.append(f"Direct {symbol} mention")
 
-        if any(term in text for term in company_terms):
-            score += 40
-            reasons.append(f"Direct {symbol} mention")
+    for symbol in event.get("related_symbols", []):
+        score += 15
+        reasons.append(f"Related {symbol} mention")        
 
     # 2. Important event keywords
     for keyword, points in HIGH_IMPACT_KEYWORDS.items():
