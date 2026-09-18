@@ -12,6 +12,7 @@ from alert_engine.formatter import format_alert
 from analyzer.relevance_detector import detect_symbols
 from normalizer import normalize_entry
 from analyzer.deduplicator import is_duplicate
+from alert_engine.telegram_notifier import send_telegram_alert
 
 
 def read_feed(feed_url):
@@ -42,7 +43,14 @@ def read_feed(feed_url):
             event = evaluate_alert(event)
 
             if event["alert_decision"] == "ALERT":
-               print(format_alert(event))    
+                message = format_alert(event)
+                print(message)
+                try:
+                    
+                    send_telegram_alert(message)
+                    print("Telegram : SENT")
+                except Exception as error:
+                    print(f"Telegram : FAILED - {error}")
 
         events.append(event)
 
