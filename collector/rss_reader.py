@@ -1,4 +1,3 @@
-
 import feedparser
 
 from analyzer.scoring_engine import calculate_impact_score
@@ -8,7 +7,12 @@ from analyzer.ai_alert_quality import adjust_alert_quality
 from alert_engine.formatter import format_alert
 from analyzer.relevance_detector import detect_symbols
 from collector.normalizer import normalize_entry
-from analyzer.deduplicator import is_duplicate
+
+from analyzer.deduplicator import (
+    is_duplicate,
+    is_near_duplicate_headline,
+)
+
 from alert_engine.telegram_notifier import send_telegram_alert
 from shared.logger import get_logger
 from shared.config import RSS_ENTRY_LIMIT
@@ -88,6 +92,10 @@ def read_feed(feed_url, source_label=None):
 
                 continue
 
+            if is_near_duplicate_headline(event):
+                stats["duplicates"] += 1
+                continue
+
             event = calculate_impact_score(event)
             event = evaluate_alert(event)
 
@@ -111,14 +119,15 @@ def read_feed(feed_url, source_label=None):
                     logger.info(
                         "OpenAI analysis completed "
                         "sentiment=%s confidence=%s "
-                        "event_type=%s adjusted_score=%s decision=%s"
-                        "adjusted_score=%s decision=%s",
+                        "event_type=%s original_score=%s "
+                        "adjustment=%s adjusted_score=%s decision=%s",
                         event.get("ai_sentiment"),
                         event.get("ai_confidence"),
                         event.get("ai_event_type"),
+                        event.get("original_impact_score"),
+                        event.get("quality_adjustment"),
                         event.get("impact_score"),
                         event.get("alert_decision"),
-
                     )    
 
                 except Exception as error:
