@@ -15,8 +15,15 @@ def normalize_entry(entry, source_name="Unknown"):
         except Exception:
             published_at = published_raw
 
+    publisher = (
+        entry.get("source", {}).get("title")
+        if isinstance(entry.get("source"), dict)
+        else None
+    )
+
     event = {
         "source": source_name,
+        "publisher": publisher or "Unknown",
         "headline": entry.get("title", "N/A"),
         "url": entry.get("link", "N/A"),
         "published_at": published_at,

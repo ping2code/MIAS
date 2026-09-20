@@ -61,6 +61,7 @@ if __name__ == "__main__":
             continue
 
         print(f"Source    : {event['source']}")
+        print(f"Publisher : {event.get('publisher', 'Unknown')}")
         print(f"Headline  : {event['headline']}")
         print(f"Symbols   : {event['symbols']}")
         print(f"Direct    : {event.get('direct_symbols', [])}")

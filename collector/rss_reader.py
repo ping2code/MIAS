@@ -76,7 +76,7 @@ def read_feed(feed_url, source_label=None):
         if event["relevant"]:
             stats["relevant"] += 1
 
-            if is_duplicate(event):
+            if is_duplicate(event, namespace="news:event"):
                 stats["duplicates"] += 1
 
                 logger.info(

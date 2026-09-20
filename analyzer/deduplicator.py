@@ -39,7 +39,7 @@ def create_fingerprint(event):
     ).hexdigest()
 
 
-def is_duplicate(event):
+def is_duplicate(event, namespace="event"):
     fingerprint = create_fingerprint(event)
 
     key = f"mias:event:{fingerprint}"

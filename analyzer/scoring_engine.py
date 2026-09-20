@@ -1,4 +1,6 @@
+import re
 from datetime import datetime, timezone
+from shared.source_quality import get_source_quality_score
 
 
 HIGH_IMPACT_KEYWORDS = {
@@ -36,6 +38,7 @@ def calculate_impact_score(event):
         score += 40
         reasons.append(f"Direct {symbol} mention")
 
+    # 2. Related company mention
     for symbol in event.get("related_symbols", []):
         score += 15
         reasons.append(f"Related {symbol} mention")        
@@ -62,6 +65,17 @@ def calculate_impact_score(event):
 
         except ValueError:
             pass
+
+     # 5. Publisher/source quality scor    
+    publisher = event.get("publisher", "Unknown")
+
+    source_score = get_source_quality_score(publisher)
+
+    if source_score > 0:
+        score += source_score
+        reasons.append(
+            f"Source quality: {publisher} (+{source_score})"
+        )    
 
     # Never exceed 100
     score = min(score, 100)
