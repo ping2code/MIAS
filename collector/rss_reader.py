@@ -4,6 +4,7 @@ import feedparser
 from analyzer.scoring_engine import calculate_impact_score
 from alert_engine.decision_engine import evaluate_alert
 from analyzer.openai_analyzer import analyze_market_event
+from analyzer.ai_alert_quality import adjust_alert_quality
 from alert_engine.formatter import format_alert
 from analyzer.relevance_detector import detect_symbols
 from collector.normalizer import normalize_entry
@@ -104,10 +105,19 @@ def read_feed(feed_url, source_label=None):
                 try:
                     event = analyze_market_event(event)
 
+                    event = adjust_alert_quality(event)
+                    event = evaluate_alert(event)
+
                     logger.info(
-                        "OpenAI analysis completed sentiment=%s confidence=%s",
+                        "OpenAI analysis completed "
+                        "sentiment=%s confidence=%s "
+                        "event_type=%s adjusted_score=%s decision=%s"
+                        "adjusted_score=%s decision=%s",
                         event.get("ai_sentiment"),
-                        event.get("ai_confidence")
+                        event.get("ai_confidence"),
+                        event.get("ai_event_type"),
+                        event.get("impact_score"),
+                        event.get("alert_decision"),
 
                     )    
 
@@ -117,6 +127,8 @@ def read_feed(feed_url, source_label=None):
                         error
                     )
 
+
+            if event["alert_decision"] == "ALERT":
                 message = format_alert(event)
 
                 print(message)
