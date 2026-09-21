@@ -1,5 +1,5 @@
 def format_alert(event):
-    symbols = ", ".join(event.get("symbols", []))
+    symbols = ", ".join(event.get("symbols", [])) or "N/A"
 
     lines = [
         "",
@@ -14,6 +14,9 @@ def format_alert(event):
         f"Published      : {event.get('published_at', 'N/A')}",
         f"Source         : {event.get('source', 'N/A')}",
     ]
+
+    if "market_scope" in event:
+        lines.append(f"Market Scope   : {event['market_scope']}")
 
     if event.get("ai_summary"):
         lines.append(

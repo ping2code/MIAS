@@ -2,9 +2,15 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import json
 
-load_dotenv()
+client = None
 
-client = OpenAI()
+
+def get_client():
+    global client
+    if client is None:
+        load_dotenv()
+        client = OpenAI()
+    return client
 
 
 def analyze_market_event(event):
@@ -32,7 +38,7 @@ Return ONLY valid JSON with exactly these fields:
 Confidence must be an integer from 0 to 100.
 """
 
-    response = client.responses.create(
+    response = get_client().responses.create(
         model="gpt-5.6",
         input=prompt,
     )

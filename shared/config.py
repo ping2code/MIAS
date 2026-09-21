@@ -24,3 +24,7 @@ DEDUP_TTL_SECONDS = int(
 RSS_ENTRY_LIMIT = int(
     os.getenv("RSS_ENTRY_LIMIT", "10")
 )
+
+FED_MAX_AGE_HOURS = int(os.getenv("FED_MAX_AGE_HOURS", "48"))
+if FED_MAX_AGE_HOURS <= 0:
+    raise ValueError("FED_MAX_AGE_HOURS must be positive")
