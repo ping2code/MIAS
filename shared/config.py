@@ -32,3 +32,10 @@ if FED_MAX_AGE_HOURS <= 0:
 MACRO_MAX_AGE_HOURS = int(os.getenv("MACRO_MAX_AGE_HOURS", "48"))
 if MACRO_MAX_AGE_HOURS <= 0:
     raise ValueError("MACRO_MAX_AGE_HOURS must be positive")
+
+TREASURY_MAX_AGE_HOURS = int(os.getenv("TREASURY_MAX_AGE_HOURS", "48"))
+TREASURY_YIELD_MOVE_BPS = float(os.getenv("TREASURY_YIELD_MOVE_BPS", "15"))
+if TREASURY_MAX_AGE_HOURS <= 0:
+    raise ValueError("TREASURY_MAX_AGE_HOURS must be positive")
+if not 0 < TREASURY_YIELD_MOVE_BPS < float("inf"):
+    raise ValueError("TREASURY_YIELD_MOVE_BPS must be positive and finite")

@@ -1,0 +1,40 @@
+[
+  {
+    "cusip": "912797TC1",
+    "securityType": "Bill",
+    "securityTerm": "13-Week",
+    "announcementDate": "2026-09-17T00:00:00",
+    "auctionDate": "2026-09-21T00:00:00",
+    "bidToCoverRatio": "2.770000",
+    "floatingRate": "No",
+    "highDiscountRate": "4.015000",
+    "highDiscountMargin": "",
+    "highYield": "",
+    "offeringAmount": "92000000000",
+    "pdfFilenameAnnouncement": "A_20260917_6.pdf",
+    "pdfFilenameCompetitiveResults": "R_20260921_2.pdf",
+    "reopening": "Yes",
+    "tips": "No",
+    "totalAccepted": "98214282200",
+    "updatedTimestamp": "2026-09-21T11:33:43"
+  },
+  {
+    "cusip": "912797WL7",
+    "securityType": "Bill",
+    "securityTerm": "26-Week",
+    "announcementDate": "2026-09-17T00:00:00",
+    "auctionDate": "2026-09-21T00:00:00",
+    "bidToCoverRatio": "2.620000",
+    "floatingRate": "No",
+    "highDiscountRate": "4.155000",
+    "highDiscountMargin": "",
+    "highYield": "",
+    "offeringAmount": "79000000000",
+    "pdfFilenameAnnouncement": "A_20260917_4.pdf",
+    "pdfFilenameCompetitiveResults": "R_20260921_1.pdf",
+    "reopening": "No",
+    "tips": "No",
+    "totalAccepted": "84336142700",
+    "updatedTimestamp": "2026-09-21T11:33:44"
+  }
+]

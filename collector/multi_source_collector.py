@@ -7,7 +7,8 @@ logger = get_logger("multi_source_collector")
 
 
 def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alerts=False,
-                        include_macro=False, macro_enable_ai=True, macro_send_alerts=False):
+                        include_macro=False, macro_enable_ai=True, macro_send_alerts=False,
+                        include_treasury=False, treasury_enable_ai=True, treasury_send_alerts=False):
     all_events = []
 
     total_stats = {
@@ -48,6 +49,13 @@ def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alert
         events, stats = collect_macro_events(
             enable_ai=macro_enable_ai, send_alerts=macro_send_alerts,
         )
+        all_events.extend(events)
+        for key in total_stats:
+            total_stats[key] += stats[key]
+
+    if include_treasury:
+        from collector.treasury_collector import collect_treasury_events
+        events, stats = collect_treasury_events(enable_ai=treasury_enable_ai, send_alerts=treasury_send_alerts)
         all_events.extend(events)
         for key in total_stats:
             total_stats[key] += stats[key]

@@ -1,0 +1,64 @@
+<ns0:feed xmlns:ns0="http://www.w3.org/2005/Atom" xmlns:ns1="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata" xmlns:ns2="http://schemas.microsoft.com/ado/2007/08/dataservices" xml:base="https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml">
+<ns0:title type="text">DailyTreasuryYieldCurveRateData</ns0:title>
+<ns0:id>https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml-item?data=daily_treasury_yield_curve</ns0:id>
+  <ns0:updated>2026-09-22T02:00:58Z</ns0:updated>
+  <ns0:link rel="self" title="DailyTreasuryYieldCurveRateData" href="DailyTreasuryYieldCurveRateData" />
+<ns0:entry>
+<ns0:id>https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml-item?data=daily_treasury_yield_curve&amp;id=319</ns0:id>
+<ns0:title type="text" />
+<ns0:updated>2026-09-22T02:00:58Z</ns0:updated>
+<ns0:author><ns0:name /></ns0:author>
+<ns0:link rel="edit" title="DailyTreasuryYieldCurveRateDatum" href="/resource-center/data-chart-center/interest-rates/pages/xml-item?data=daily_treasury_yield_curve&amp;id=319" />
+<ns0:category term="TreasuryDataWarehouseModel.DailyTreasuryYieldCurveRateDatum" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+<ns0:content type="application/xml">
+<ns1:properties>
+<ns2:Id ns1:type="Edm.Int32">319</ns2:Id>
+<ns2:NEW_DATE ns1:type="Edm.DateTime">2026-09-18T00:00:00</ns2:NEW_DATE>
+<ns2:BC_1MONTH ns1:type="Edm.Double">3.97</ns2:BC_1MONTH>
+<ns2:BC_1_5MONTH ns1:type="Edm.Double">3.98</ns2:BC_1_5MONTH>
+<ns2:BC_2MONTH ns1:type="Edm.Double">4.10</ns2:BC_2MONTH>
+<ns2:BC_3MONTH ns1:type="Edm.Double">4.14</ns2:BC_3MONTH>
+<ns2:BC_4MONTH ns1:type="Edm.Double">4.24</ns2:BC_4MONTH>
+<ns2:BC_6MONTH ns1:type="Edm.Double">4.24</ns2:BC_6MONTH>
+<ns2:BC_1YEAR ns1:type="Edm.Double">4.44</ns2:BC_1YEAR>
+<ns2:BC_2YEAR ns1:type="Edm.Double">4.76</ns2:BC_2YEAR>
+<ns2:BC_3YEAR ns1:type="Edm.Double">4.83</ns2:BC_3YEAR>
+<ns2:BC_5YEAR ns1:type="Edm.Double">4.86</ns2:BC_5YEAR>
+<ns2:BC_7YEAR ns1:type="Edm.Double">4.93</ns2:BC_7YEAR>
+<ns2:BC_10YEAR ns1:type="Edm.Double">5.01</ns2:BC_10YEAR>
+<ns2:BC_20YEAR ns1:type="Edm.Double">5.38</ns2:BC_20YEAR>
+<ns2:BC_30YEAR ns1:type="Edm.Double">5.34</ns2:BC_30YEAR>
+<ns2:BC_30YEARDISPLAY ns1:type="Edm.Double">5.34</ns2:BC_30YEARDISPLAY>
+</ns1:properties>
+</ns0:content>
+</ns0:entry>
+<ns0:entry>
+<ns0:id>https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml-item?data=daily_treasury_yield_curve&amp;id=320</ns0:id>
+<ns0:title type="text" />
+<ns0:updated>2026-09-22T02:00:58Z</ns0:updated>
+<ns0:author><ns0:name /></ns0:author>
+<ns0:link rel="edit" title="DailyTreasuryYieldCurveRateDatum" href="/resource-center/data-chart-center/interest-rates/pages/xml-item?data=daily_treasury_yield_curve&amp;id=320" />
+<ns0:category term="TreasuryDataWarehouseModel.DailyTreasuryYieldCurveRateDatum" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" />
+<ns0:content type="application/xml">
+<ns1:properties>
+<ns2:Id ns1:type="Edm.Int32">320</ns2:Id>
+<ns2:NEW_DATE ns1:type="Edm.DateTime">2026-09-21T00:00:00</ns2:NEW_DATE>
+<ns2:BC_1MONTH ns1:type="Edm.Double">3.96</ns2:BC_1MONTH>
+<ns2:BC_1_5MONTH ns1:type="Edm.Double">4.02</ns2:BC_1_5MONTH>
+<ns2:BC_2MONTH ns1:type="Edm.Double">4.10</ns2:BC_2MONTH>
+<ns2:BC_3MONTH ns1:type="Edm.Double">4.17</ns2:BC_3MONTH>
+<ns2:BC_4MONTH ns1:type="Edm.Double">4.26</ns2:BC_4MONTH>
+<ns2:BC_6MONTH ns1:type="Edm.Double">4.27</ns2:BC_6MONTH>
+<ns2:BC_1YEAR ns1:type="Edm.Double">4.45</ns2:BC_1YEAR>
+<ns2:BC_2YEAR ns1:type="Edm.Double">4.76</ns2:BC_2YEAR>
+<ns2:BC_3YEAR ns1:type="Edm.Double">4.82</ns2:BC_3YEAR>
+<ns2:BC_5YEAR ns1:type="Edm.Double">4.83</ns2:BC_5YEAR>
+<ns2:BC_7YEAR ns1:type="Edm.Double">4.89</ns2:BC_7YEAR>
+<ns2:BC_10YEAR ns1:type="Edm.Double">4.96</ns2:BC_10YEAR>
+<ns2:BC_20YEAR ns1:type="Edm.Double">5.33</ns2:BC_20YEAR>
+<ns2:BC_30YEAR ns1:type="Edm.Double">5.29</ns2:BC_30YEAR>
+<ns2:BC_30YEARDISPLAY ns1:type="Edm.Double">5.29</ns2:BC_30YEARDISPLAY>
+</ns1:properties>
+</ns0:content>
+</ns0:entry>
+</ns0:feed>
