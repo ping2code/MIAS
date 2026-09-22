@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic official RSS-shaped fixture; not captured from a live feed. -->
+<rss version="2.0"><channel><title>BLS cpi</title>
+<lastBuildDate>Mon, 21 Sep 2026 12:00:00 -0400</lastBuildDate>
+<item><title>Consumer Price Index - August 2026</title><link>https://www.bls.gov/news.release/cpi.htm</link>
+<pubDate>Fri, 11 Sep 2026 08:30:00 -0400</pubDate><description>The index for all items less food and energy rose on a seasonally adjusted basis.</description></item>
+</channel></rss>

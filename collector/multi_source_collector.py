@@ -6,7 +6,8 @@ from shared.logger import get_logger
 logger = get_logger("multi_source_collector")
 
 
-def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alerts=False):
+def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alerts=False,
+                        include_macro=False, macro_enable_ai=True, macro_send_alerts=False):
     all_events = []
 
     total_stats = {
@@ -37,6 +38,15 @@ def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alert
         from collector.fed_collector import collect_fed_events
         events, stats = collect_fed_events(
             enable_ai=fed_enable_ai, send_alerts=fed_send_alerts,
+        )
+        all_events.extend(events)
+        for key in total_stats:
+            total_stats[key] += stats[key]
+
+    if include_macro:
+        from collector.macro_collector import collect_macro_events
+        events, stats = collect_macro_events(
+            enable_ai=macro_enable_ai, send_alerts=macro_send_alerts,
         )
         all_events.extend(events)
         for key in total_stats:

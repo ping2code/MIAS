@@ -1,0 +1,329 @@
+{
+  "status": "REQUEST_SUCCEEDED",
+  "message": [],
+  "Results": {
+    "series": [
+      {
+        "seriesID": "CUSR0000SA0",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "334.131",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "332.813",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "323.291",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "CUUR0000SA0",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "334.980",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "333.918",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "323.976",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "CUSR0000SA0L1E",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "337.765",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "336.789",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "329.700",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "CUUR0000SA0L1E",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "338.041",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "337.133",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "329.970",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "WPSFD4",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "157.411",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "Preliminary. All indexes are subject to monthly revisions up to four months after original publication."
+              }
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "156.784",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "Preliminary. All indexes are subject to monthly revisions up to four months after original publication."
+              }
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "149.327",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "WPUFD4",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "157.604",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "Preliminary. All indexes are subject to monthly revisions up to four months after original publication."
+              }
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "157.155",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "Preliminary. All indexes are subject to monthly revisions up to four months after original publication."
+              }
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "149.466",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "CES0000000001",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "159075",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "preliminary"
+              }
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "158913",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "preliminary"
+              }
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "158472",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "LNS14000000",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "4.1",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "4.1",
+            "footnotes": [
+              {}
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "4.3",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      },
+      {
+        "seriesID": "CES0500000003",
+        "data": [
+          {
+            "year": "2026",
+            "period": "M08",
+            "periodName": "August",
+            "latest": "true",
+            "value": "37.75",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "preliminary"
+              }
+            ]
+          },
+          {
+            "year": "2026",
+            "period": "M07",
+            "periodName": "July",
+            "value": "37.65",
+            "footnotes": [
+              {
+                "code": "P",
+                "text": "preliminary"
+              }
+            ]
+          },
+          {
+            "year": "2025",
+            "period": "M08",
+            "periodName": "August",
+            "value": "36.62",
+            "footnotes": [
+              {}
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

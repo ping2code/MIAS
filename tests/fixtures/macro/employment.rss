@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic official RSS-shaped fixture; not captured from a live feed. -->
+<rss version="2.0"><channel><title>BLS employment</title>
+<lastBuildDate>Mon, 21 Sep 2026 12:00:00 -0400</lastBuildDate>
+<item><title>Employment Situation - August 2026</title><link>https://www.bls.gov/news.release/empsit.htm</link>
+<pubDate>Fri, 04 Sep 2026 08:30:00 -0400</pubDate><description>Payrolls, unemployment and average hourly earnings in August.</description></item>
+</channel></rss>

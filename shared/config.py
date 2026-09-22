@@ -28,3 +28,7 @@ RSS_ENTRY_LIMIT = int(
 FED_MAX_AGE_HOURS = int(os.getenv("FED_MAX_AGE_HOURS", "48"))
 if FED_MAX_AGE_HOURS <= 0:
     raise ValueError("FED_MAX_AGE_HOURS must be positive")
+
+MACRO_MAX_AGE_HOURS = int(os.getenv("MACRO_MAX_AGE_HOURS", "48"))
+if MACRO_MAX_AGE_HOURS <= 0:
+    raise ValueError("MACRO_MAX_AGE_HOURS must be positive")
