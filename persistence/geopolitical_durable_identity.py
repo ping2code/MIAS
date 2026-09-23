@@ -56,6 +56,44 @@ def get_durable_identity_stats():
         return dict(_stats)
 
 
+# Collector-side visibility (Phase 2J): one deterministic key=value line, no
+# anchors, URLs, payloads or credentials. Counters are process-local and reset
+# on restart; durable truth is the PostgreSQL history and audit.
+STATS_LOG_FIELDS = ("lookup_attempted", "lookup_hit", "lookup_miss", "lookup_timeout", "lookup_error",
+                    "lookup_conflict", "lookup_skipped_busy", "redis_hit_bypass",
+                    "registry_inserted", "registry_existing", "registry_conflict", "registry_error")
+stats_logger = get_logger("geopolitical_identity_stats")
+_stats_log_last = None
+
+
+def format_stats_line(stats=None, *, lookup_enabled):
+    stats = get_durable_identity_stats() if stats is None else stats
+    fields = ["event=geopolitical_identity_stats", "scope=process",
+              "lookup_enabled=" + ("true" if lookup_enabled else "false")]
+    fields.extend(f"{name}={int(stats.get(name, 0))}" for name in STATS_LOG_FIELDS)
+    return " ".join(fields)
+
+
+def maybe_log_stats(*, interval_seconds, lookup_enabled, now=None):
+    """Emit at most one line per interval; called by the collector after a cycle.
+
+    No thread or timer: nothing happens between collection cycles. Returns the
+    emitted line (or None) for tests; logging failures are swallowed.
+    """
+    global _stats_log_last
+    now = monotonic() if now is None else now
+    with _stats_lock:
+        if _stats_log_last is not None and now - _stats_log_last < interval_seconds:
+            return None
+        _stats_log_last = now
+    line = format_stats_line(lookup_enabled=lookup_enabled)
+    try:
+        stats_logger.info(line)
+    except Exception:
+        pass
+    return line
+
+
 def record_registry(counts):
     """Called by the shadow writer after a registry write (inside its own transaction)."""
     _count("registry_inserted", counts.get("inserted", 0))
@@ -169,9 +207,12 @@ def get_durable_lookup(timeout_ms):
 
 
 def _reset():
-    global _lookup, _lookup_lock, _stats_lock, _stats
+    """Fresh process-local state (fork child / simulated restart); never touches PostgreSQL."""
+    global _lookup, _lookup_lock, _stats_lock, _stats, _stats_log_last
     _lookup, _lookup_lock, _stats_lock = None, Lock(), Lock()
     _stats = dict.fromkeys(COUNTERS, 0) | dict(last_error_at=None, last_conflict_at=None)
+    _stats_log_last = None
+    _last_log.clear()  # Warning rate limits are process-local too.
 
 
 if hasattr(os, "register_at_fork"):

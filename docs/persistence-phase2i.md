@@ -194,6 +194,9 @@ Validated results:
   reports 1 new `exact_authoritative_anchor` group with exit 1. Prior behavior is
   reproduced and detected.
 
+Phase 2J executed this sequence in a disposable staging-style environment;
+see [Phase 2J](persistence-phase2j.md).
+
 ## Rollback
 
 Rollback is a switch change, not a schema change:

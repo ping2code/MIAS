@@ -17,7 +17,8 @@ from collector import geopolitical_sources as sources
 from shared.config import (
     GEOPOLITICAL_MAX_AGE_HOURS, GEOPOLITICAL_ALIAS_TTL_DAYS, DEDUP_TTL_SECONDS,
     GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED, GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_ENABLED,
-    GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_TIMEOUT_MS,
+    GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_TIMEOUT_MS, GEOPOLITICAL_IDENTITY_STATS_LOG_ENABLED,
+    GEOPOLITICAL_IDENTITY_STATS_LOG_INTERVAL_SECONDS,
 )
 from shared.logger import get_logger
 
@@ -88,6 +89,18 @@ def _durable_lookup():
             _durable_last_failure = now
             logger.warning("Geopolitical durable identity lookup unavailable")
         return None
+
+
+def _log_identity_stats():
+    """Opt-in, rate-limited counter line after a cycle (Phase 2J); never affects results."""
+    if not GEOPOLITICAL_IDENTITY_STATS_LOG_ENABLED:
+        return
+    try:
+        from persistence.geopolitical_durable_identity import maybe_log_stats
+        maybe_log_stats(interval_seconds=GEOPOLITICAL_IDENTITY_STATS_LOG_INTERVAL_SECONDS,
+                        lookup_enabled=GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_ENABLED)
+    except Exception:
+        pass
 
 
 def deliver_geopolitical_alert(message):
@@ -244,4 +257,5 @@ def collect_geopolitical_events(*, enable_ai=True, send_alerts=False):
             except (deduplicator.redis.RedisError, ValueError, TypeError, KeyError, RuntimeError) as error:
                 stats["state_errors"] += 1
                 logger.warning("Geopolitical state failed closed (%s)", type(error).__name__)
+    _log_identity_stats()
     return events, stats
