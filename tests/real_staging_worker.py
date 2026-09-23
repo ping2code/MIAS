@@ -1,0 +1,324 @@
+"""Phase 2M real collector process for staging validation (test utility, never deployed).
+
+One OS process = one collector process. Configuration comes only from the
+explicit process environment supplied by ``tests.real_staging``; ``.env`` is
+never read (``dotenv.load_dotenv`` is disabled while config is imported). The
+process uses the real Redis client, the real shadow writer/lifecycle, the real
+durable identity lookup and live official HTTP. Telegram and OpenAI entry
+points are replaced by guards that raise and count: runs use
+``send_alerts=False`` and ``enable_ai=False``, so the guards must stay at zero.
+
+Commands arrive as JSON lines on stdin; one JSON result line is written per
+command on stdout (logs go to stderr):
+
+    {"op": "live"}                                  one live collection cycle
+    {"op": "controlled", "docs": [...], "clock": ISO}  labelled fixture cycle (no network)
+    {"op": "drain_wait"}                            wait until queued shadow work is written
+    {"op": "exit"}                                  drain, reconcile, graceful exit
+    {"op": "hard_exit"}                             drain, reconcile, os._exit (no atexit)
+"""
+import argparse
+from copy import deepcopy
+from datetime import datetime
+import json
+import os
+import sys
+from unittest.mock import patch
+
+with patch("dotenv.load_dotenv"):  # Never read .env; explicit environment only.
+    import shared.config  # noqa: F401
+    import requests
+    import feedparser
+
+LIVE_GEO_SOURCES = ("fr", "fr_inspection", "ftc", "moea")
+
+
+class Guard:
+    """Telegram/OpenAI tripwire: counts and raises; must never be reached."""
+
+    def __init__(self, name):
+        self.name, self.calls = name, 0
+
+    def __call__(self, *args, **kwargs):
+        self.calls += 1
+        raise AssertionError(f"{self.name} forbidden during staging")
+
+
+class HttpEvidence:
+    """Wrap requests.get without changing behavior; record status/type/size only."""
+
+    def __init__(self):
+        self.real, self.records = requests.get, []
+
+    def __call__(self, url, *args, **kwargs):
+        response = self.real(url, *args, **kwargs)
+        return _Recorded(response, self.records, url)
+
+    def summary(self):
+        by_endpoint = {}
+        for record in self.records:
+            key = record["endpoint"]
+            entry = by_endpoint.setdefault(key, dict(requests=0, statuses={}, content_types=set(), bytes=0))
+            entry["requests"] += 1
+            entry["statuses"][str(record["status"])] = entry["statuses"].get(str(record["status"]), 0) + 1
+            entry["content_types"].add(record["content_type"])
+            entry["bytes"] += record["bytes"]
+        return {k: dict(v, content_types=sorted(v["content_types"])) for k, v in sorted(by_endpoint.items())}
+
+
+class _Recorded:
+    def __init__(self, response, records, url):
+        from urllib.parse import urlsplit
+        parts = urlsplit(url)
+        self._response, self._size = response, 0
+        self._record = dict(endpoint=f"{parts.hostname}{_bucket(parts.path)}", status=response.status_code,
+                            content_type=response.headers.get("Content-Type", "").split(";")[0], bytes=0)
+        records.append(self._record)
+
+    def __getattr__(self, name):
+        return getattr(self._response, name)
+
+    def __enter__(self):
+        self._response.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self._response.__exit__(*args)
+
+    def iter_content(self, *args, **kwargs):
+        for chunk in self._response.iter_content(*args, **kwargs):
+            self._record["bytes"] += len(chunk)
+            yield chunk
+
+    @property
+    def content(self):
+        data = self._response.content
+        self._record["bytes"] = len(data)
+        return data
+
+
+def _bucket(path):
+    """Group per-document URLs into endpoint families (no document identifiers in reports)."""
+    for prefix in ("/api/v1/documents/", "/documents/full_text/", "/public-inspection/", "/news-events/",
+                   "/Mns/english/news/", "/feeds/"):
+        if path.startswith(prefix):
+            return prefix + "*"
+    return path
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--collector", choices=("geo", "fed"), required=True)
+    args = parser.parse_args()
+    http = HttpEvidence()
+    telegram, openai = Guard("Telegram"), Guard("OpenAI")
+    submissions = []
+    with patch.object(requests, "get", http):
+        if args.collector == "geo":
+            run = GeoProcess(telegram, openai, submissions)
+        else:
+            run = FedProcess(telegram, openai, submissions)
+        for line in sys.stdin:
+            command = json.loads(line)
+            if command["op"] in ("exit", "hard_exit"):
+                result = run.finish()
+                result.update(pid=os.getpid(), http=http.summary(), telegram_calls=telegram.calls,
+                              openai_calls=openai.calls, submissions=len(submissions))
+                print(json.dumps(result, sort_keys=True, default=str), flush=True)
+                if command["op"] == "hard_exit":
+                    sys.stderr.flush()
+                    os._exit(0)  # Abrupt exit after committed writes: no atexit, no cleanup.
+                return 0
+            CURRENT["label"] = command.get("label") or command["op"]
+            if command["op"] == "drain_wait":
+                result = run.drain_wait()
+            else:
+                result = run.cycle(command)
+            result.update(pid=os.getpid(), telegram_calls=telegram.calls, openai_calls=openai.calls)
+            print(json.dumps(result, sort_keys=True, default=str), flush=True)
+    return 0
+
+
+CURRENT = {"label": None}
+
+
+def _spy(module, name, submissions, family):
+    real = getattr(module, name)
+    def submit(event, **kwargs):
+        submissions.append((family, deepcopy(event), kwargs.get("make_current", True), CURRENT["label"]))
+        return real(event, **kwargs)
+    return submit
+
+
+def _reconcile(submissions, reconcile, snapshot_filter=lambda e: e):
+    """Read-only reconciliation of this process's own submissions; never repairs."""
+    from persistence.config import DatabaseSettings
+    from persistence.database import make_engine, transaction
+    from persistence.repository import EventRepository
+    import sqlalchemy as sa
+    try:
+        engine = make_engine(DatabaseSettings.from_env())
+        try:
+            results = []
+            with transaction(engine) as session:
+                session.execute(sa.text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+                repo = EventRepository(session)
+                for _, event, make_current, label in submissions:
+                    results.append((label, reconcile(snapshot_filter(event), repo, expect_current=make_current)))
+        finally:
+            engine.dispose()
+    except Exception as error:
+        return dict(status="database_unavailable", error_type=type(error).__name__)
+    integrity = [(label, sorted(set(r["mismatches"]) - {"current_version_match"})) for label, r in results
+                 if set(r["mismatches"]) - {"current_version_match"}]
+    pointer = sorted({label or "unlabelled" for label, r in results if "current_version_match" in r["mismatches"]})
+    return dict(status="ok", checked=len(results), integrity_mismatches=integrity,
+                current_pointer_differs=len([1 for _, r in results if "current_version_match" in r["mismatches"]]),
+                current_pointer_differs_labels=pointer,
+                ai_expected=sum(r["ai_match"] is not None for _, r in results))
+
+
+class GeoProcess:
+    def __init__(self, telegram, openai, submissions):
+        from collector import geopolitical_collector as geo
+        from collector import geopolitical_sources as sources
+        from persistence import geopolitical_shadow as shadow
+        from persistence import geopolitical_durable_identity as durable
+        # Fixture modules import test modules that briefly clear os.environ; import them now,
+        # before any writer/lookup thread exists, never mid-run.
+        import tests.geopolitical_readiness_corpus  # noqa: F401
+        import tests.staging_rollout  # noqa: F401
+        self.geo, self.sources, self.shadow, self.durable = geo, sources, shadow, durable
+        self.submissions = submissions
+        self.stack = [patch.object(geo, "deliver_geopolitical_alert", telegram),
+                      patch.object(geo, "analyze_geopolitical_event", openai),
+                      patch.object(shadow, "submit_geopolitical", _spy(shadow, "submit_geopolitical", submissions, "geo")),
+                      # Bounded live staging subset: API/RSS sources only (see report).
+                      patch.object(sources, "SOURCES", {k: sources.SOURCES[k] for k in LIVE_GEO_SOURCES})]
+        for p in self.stack:
+            p.start()
+        self.real_fetch = sources.fetch_documents
+
+    def cycle(self, command):
+        before = len(self.submissions)
+        per_source = {}
+        if command["op"] == "live":
+            def fetch(agency):
+                documents = self.real_fetch(agency)
+                per_source[agency] = dict(items=len(documents), source_errors=sum(1 for d in documents if d.get("source_error")))
+                return documents
+            with patch.object(self.sources, "fetch_documents", side_effect=fetch):
+                events, stats = self.geo.collect_geopolitical_events(enable_ai=False, send_alerts=False)
+        else:
+            from tests.geopolitical_readiness_corpus import DOCS
+            from tests.staging_rollout import FR_WITH_EO, TRADE_WITH_EO
+            docs = {**DOCS, "FR_WITH_EO": FR_WITH_EO, "TRADE_WITH_EO": TRADE_WITH_EO}
+            clock_value = datetime.fromisoformat(command["clock"])
+            with patch.object(self.sources, "fetch_documents", side_effect=lambda _: deepcopy([docs[n] for n in command["docs"]])), \
+                 patch.object(self.sources, "SOURCES", {"controlled_fixture": "synthetic"}), \
+                 patch.object(self.geo, "datetime") as clock:
+                clock.now.side_effect = lambda *a: clock_value
+                clock.fromisoformat = datetime.fromisoformat
+                events, stats = self.geo.collect_geopolitical_events(enable_ai=False, send_alerts=False)
+        new = self.submissions[before:]
+        return dict(op=command["op"], label=command.get("label"), stats=stats, per_source=per_source,
+                    events=[e["event_id"] for e in events], submitted=len(new),
+                    submitted_current=sum(1 for _, _, current, _ in new if current),
+                    resolved=[e.get("event_id") for _, e, _, _ in new],
+                    durable_counters=self._counters())
+
+    def drain_wait(self):
+        return _drain(self.shadow)
+
+    def _counters(self):
+        stats = self.durable.get_durable_identity_stats()
+        return {k: stats[k] for k in self.durable.STATS_LOG_FIELDS}
+
+    def finish(self):
+        drained = self.shadow.shutdown(drain=True, timeout=20)
+        counters = self._counters()
+        self.durable._close()
+        from persistence.reconciliation import reconcile_geopolitical_event
+        return dict(op="finish", shadow_stopped=drained["stopped"], shadow_stats=_shadow_summary(drained["stats"]),
+                    durable_counters=counters, reconciliation=_reconcile(self.submissions, reconcile_geopolitical_event))
+
+
+class FedProcess:
+    def __init__(self, telegram, openai, submissions):
+        from collector import fed_collector as fed
+        from persistence import fed_shadow as shadow
+        import tests.fed_readiness_corpus  # noqa: F401  (see GeoProcess: import before threads start)
+        self.fed, self.shadow, self.submissions = fed, shadow, submissions
+        self.entries = {}
+        real_parse = feedparser.parse
+        def parse(data, *args, **kwargs):
+            parsed = real_parse(data, *args, **kwargs)
+            self.entries["last"] = len(parsed.get("entries", []))
+            return parsed
+        for p in (patch.object(fed, "deliver_fed_alert", telegram), patch.object(fed, "analyze_fed_event", openai),
+                  patch.object(shadow, "submit_fed", _spy(shadow, "submit_fed", submissions, "fed")),
+                  patch.object(fed.feedparser, "parse", side_effect=parse)):
+            p.start()
+
+    def cycle(self, command):
+        before = len(self.submissions)
+        if command["op"] == "live":
+            events, stats = self.fed.collect_fed_events(enable_ai=False, send_alerts=False)
+        else:
+            # Labelled controlled fixture: synthetic official-style entries, no network, fixed clock.
+            from tests.fed_readiness_corpus import ENTRIES
+            clock_value = datetime.fromisoformat(command["clock"])
+            entries = [_synthetic_fed(deepcopy(ENTRIES[n])) for n in command["docs"]]
+            self.entries["last"] = len(entries)
+            with patch.object(self.fed.requests, "get") as http, \
+                 patch.object(self.fed.feedparser, "parse", return_value={"entries": entries, "bozo": False}), \
+                 patch.object(self.fed, "datetime", wraps=datetime) as clock:
+                http.return_value.status_code = 200
+                clock.now.side_effect = lambda tz=None: clock_value
+                events, stats = self.fed.collect_fed_events(enable_ai=False, send_alerts=False)
+        new = self.submissions[before:]
+        return dict(op=command["op"], label=command.get("label"), stats=stats, feed_entries=self.entries.get("last"),
+                    processed_events=len(events), submitted=len(new),
+                    stale_or_undated_submitted=sum(1 for _, _, current, _ in new if not current),
+                    undated_submitted=sum(1 for _, e, _, _ in new if not e.get("published_at")),
+                    fingerprints=sorted({e["fed_fingerprint"] for _, e, _, _ in new}))
+
+    def drain_wait(self):
+        return _drain(self.shadow)
+
+    def finish(self):
+        drained = self.shadow.shutdown(drain=True, timeout=20)
+        from persistence.reconciliation import reconcile_fed_event
+        return dict(op="finish", shadow_stopped=drained["stopped"], shadow_stats=_shadow_summary(drained["stats"]),
+                    reconciliation=_reconcile(self.submissions, reconcile_fed_event))
+
+
+def _synthetic_fed(entry):
+    """Fixture links must never share an identity with real Fed releases (they did: monetary20260916a)."""
+    slug = entry["link"].rsplit("/", 1)[-1]
+    entry["link"] = "https://www.federalreserve.gov/newsevents/pressreleases/mias-staging-fixture-" + slug
+    return entry
+
+
+def _drain(shadow, timeout=15):
+    from time import monotonic, sleep
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        stats = shadow.get_persistence_stats()
+        if stats["queue_depth"] == 0 and stats["in_flight"] == 0:
+            return dict(op="drain_wait", drained=True, shadow_stats=_shadow_summary(stats))
+        sleep(0.05)
+    return dict(op="drain_wait", drained=False, shadow_stats=_shadow_summary(shadow.get_persistence_stats()))
+
+
+def _shadow_summary(stats):
+    keys = ("queued", "persisted", "duplicate", "failed", "dropped_queue_full", "dropped_shutdown", "queue_depth",
+            "in_flight", "worker_started", "worker_stopped", "promotion_held", "promotion_ambiguous",
+            "failed_initializing", "rejected_shutdown")
+    summary = {k: stats.get(k, 0) for k in keys}
+    summary.update(last_success=bool(stats.get("last_success_at")), last_failure=bool(stats.get("last_failure_at")))
+    return summary
+
+
+if __name__ == "__main__":
+    sys.exit(main())
