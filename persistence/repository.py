@@ -53,11 +53,15 @@ class EventRepository:
 
     def __init__(self, session):
         self.session = session
+        # Per-repository diagnostic only; meaningful after the caller commits.
+        self.inserted_count = 0
 
     def _insert(self, table, values, keys):
         dialect = self.session.get_bind().dialect.name
         insert = {"postgresql": pg_insert, "sqlite": sqlite_insert}[dialect]
-        self.session.execute(insert(table).values(**values).on_conflict_do_nothing(index_elements=keys))
+        inserted = self.session.execute(insert(table).values(**values).on_conflict_do_nothing(
+            index_elements=keys).returning(table.c.id)).scalar_one_or_none()
+        self.inserted_count += int(inserted is not None)
 
     def record(self, *, source_family, event_key, identity_version, version_key,
                normalized, observed_at, make_current=False):
@@ -90,6 +94,7 @@ class EventRepository:
         values = dict(id=version_id, event_id=event["id"], version_key=version_key,
                       content_hash=digest, observed_at=observed_at, recorded_at=datetime.now(timezone.utc), **data)
         self.session.execute(event_versions.insert().values(**values))
+        self.inserted_count += 1
         if event["current_version_id"] is None or make_current:
             self.session.execute(events.update().where(events.c.id == event["id"]).values(current_version_id=version_id))
         return dict(self.session.execute(sa.select(event_versions).where(event_versions.c.id == version_id)).mappings().one())
@@ -112,6 +117,17 @@ class EventRepository:
     def current(self, event_id):
         row = self.session.execute(sa.select(event_versions).join(events,
             events.c.current_version_id == event_versions.c.id).where(events.c.id == event_id)).mappings().first()
+        return dict(row) if row else None
+
+    def find_event(self, source_family, identity_version, event_key):
+        row = self.session.execute(sa.select(events).where(
+            events.c.source_family == source_family, events.c.identity_version == identity_version,
+            events.c.event_key == event_key)).mappings().first()
+        return dict(row) if row else None
+
+    def find_version(self, event_id, version_key):
+        row = self.session.execute(sa.select(event_versions).where(
+            event_versions.c.event_id == event_id, event_versions.c.version_key == version_key)).mappings().first()
         return dict(row) if row else None
 
     def append_history(self, version_id, kind, attributes):

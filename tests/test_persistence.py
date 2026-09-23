@@ -80,6 +80,7 @@ with patch('psycopg.connect', side_effect=AssertionError('connection forbidden')
     import persistence.repository
     import persistence.adapters.macro
     import persistence.macro_shadow
+    import persistence.reconciliation
 """], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 

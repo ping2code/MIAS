@@ -5,20 +5,21 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import os
-from queue import Queue, Empty, Full
-from threading import Thread, Event, Lock
+from collections import deque
+import math
+from threading import Thread, Event, Lock, Condition
 from time import monotonic
 
 from persistence.adapters.macro import adapt_macro
 from persistence.config import DatabaseSettings
-from persistence.database import make_engine, transaction
+from persistence.database import make_engine, transaction, PersistenceError
 from persistence.repository import EventRepository
 from shared.logger import get_logger
 
 logger = get_logger("macro_shadow")
 
 
-def persist_macro(engine, event, observed_at, *, make_current=True):
+def persist_macro(engine, event, observed_at, *, make_current=True, report=False):
     """One atomic transaction: facts, evidence, then existing outcome snapshots."""
     adapted = adapt_macro(event, observed_at, make_current=make_current)
     with transaction(engine) as session:
@@ -28,7 +29,7 @@ def persist_macro(engine, event, observed_at, *, make_current=True):
             repo.add_provenance(row["id"], key, **values)
         for kind, values in adapted["histories"]:
             repo.append_history(row["id"], kind, values)
-    return row
+    return {"version": row, "duplicate": repo.inserted_count == 0} if report else row
 
 
 def runtime_engine():
@@ -42,72 +43,221 @@ def runtime_engine():
     return make_engine(settings)
 
 
+def empty_stats():
+    return dict(queued=0, persisted=0, duplicate=0, failed=0, dropped_queue_full=0,
+                dropped_shutdown=0, rejected_shutdown=0, dropped_invalid=0,
+                worker_started=0, worker_stopped=0, drain_timeouts=0, cleanup_failed=0,
+                queue_depth=0, in_flight=0, last_success_at=None, last_failure_at=None)
+
+
+def _validate_shutdown(drain, timeout):
+    if type(drain) is not bool:
+        raise ValueError("Drain must be a boolean")
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 <= timeout <= 30:
+        raise ValueError("Shutdown timeout must be finite and between 0 and 30 seconds")
+
+
+_MESSAGES = {
+    "success": "Macro shadow persistence success",
+    "duplicate": "Macro shadow persistence duplicate",
+    "database_failure": "Macro shadow database failure",
+    "task_failure": "Macro shadow task failure",
+    "queue_full": "Macro shadow queue full; snapshot dropped",
+    "invalid": "Macro shadow invalid snapshot; dropped",
+    "drain_timeout": "Macro shadow drain timeout; pending work discarded; check in_flight",
+    "start": "Macro shadow worker started",
+    "stop": "Macro shadow worker stopped",
+}
+
+
 class ShadowWriter:
     def __init__(self, engine_factory=runtime_engine, capacity=64):
-        self.queue = Queue(maxsize=capacity)
+        if type(capacity) is not int or not 1 <= capacity <= 4096:
+            raise ValueError("Shadow queue capacity must be between 1 and 4096")
+        self._queue = deque()
+        self.capacity = capacity
         self.engine_factory = engine_factory
         self.stopping = Event()
-        self.last_failure = float("-inf")
+        self._condition = Condition()
+        self._stats = empty_stats()
+        self._timeout_reported = False
+        self._last_log = {}
         self.log_lock = Lock()
         self.thread = Thread(target=self._run, name="mias-macro-shadow", daemon=True)
         self.thread.start()
 
-    def failure(self):
-        # Fixed message: no driver errors, URLs, input payloads, or credentials.
+    def _log(self, outcome):
+        # Never hold lifecycle/stats locks across logging or database calls.
         with self.log_lock:
             now = monotonic()
-            if now - self.last_failure >= 60:
-                self.last_failure = now
-                logger.warning("Macro shadow persistence failed or dropped (best effort)")
+            if now - self._last_log.get(outcome, float("-inf")) < 60:
+                return
+            self._last_log[outcome] = now
+        try:
+            emit = logger.info if outcome in {"success", "duplicate", "start", "stop"} else logger.warning
+            emit(_MESSAGES[outcome])
+        except Exception:
+            pass  # An unavailable log sink cannot kill the worker or affect alerts.
+
+    def failure(self):
+        """Compatibility logging hook; task accounting is owned by the worker."""
+        self._log("task_failure")
+
+    def get_persistence_stats(self):
+        """Detached, coherent per-writer snapshot; never initializes a database."""
+        with self._condition:
+            return dict(self._stats)
 
     def submit(self, event, *, make_current=True):
         try:
-            if self.stopping.is_set():
-                return False
             snapshot = deepcopy(event)
             if len(json.dumps(snapshot, allow_nan=False).encode()) > 131072:
                 raise ValueError("Shadow snapshot exceeds limit")
-            self.queue.put_nowait((snapshot, datetime.now(timezone.utc), make_current))
-            return True
-        except (Full, ValueError, TypeError):
-            self.failure()
+        except Exception:
+            with self._condition:
+                self._stats["dropped_invalid"] += 1
+                self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+            self._log("invalid")
             return False
+        with self._condition:
+            if self.stopping.is_set():
+                self._stats["rejected_shutdown"] += 1
+                self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+                return False
+            if len(self._queue) >= self.capacity:
+                self._stats["dropped_queue_full"] += 1
+                self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+                full = True
+            else:
+                self._queue.append((snapshot, datetime.now(timezone.utc), make_current))
+                self._stats["queued"] += 1
+                self._stats["queue_depth"] = len(self._queue)
+                self._condition.notify()
+                full = False
+        if full:
+            self._log("queue_full")
+        return not full
 
     def _run(self):
         engine = None
+        with self._condition:
+            self._stats["worker_started"] += 1
+        self._log("start")
         try:
-            while not self.stopping.is_set() or not self.queue.empty():
-                try:
-                    event, observed_at, make_current = self.queue.get(timeout=0.1)
-                except Empty:
-                    continue
+            while True:
+                with self._condition:
+                    self._condition.wait_for(lambda: self._queue or self.stopping.is_set())
+                    if not self._queue:
+                        break
+                    event, observed_at, make_current = self._queue.popleft()
+                    self._stats["queue_depth"] = len(self._queue)
+                    self._stats["in_flight"] = 1
                 try:
                     if engine is None:
                         engine = self.engine_factory()
-                    persist_macro(engine, event, observed_at, make_current=make_current)
-                    logger.info("Macro shadow persisted (idempotent snapshot)")
-                except Exception:
-                    self.failure()
-                finally:
-                    self.queue.task_done()
+                    result = persist_macro(engine, event, observed_at, make_current=make_current, report=True)
+                except Exception as error:
+                    with self._condition:
+                        self._stats["failed"] += 1
+                        self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+                        self._stats["in_flight"] = 0
+                    self._log("database_failure" if isinstance(error, PersistenceError) else "task_failure")
+                else:
+                    duplicate = bool(result and result.get("duplicate"))
+                    with self._condition:
+                        self._stats["persisted"] += 1
+                        self._stats["duplicate"] += int(duplicate)
+                        self._stats["last_success_at"] = datetime.now(timezone.utc).isoformat()
+                        self._stats["in_flight"] = 0
+                    self._log("duplicate" if duplicate else "success")
         finally:
-            if engine is not None:
-                engine.dispose()
+            try:
+                if engine is not None:
+                    engine.dispose()
+            except Exception:
+                with self._condition:
+                    self._stats["cleanup_failed"] += 1
+                    self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+                self._log("database_failure")
+            finally:
+                with self._condition:
+                    self._stats["worker_stopped"] += 1
+                self._log("stop")
+
+    def _discard_pending(self):
+        # Caller holds _condition. A claimed transaction is never misreported as dropped.
+        if self._queue:
+            self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+        self._stats["dropped_shutdown"] += len(self._queue)
+        self._queue.clear()
+        self._stats["queue_depth"] = 0
+
+    def shutdown(self, drain=True, timeout=2):
+        """Stop accepting work; bound caller wait and report any in-flight transaction.
+
+        Pending tasks are discarded on timeout or immediate shutdown. An already
+        running DB call cannot be safely killed; it finishes under driver limits.
+        """
+        _validate_shutdown(drain, timeout)
+        with self._condition:
+            self.stopping.set()
+            if not drain:
+                self._discard_pending()
+            self._condition.notify_all()
+        self.thread.join(timeout=timeout if drain else min(timeout, 0.1))
+        with self._condition:
+            stopped = not self.thread.is_alive()
+            timed_out = not stopped and drain
+            if timed_out:
+                self._discard_pending()
+                if not self._timeout_reported:
+                    self._stats["drain_timeouts"] += 1
+                    self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+                    self._timeout_reported = True
+            stats = dict(self._stats)
+        if timed_out:
+            self._log("drain_timeout")
+        return dict(stopped=stopped, timed_out=bool(timed_out),
+                    unprocessed=stats["dropped_shutdown"] + stats["queue_depth"] + stats["in_flight"],
+                    stats=stats)
 
     def close(self, timeout=2):
-        """Bounded best-effort drain, never an alert-delivery dependency."""
-        self.stopping.set()
-        self.thread.join(timeout=timeout)
-        return not self.thread.is_alive()
+        """Phase 2B compatibility wrapper; prefer shutdown() for full accounting."""
+        return self.shutdown(drain=True, timeout=timeout)["stopped"]
 
 
 _writer = None
 _lock = Lock()
+_shutdown_requested = False
+_submission_lock = Lock()
+_submission_stats = dict(dropped_initializing=0, failed_initializing=0, rejected_shutdown=0,
+                         last_failure_at=None)
+_submission_last_warning = float("-inf")
+
+
+def _submission_failure(reason):
+    global _submission_last_warning
+    with _submission_lock:
+        _submission_stats[reason] += 1
+        _submission_stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+        warn = monotonic() - _submission_last_warning >= 60
+        if warn:
+            _submission_last_warning = monotonic()
+    if warn:
+        try:
+            logger.warning("Macro shadow submission unavailable; snapshot dropped")
+        except Exception:
+            pass
 
 
 def _after_fork():
-    global _writer, _lock
+    global _writer, _lock, _shutdown_requested, _submission_lock, _submission_stats, _submission_last_warning
     _writer, _lock = None, Lock()
+    _shutdown_requested = False
+    _submission_lock = Lock()
+    _submission_stats = dict(dropped_initializing=0, failed_initializing=0, rejected_shutdown=0,
+                             last_failure_at=None)
+    _submission_last_warning = float("-inf")
 
 
 if hasattr(os, "register_at_fork"):
@@ -118,16 +268,57 @@ def submit_macro(event, *, make_current=True):
     global _writer
     # Concurrent initialization must not hold up a collector.
     if not _lock.acquire(blocking=False):
+        _submission_failure("dropped_initializing")
         return False
+    reason = None
     try:
-        if _writer is None:
-            _writer = ShadowWriter()
-        return _writer.submit(event, make_current=make_current)
+        if _shutdown_requested:
+            reason = "rejected_shutdown"
+        elif _writer is None:
+            try:
+                _writer = ShadowWriter()
+            except Exception:
+                reason = "failed_initializing"
+        writer = _writer
     finally:
         _lock.release()
+    if reason:
+        _submission_failure(reason)
+        return False
+    return writer.submit(event, make_current=make_current)
+
+
+def _with_submission_stats(stats):
+    with _submission_lock:
+        for key, value in _submission_stats.items():
+            if key == "last_failure_at":
+                stamps = [stamp for stamp in (stats[key], value) if stamp is not None]
+                stats[key] = max(stamps) if stamps else None
+            else:
+                stats[key] = stats.get(key, 0) + value
+    return stats
+
+
+def get_persistence_stats():
+    writer = _writer
+    return _with_submission_stats(writer.get_persistence_stats() if writer is not None else empty_stats())
+
+
+def shutdown(drain=True, timeout=2):
+    global _shutdown_requested
+    _validate_shutdown(drain, timeout)
+    # No initialization; safe when disabled. Synchronize only the reference read,
+    # never hold the module lock while draining database work.
+    with _lock:
+        _shutdown_requested = True
+        writer = _writer
+    if writer is None:
+        return dict(stopped=True, timed_out=False, unprocessed=0, stats=get_persistence_stats())
+    result = writer.shutdown(drain=drain, timeout=timeout)
+    result["stats"] = _with_submission_stats(result["stats"])
+    return result
 
 
 @atexit.register
 def close_shadow():
-    if _writer is not None:
-        _writer.close(timeout=2)
+    return shutdown(drain=True, timeout=2)

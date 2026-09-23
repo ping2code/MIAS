@@ -1,5 +1,9 @@
 # Persistence Phase 2B: macro shadow writes
 
+Operational follow-up: [Phase 2C](persistence-phase2c.md) adds counters, explicit
+shutdown accounting and read-only reconciliation. This document describes the
+original Phase 2B behavior and validation.
+
 Only the macro collector submits shadow persistence. Existing scoring, alert
 thresholds, source identities, freshness, Redis operations, Telegram delivery and
 OpenAI calls are unchanged. Other collectors do not submit persistence. PostgreSQL
