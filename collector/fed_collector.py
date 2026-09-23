@@ -3,6 +3,7 @@
 import argparse
 import json
 from datetime import datetime, timezone
+from time import monotonic
 
 import feedparser
 import requests
@@ -14,18 +15,39 @@ from analyzer.fed_scoring import score_fed_event
 from alert_engine.decision_engine import evaluate_alert
 from alert_engine.formatter import format_alert
 from collector.fed_normalizer import normalize_fed_entry
-from shared.config import RSS_ENTRY_LIMIT, FED_MAX_AGE_HOURS, DEDUP_TTL_SECONDS
+from shared.config import RSS_ENTRY_LIMIT, FED_MAX_AGE_HOURS, DEDUP_TTL_SECONDS, FED_PERSISTENCE_SHADOW_ENABLED
 from shared.logger import get_logger
 
 
 FED_FEED_URL = "https://www.federalreserve.gov/feeds/press_monetary.xml"
 logger = get_logger("fed_collector")
+_shadow_last_failure = float("-inf")
 
 
 def analyze_fed_event(event):
     # Import/client construction failures are handled by the candidate pipeline.
     from analyzer.openai_analyzer import analyze_market_event
     return analyze_market_event(event)
+
+
+def _shadow(event, *, make_current=True):
+    """Opt-in historical copy of an already-computed result; never touches Redis or delivery."""
+    global _shadow_last_failure
+    if not FED_PERSISTENCE_SHADOW_ENABLED:
+        return
+    try:
+        if isinstance(event, (str, bytes)):  # Cached processed JSON: parse only for the shadow copy.
+            event = json.loads(event)
+        from persistence.fed_shadow import submit_fed
+        # The collector's own Redis fingerprint is the authoritative identity.
+        submit_fed(dict(event, fed_fingerprint=deduplicator.create_fingerprint(event), fed_source_feed=FED_FEED_URL),
+                   make_current=make_current)
+    except Exception:
+        # Even import/initialization/enqueue failures cannot change collector outcomes.
+        now = monotonic()
+        if now - _shadow_last_failure >= 60:
+            _shadow_last_failure = now
+            logger.warning("Fed shadow submission failed")
 
 
 def deliver_fed_alert(message):
@@ -96,10 +118,12 @@ def collect_fed_events(*, enable_ai=True, send_alerts=False):
         published_at = event.get("published_at")
         if not published_at:
             logger.info("Skipping Fed event with unknown publication time: %s", event["url"])
+            _shadow(event, make_current=False)
             continue
         age_seconds = (datetime.now(timezone.utc) - datetime.fromisoformat(published_at)).total_seconds()
         if age_seconds > FED_MAX_AGE_HOURS * 3600:
             logger.info("Skipping stale Fed event older than %s hours: %s", FED_MAX_AGE_HOURS, event["url"])
+            _shadow(event, make_current=False)
             continue
 
         cached = _read_state(event, "processed")
@@ -110,6 +134,7 @@ def collect_fed_events(*, enable_ai=True, send_alerts=False):
                     _deliver_if_pending(json.loads(cached))
                 except (ValueError, TypeError, KeyError):
                     logger.error("Invalid cached Fed event")
+            _shadow(cached)
             continue
         if is_duplicate(event, namespace="fed:event"):
             stats["duplicates"] += 1
@@ -128,6 +153,7 @@ def collect_fed_events(*, enable_ai=True, send_alerts=False):
         _write_state(event, "processed", json.dumps(event))
         if send_alerts:
             _deliver_if_pending(event)
+        _shadow(event)
         events.append(event)
 
     return events, stats

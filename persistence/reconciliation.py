@@ -1,9 +1,10 @@
-"""Read-only macro/Treasury/geopolitical audit: no repair, replay, scoring, or collector interaction."""
+"""Read-only macro/Treasury/geopolitical/Fed audit: no repair, replay, scoring, or collector interaction."""
 from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
 
 from persistence.adapters.macro import adapt_macro, digest
+from persistence.adapters.fed import adapt_fed
 from persistence.adapters.geopolitical import adapt_geopolitical, RELEVANCE
 from persistence.adapters.treasury import adapt_treasury
 from persistence.repository import _canonical
@@ -42,6 +43,12 @@ def reconcile_treasury_event(event, repository, *, expect_current=True):
     """Treasury counterpart of reconcile_macro_event; identical read-only contract."""
     return _reconcile(adapt_treasury(event, datetime.now(timezone.utc)), repository,
                       expect_current, "Treasury shadow reconciliation mismatch")
+
+
+def reconcile_fed_event(event, repository, *, expect_current=True):
+    """Fed counterpart; ``event`` is the submitted snapshot (with ``fed_fingerprint``)."""
+    return _reconcile(adapt_fed(event, datetime.now(timezone.utc)), repository,
+                      expect_current, "Fed shadow reconciliation mismatch")
 
 
 def reconcile_geopolitical_event(event, repository, *, expect_current=True):

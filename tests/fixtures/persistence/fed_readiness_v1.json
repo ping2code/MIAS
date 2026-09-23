@@ -1,0 +1,10 @@
+{
+  "corpus_version": 1,
+  "observed_at": "2026-09-23T12:00:00+00:00",
+  "expected_observations": 18,
+  "expected_duplicates": 8,
+  "expected_counts": {"events": 8, "event_versions": 10, "event_provenance": 10, "event_history": 21},
+  "expected_promotions": {"first": 8, "duplicate": 8, "newer_material": 1, "older": 1},
+  "expected_not_current": ["policy_action", "delivery_failure", "delivery_retry", "synthetic_older_observation"],
+  "categories": ["policy_statement", "policy_action", "economic_projections", "minutes", "policy_communication"]
+}

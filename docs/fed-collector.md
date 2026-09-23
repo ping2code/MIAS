@@ -79,3 +79,10 @@ PYTHONDONTWRITEBYTECODE=1 python -m unittest tests.test_fed_pipeline -v
 Existing smoke scripts can invoke live OpenAI and Telegram APIs at import time;
 do not use unrestricted test discovery for offline verification. The isolated
 suite exercises those scripts with mocked dependencies.
+
+Optional shadow persistence: `FED_PERSISTENCE_SHADOW_ENABLED` defaults to
+`false`. When `true`, already-computed results (and unscored stale/undated skips)
+are copied to a bounded background PostgreSQL writer after the Redis and
+delivery steps. Redis processed/delivered/claim state, delivery retry,
+Telegram and OpenAI behavior are unchanged. See
+[Persistence Phase 2L](persistence-phase2l.md).
