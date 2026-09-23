@@ -39,3 +39,8 @@ if TREASURY_MAX_AGE_HOURS <= 0:
     raise ValueError("TREASURY_MAX_AGE_HOURS must be positive")
 if not 0 < TREASURY_YIELD_MOVE_BPS < float("inf"):
     raise ValueError("TREASURY_YIELD_MOVE_BPS must be positive and finite")
+
+GEOPOLITICAL_MAX_AGE_HOURS = int(os.getenv("GEOPOLITICAL_MAX_AGE_HOURS", "48"))
+GEOPOLITICAL_ALIAS_TTL_DAYS = int(os.getenv("GEOPOLITICAL_ALIAS_TTL_DAYS", "365"))
+if GEOPOLITICAL_MAX_AGE_HOURS <= 0 or GEOPOLITICAL_ALIAS_TTL_DAYS * 24 <= GEOPOLITICAL_MAX_AGE_HOURS:
+    raise ValueError("Geopolitical alias retention must exceed positive freshness window")
