@@ -1,15 +1,12 @@
 # Follow-up issues
 
-## SEC collector executes its pipeline outside the main guard
+## Resolved: SEC collector executed its pipeline outside the main guard
 
-`collector/sec_collector.py` defines `filings` and `events` under
-`if __name__ == "__main__"`, but its processing loop and output execute at module
-scope. Importing the module therefore references an undefined `filings` variable
-and raises `NameError`.
+`collector/sec_collector.py` defined `filings` and `events` under
+`if __name__ == "__main__"`, but its processing loop and output executed at module
+scope, so importing the module raised `NameError`.
 
-A separate change should move processing into a callable function and put all
-script execution under the main guard. Validate imports without network calls,
-then cover collection, deduplication, scoring, and notification with mocks.
-
-The Federal Reserve collector does not import the SEC collector. This defect
-does not block its implementation or isolated tests; SEC code is unchanged.
+Fixed in SEC Phase 2O-A. The unchanged processing loop now lives in
+`process_sec_filings(filings)`, and collection plus printing run under the main
+guard. `tests/test_sec_pipeline.py` covers import, dedup, scoring, decisions and
+Telegram handling offline, and checks that the script path matches the function.

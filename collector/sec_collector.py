@@ -86,66 +86,72 @@ def collect_sec_filings():
     return all_filings
 
 
+def process_sec_filings(filings):
+    events = []
+
+    for filing in filings:
+        event = normalize_sec_filing(filing)
+
+        if is_duplicate(event, namespace="sec:event"):
+            logger.info(
+                "Duplicate SEC filing skipped: %s %s",
+                event["symbols"],
+                event["sec_form"]
+            )
+            continue
+
+        event = score_sec_event(event)
+        event = evaluate_alert(event)
+
+        events.append(event)
+
+        logger.info(
+            "Processed SEC event symbol=%s form=%s score=%s decision=%s",
+            event["symbols"],
+            event["sec_form"],
+            event["impact_score"],
+            event["alert_decision"]
+        )
+
+        if event["alert_decision"] == "ALERT":
+            message = format_alert(event)
+
+            print(message)
+
+            try:
+                result = send_telegram_alert(message)
+
+                logger.info(
+                    "Telegram SEC alert sent message_id=%s",
+                    result["result"]["message_id"]
+                )
+
+            except Exception as error:
+                logger.error(
+                    "Telegram SEC alert failed: %s",
+                    error
+                )
+
+    return events
+
+
 if __name__ == "__main__":
     filings = collect_sec_filings()
 
-    events = []
+    events = process_sec_filings(filings)
 
-for filing in filings:
-    event = normalize_sec_filing(filing)
+    print("\nPROCESSED SEC EVENTS")
+    print("=" * 80)
 
-    if is_duplicate(event, namespace="sec:event"):
-        logger.info(
-            "Duplicate SEC filing skipped: %s %s",
-            event["symbols"],
-            event["sec_form"]
-        )
-        continue
-
-    event = score_sec_event(event)
-    event = evaluate_alert(event)
-
-    events.append(event)
-
-    logger.info(
-        "Processed SEC event symbol=%s form=%s score=%s decision=%s",
-        event["symbols"],
-        event["sec_form"],
-        event["impact_score"],
-        event["alert_decision"]
-    )
-
-    if event["alert_decision"] == "ALERT":
-        message = format_alert(event)
-
-        print(message)
-
-        try:
-            result = send_telegram_alert(message)
-
-            logger.info(
-                "Telegram SEC alert sent message_id=%s",
-                result["result"]["message_id"]
-            )
-
-        except Exception as error:
-            logger.error(
-                "Telegram SEC alert failed: %s",
-                error
-            )
-
-print("\nPROCESSED SEC EVENTS")
-print("=" * 80)
-
-for event in events:
-    print(f"Source    : {event['source']}")
-    print(f"Publisher : {event['publisher']}")
-    print(f"Headline  : {event['headline']}")
-    print(f"Symbol    : {event['symbols']}")
-    print(f"Form      : {event['sec_form']}")
-    print(f"Impact    : {event['impact_score']}/100")
-    print(f"Level     : {event['impact_level']}")
-    print(f"Decision  : {event['alert_decision']}")
-    print(f"Reasons   : {event['score_reasons']}")
-    print(f"URL       : {event['url']}")
-    print("-" * 80)
+    for event in events:
+        print(f"Source    : {event['source']}")
+        print(f"Publisher : {event['publisher']}")
+        print(f"Headline  : {event['headline']}")
+        print(f"Symbol    : {event['symbols']}")
+        print(f"Form      : {event['sec_form']}")
+        print(f"Impact    : {event['impact_score']}/100")
+        print(f"Level     : {event['impact_level']}")
+        print(f"Decision  : {event['alert_decision']}")
+        print(f"Reasons   : {event['score_reasons']}")
+        print(f"URL       : {event['url']}")
+        print("-" * 80)
