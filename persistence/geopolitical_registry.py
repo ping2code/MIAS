@@ -130,12 +130,29 @@ class AnchorRegistryRepository:
         policy_id, event_key = roots.pop()
         return dict(status="hit", policy_id=policy_id, event_key=event_key, anchors=matched)
 
-    def conflicts(self, *, limit=100):
-        """Read-only bounded inspection of conflicted anchors, deterministic order."""
+    def conflicts(self, *, limit=100, after=None):
+        """Read-only bounded inspection of conflicted anchors, deterministic key order.
+
+        ``after`` is the previous page's last registry key (5-tuple, KEY order).
+        """
         if type(limit) is not int or not 1 <= limit <= 10_000:
             raise ValueError("limit must be between 1 and 10000")
-        return [dict(r) for r in self.session.execute(sa.select(registry).where(
-            registry.c.status == "conflicted").order_by(*(registry.c[k] for k in KEY)).limit(limit)).mappings()]
+        query = sa.select(registry).where(registry.c.status == "conflicted")
+        if after is not None:
+            if not isinstance(after, (list, tuple)) or len(after) != len(KEY) or not all(isinstance(v, str) for v in after):
+                raise ValueError("Invalid conflict cursor")
+            query = query.where(sa.tuple_(*(registry.c[k] for k in KEY)) > sa.tuple_(
+                *(sa.literal(v, type_=registry.c[k].type) for k, v in zip(KEY, after))))
+        return [dict(r) for r in self.session.execute(
+            query.order_by(*(registry.c[k] for k in KEY)).limit(limit)).mappings()]
+
+    def status(self):
+        """Read-only aggregate counts; one bounded SELECT."""
+        row = self.session.execute(sa.select(
+            sa.func.count(), sa.func.count().filter(registry.c.status == "active"),
+            sa.func.count().filter(registry.c.status == "conflicted"), sa.func.max(registry.c.updated_at),
+        ).select_from(registry)).one()
+        return dict(rows=row[0], active=row[1], conflicted=row[2], latest_updated_at=row[3])
 
 
 def register_geopolitical_event(session, event, observed_at):

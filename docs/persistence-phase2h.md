@@ -256,6 +256,9 @@ This uses the real collector identity behavior.
 
 ## Rollback procedure
 
+Operational tooling, the staging rollout sequence and the validated rollback
+runbook are in [Phase 2I](persistence-phase2i.md).
+
 1. Set `GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_ENABLED=false` and restart. The
    resolver is then the exact pre-2H path; no data changes.
 2. Optionally leave the registry in place; it is inert when unused. Registration
