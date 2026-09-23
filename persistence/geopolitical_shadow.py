@@ -6,7 +6,9 @@ repaired or synchronized from here.
 
 from persistence import macro_shadow
 from persistence.adapters.geopolitical import adapt_geopolitical, geopolitical_promotion
+from persistence import geopolitical_durable_identity as durable_identity
 from persistence.database import transaction
+from persistence.geopolitical_registry import register_geopolitical_event
 from persistence.repository import EventRepository
 from persistence.shadow_lifecycle import ShadowLifecycle
 from shared.logger import get_logger
@@ -17,6 +19,7 @@ logger = get_logger("geopolitical_shadow")
 def persist_geopolitical(engine, event, observed_at, *, make_current=True, report=False):
     """One atomic transaction: facts, evidence, then existing outcome snapshots."""
     adapted = adapt_geopolitical(event, observed_at, make_current=make_current)
+    registry = None
     with transaction(engine) as session:
         repo = EventRepository(session)
         row = repo.record(**adapted["record"], promotion_policy=geopolitical_promotion)
@@ -24,8 +27,19 @@ def persist_geopolitical(engine, event, observed_at, *, make_current=True, repor
             repo.add_provenance(row["id"], key, **values)
         for kind, values in adapted["histories"]:
             repo.append_history(row["id"], kind, values)
+        # Durable anchor registry (Phase 2H) in a savepoint: a registry failure
+        # never loses the event history and never affects collector behavior.
+        try:
+            with session.begin_nested():
+                registry = register_geopolitical_event(session, event, observed_at)
+        except Exception:
+            registry = None
+    if registry is None:
+        durable_identity.record_registry_error()
+    else:
+        durable_identity.record_registry(registry)
     return {"version": row, "duplicate": repo.inserted_count == 0,
-            "promotion": repo.promotion_reason} if report else row
+            "promotion": repo.promotion_reason, "registry": registry} if report else row
 
 
 def runtime_engine():

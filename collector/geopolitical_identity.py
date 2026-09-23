@@ -1,6 +1,8 @@
 """Deterministic action registry with atomic aliases; never fuzzy/AI matching."""
 
 import json
+import re
+
 from collector.geopolitical_normalizer import digest
 
 PREFIX = "mias:geopolitical:"
@@ -37,7 +39,28 @@ return {root, cjson.encode(record)}
 """
 
 
-def resolve_identity(event, redis, alias_ttl):
+def _durable_candidate(durable, redis, aliases, anchors, stage, candidate):
+    """Phase 2H opt-in: consult the durable registry only when no alias exists in Redis.
+
+    Redis stays first: any existing alias means the unchanged Redis path decides
+    (and the RESOLVE script re-checks atomically, so Redis also wins races). A
+    durable root is only a *candidate*; misses, conflicts, errors and timeouts
+    leave today's candidate unchanged.
+    """
+    if any(redis.get(key) for key in aliases):
+        try:
+            durable.redis_hit()
+        except Exception:
+            pass
+        return candidate
+    try:
+        root = durable.lookup(anchors, stage)
+    except Exception:
+        return candidate
+    return root if isinstance(root, str) and re.fullmatch(r"[0-9a-f]{64}", root) else candidate
+
+
+def resolve_identity(event, redis, alias_ttl, durable=None):
     anchors = sorted(set(event["identity_anchors"]))
     if not anchors:
         event["identity_status"] = "unresolved"
@@ -50,6 +73,8 @@ def resolve_identity(event, redis, alias_ttl):
     # Bind its document alias to the explicit anchors as well as the stage.
     aliases.append(PREFIX + "alias:" + digest([event["document_id"], anchors, *stage]))
     candidate = digest(["geopolitical-v1", anchors[0], *stage])
+    if durable is not None:
+        candidate = _durable_candidate(durable, redis, aliases, anchors, stage, candidate)
     record = {"published_at": event["published_at"], "provenance": event["provenance"]}
     root, payload = redis.eval(RESOLVE, len(aliases), *aliases, candidate,
                                PREFIX + "policy:", json.dumps(record), alias_ttl)

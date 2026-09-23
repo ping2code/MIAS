@@ -16,13 +16,15 @@ from collector.geopolitical_identity import PREFIX, resolve_identity
 from collector import geopolitical_sources as sources
 from shared.config import (
     GEOPOLITICAL_MAX_AGE_HOURS, GEOPOLITICAL_ALIAS_TTL_DAYS, DEDUP_TTL_SECONDS,
-    GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED,
+    GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED, GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_ENABLED,
+    GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_TIMEOUT_MS,
 )
 from shared.logger import get_logger
 
 logger = get_logger("geopolitical_collector")
 LEASE_SECONDS = 900
 _shadow_last_failure = float("-inf")
+_durable_last_failure = float("-inf")
 RELEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end
 return 0
@@ -70,6 +72,22 @@ def _shadow(event, *, make_current=True):
         if now - _shadow_last_failure >= 60:
             _shadow_last_failure = now
             logger.warning("Geopolitical shadow submission failed")
+
+
+def _durable_lookup():
+    """Opt-in durable identity lookup (Phase 2H); None keeps today's resolver exactly."""
+    global _durable_last_failure
+    if not GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_ENABLED:
+        return None
+    try:
+        from persistence.geopolitical_durable_identity import get_durable_lookup
+        return get_durable_lookup(GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_TIMEOUT_MS)
+    except Exception:
+        now = monotonic()
+        if now - _durable_last_failure >= 60:
+            _durable_last_failure = now
+            logger.warning("Geopolitical durable identity lookup unavailable")
+        return None
 
 
 def deliver_geopolitical_alert(message):
@@ -140,7 +158,7 @@ def _deliver(event, redis, stats):
 
 def _process(event, enable_ai, send_alerts, stats):
     redis = deduplicator.redis_client
-    event = resolve_identity(event, redis, GEOPOLITICAL_ALIAS_TTL_DAYS * 86400)
+    event = resolve_identity(event, redis, GEOPOLITICAL_ALIAS_TTL_DAYS * 86400, durable=_durable_lookup())
     if event["identity_status"] != "resolved":
         stats["unresolved"] += 1
         event = evaluate_alert(score_geopolitical_event(event))

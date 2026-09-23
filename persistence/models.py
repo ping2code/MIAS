@@ -121,3 +121,34 @@ event_history = sa.Table(
     sa.UniqueConstraint("event_version_id", "kind", "content_hash", name="uq_event_history_snapshot"),
     sa.Index("ix_event_history_version_recorded", "event_version_id", "recorded_at"),
 )
+
+# Durable geopolitical identity coordination (Phase 2H). One row per authoritative
+# anchor within one collector identity stage; aliases in Redis are stage-scoped,
+# so the stage is part of the key. The root is never rewritten; a conflicting
+# registration marks the row conflicted and lookups then fail closed.
+geopolitical_anchor_registry = sa.Table(
+    "geopolitical_anchor_registry", metadata,
+    sa.Column("id", ID, primary_key=True),
+    sa.Column("anchor_type", sa.String(32), nullable=False),
+    sa.Column("anchor_value", sa.String(256), nullable=False),
+    sa.Column("event_type", sa.String(64), nullable=False),
+    sa.Column("policy_stage", sa.String(64), nullable=False),
+    sa.Column("revision_id", sa.String(256), nullable=False),
+    sa.Column("policy_id", sa.String(64), nullable=False),
+    sa.Column("event_key", sa.String(512), nullable=False),
+    sa.Column("source_document_id", sa.String(512), nullable=True),
+    sa.Column("status", sa.String(16), nullable=False),
+    sa.Column("first_seen_at", UTCDateTime(), nullable=False),
+    sa.Column("last_seen_at", UTCDateTime(), nullable=False),
+    sa.Column("created_at", UTCDateTime(), nullable=False),
+    sa.Column("updated_at", UTCDateTime(), nullable=False),
+    sa.Column("attributes", JSON, nullable=False),
+    sa.UniqueConstraint("anchor_type", "anchor_value", "event_type", "policy_stage", "revision_id",
+                        name="uq_geopolitical_anchor_registry_key"),
+    sa.CheckConstraint("anchor_type IN ('fr','eo','ofac','ftc-case','moea')", name="anchor_type"),
+    sa.CheckConstraint("status IN ('active','conflicted')", name="status"),
+    sa.CheckConstraint("length(anchor_value) > 0 AND length(policy_id) = 64 AND length(event_key) > 0",
+                       name="identity_shape"),
+    sa.CheckConstraint("last_seen_at >= first_seen_at", name="observation_order"),
+    sa.Index("ix_geopolitical_anchor_registry_policy", "policy_id"),
+)

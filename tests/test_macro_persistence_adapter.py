@@ -224,7 +224,8 @@ class AdapterTests(unittest.TestCase):
         row = persist_macro(self.engine, sample(), NOW)
         with self.engine.begin() as connection:
             config = migration_config(connection)
-            command.downgrade(config, "-1")
+            # Explicit target: later additive migrations (e.g. 0003) sit above the history revision.
+            command.downgrade(config, "0001_persistence_foundation")
             self.assertNotIn("event_history", sa.inspect(connection).get_table_names())
             self.assertEqual(connection.execute(sa.select(sa.func.count()).select_from(event_versions)).scalar_one(), 1)
             command.upgrade(config, "head")
