@@ -125,6 +125,8 @@ Validated behavior:
   and persistence records a second logical event rather than merging. Both carry
   the shared anchor, so they are auditable. Changing this would change runtime
   identity, which is out of scope.
+  Phase 2G adds a read-only audit that flags these groups; see
+  [Phase 2G](persistence-phase2g.md).
 
 ## Promotion
 
