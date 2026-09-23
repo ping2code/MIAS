@@ -215,6 +215,14 @@ PDF failures, Redis lease/cache failures, dry runs and delivery retries, plus th
 existing 86 Fed/macro regression tests. No live Telegram or OpenAI validation was
 performed. See the fixture README for provenance.
 
+## Optional shadow persistence
+
+`TREASURY_PERSISTENCE_SHADOW_ENABLED` defaults to `false`. When explicitly set to
+`true`, already-computed Treasury results are copied to a bounded background
+PostgreSQL writer after the existing Redis/delivery steps; persistence never
+changes alerts, Redis keys, AI calls or Telegram delivery. See
+[Persistence Phase 2E](persistence-phase2e.md).
+
 ## Remaining limits
 
 Source schemas, filenames and publication conventions can change. Unknown required

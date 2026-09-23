@@ -35,6 +35,16 @@ def digest(value):
     return sha256(_canonical(value).encode()).hexdigest()
 
 
+def validated_ai(event):
+    """Already-validated enrichment only; never requests or repairs AI output."""
+    if not all(key in event for key in AI):
+        return None
+    valid = (event["ai_sentiment"] in {"STRONGLY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "STRONGLY_BEARISH"}
+             and type(event["ai_confidence"]) is int and 0 <= event["ai_confidence"] <= 100
+             and all(isinstance(event[k], str) and event[k].strip() for k in AI if k != "ai_confidence"))
+    return select(event, (*AI, "ai_provider", "ai_model")) if valid else None
+
+
 def adapt_macro(event, observed_at, *, make_current=True):
     """Version content hash is separate from the authoritative collector event_id."""
     if event.get("event_type") != "macro_release" or not event.get("event_id"):
@@ -62,12 +72,9 @@ def adapt_macro(event, observed_at, *, make_current=True):
         histories.append(("score", select(event, SCORE)))
     if "alert_decision" in event:
         histories.append(("decision", dict(select(event, DECISION), score_snapshot=select(event, SCORE))))
-    if all(key in event for key in AI):
-        valid = (event["ai_sentiment"] in {"STRONGLY_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "STRONGLY_BEARISH"}
-                 and type(event["ai_confidence"]) is int and 0 <= event["ai_confidence"] <= 100
-                 and all(isinstance(event[k], str) and event[k].strip() for k in AI if k != "ai_confidence"))
-        if valid:
-            histories.append(("ai", select(event, (*AI, "ai_provider", "ai_model"))))
+    ai = validated_ai(event)
+    if ai is not None:
+        histories.append(("ai", ai))
     provenance = []
     for field in ("url", "data_source_url", "release_feed_url"):
         if not event.get(field):
@@ -90,26 +97,14 @@ def adapt_macro(event, observed_at, *, make_current=True):
                 provenance=provenance, histories=histories)
 
 
-def macro_promotion(current, candidate):
-    """Conservative source ordering, evaluated under the repository's event lock.
+def source_order_promotion(current, candidate, identity_fields, material):
+    """Shared conservative ordering, evaluated under the repository's event lock.
 
     Observation/recording/fetch times, content hashes and numeric metric direction
     are never ordering evidence. Unknown order retains the current pointer.
     """
-    identity_fields = ("agency", "release_category", "reference_period", "release_id", "release_stage")
     if any(current["attributes"].get(key) != candidate["attributes"].get(key) for key in identity_fields):
         return False, "ambiguous"
-
-    def material(value):
-        attrs = value["attributes"]
-        facts = {key: attrs[key] for key in FACTS if key in attrs and key not in {
-            "original_published_at", "data_source_url", "release_feed_url", "source_id", "native_id"}}
-        # Prose is the only parser-owned release content for current BEA/Census
-        # events. Whitespace-only edits and title/URL changes are cosmetic.
-        return dict(summary=" ".join(value["summary"].split()), facts=facts,
-                    event_type=value["event_type"], market_scope=value["market_scope"],
-                    stage=value["stage"], revision_key=value["revision_key"])
-
     if _canonical(material(current)) == _canonical(material(candidate)):
         return False, "cosmetic"
     precision = candidate["timestamp_precision"]
@@ -126,3 +121,19 @@ def macro_promotion(current, candidate):
     if after < before:
         return False, "older"
     return True, "newer_material"
+
+
+def macro_promotion(current, candidate):
+    identity_fields = ("agency", "release_category", "reference_period", "release_id", "release_stage")
+
+    def material(value):
+        attrs = value["attributes"]
+        facts = {key: attrs[key] for key in FACTS if key in attrs and key not in {
+            "original_published_at", "data_source_url", "release_feed_url", "source_id", "native_id"}}
+        # Prose is the only parser-owned release content for current BEA/Census
+        # events. Whitespace-only edits and title/URL changes are cosmetic.
+        return dict(summary=" ".join(value["summary"].split()), facts=facts,
+                    event_type=value["event_type"], market_scope=value["market_scope"],
+                    stage=value["stage"], revision_key=value["revision_key"])
+
+    return source_order_promotion(current, candidate, identity_fields, material)

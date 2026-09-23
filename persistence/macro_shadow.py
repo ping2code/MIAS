@@ -33,14 +33,14 @@ def persist_macro(engine, event, observed_at, *, make_current=True, report=False
             "promotion": repo.promotion_reason} if report else row
 
 
-def runtime_engine():
+def runtime_engine(application_name="mias_macro_shadow"):
     settings = DatabaseSettings.from_env()
     if settings.backend != "postgresql":
-        raise ValueError("Macro shadow requires PostgreSQL")
+        raise ValueError("Shadow persistence requires PostgreSQL")
     # Worker only; never wait/retry in the collector. Cap caller-provided limits.
     settings = replace(settings, pool_size=1, max_overflow=0, pool_timeout_seconds=1,
                        connect_timeout_seconds=2, statement_timeout_ms=1000,
-                       lock_timeout_ms=500, application_name="mias_macro_shadow")
+                       lock_timeout_ms=500, application_name=application_name)
     return make_engine(settings)
 
 
@@ -75,6 +75,15 @@ _MESSAGES = {
 
 
 class ShadowWriter:
+    """Source-neutral bounded worker; subclasses supply only persist/log labels."""
+    logger = logger
+    messages = _MESSAGES
+    thread_name = "mias-macro-shadow"
+
+    def _persist(self, engine, event, observed_at, make_current):
+        # Module-level lookup keeps the macro persist function patchable in tests.
+        return persist_macro(engine, event, observed_at, make_current=make_current, report=True)
+
     def __init__(self, engine_factory=runtime_engine, capacity=64):
         if type(capacity) is not int or not 1 <= capacity <= 4096:
             raise ValueError("Shadow queue capacity must be between 1 and 4096")
@@ -87,7 +96,7 @@ class ShadowWriter:
         self._timeout_reported = False
         self._last_log = {}
         self.log_lock = Lock()
-        self.thread = Thread(target=self._run, name="mias-macro-shadow", daemon=True)
+        self.thread = Thread(target=self._run, name=self.thread_name, daemon=True)
         self.thread.start()
 
     def _log(self, outcome):
@@ -98,8 +107,8 @@ class ShadowWriter:
                 return
             self._last_log[outcome] = now
         try:
-            emit = logger.info if outcome in {"success", "duplicate", "start", "stop"} else logger.warning
-            emit(_MESSAGES[outcome])
+            emit = self.logger.info if outcome in {"success", "duplicate", "start", "stop"} else self.logger.warning
+            emit(self.messages[outcome])
         except Exception:
             pass  # An unavailable log sink cannot kill the worker or affect alerts.
 
@@ -159,7 +168,7 @@ class ShadowWriter:
                 try:
                     if engine is None:
                         engine = self.engine_factory()
-                    result = persist_macro(engine, event, observed_at, make_current=make_current, report=True)
+                    result = self._persist(engine, event, observed_at, make_current)
                 except Exception as error:
                     # Discard a possibly poisoned/stale pool. The next accepted
                     # task gets a fresh lazy engine; this is bounded recovery,

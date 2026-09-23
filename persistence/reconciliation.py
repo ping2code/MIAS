@@ -1,26 +1,26 @@
-"""Read-only macro audit: no repair, replay, scoring, or collector interaction."""
+"""Read-only macro/Treasury audit: no repair, replay, scoring, or collector interaction."""
 from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
 
 from persistence.adapters.macro import adapt_macro, digest
+from persistence.adapters.treasury import adapt_treasury
 from persistence.repository import _canonical
 from shared.logger import get_logger
 
 logger = get_logger("macro_reconciliation")
 _log_lock = Lock()
-_last_warning = float("-inf")
+_last_warning = {}
 
 
-def _warn_mismatch():
-    global _last_warning
+def _warn_mismatch(message="Macro shadow reconciliation mismatch"):
     with _log_lock:
         now = monotonic()
-        if now - _last_warning < 60:
+        if now - _last_warning.get(message, float("-inf")) < 60:
             return
-        _last_warning = now
+        _last_warning[message] = now
     try:
-        logger.warning("Macro shadow reconciliation mismatch")
+        logger.warning(message)
     except Exception:
         pass
 
@@ -33,7 +33,17 @@ def reconcile_macro_event(event, repository, *, expect_current=True):
     For a coherent PostgreSQL snapshot, callers may use a read-only repeatable-read
     audit transaction; this helper does not change isolation or own the session.
     """
-    adapted = adapt_macro(event, datetime.now(timezone.utc))
+    return _reconcile(adapt_macro(event, datetime.now(timezone.utc)), repository,
+                      expect_current, "Macro shadow reconciliation mismatch")
+
+
+def reconcile_treasury_event(event, repository, *, expect_current=True):
+    """Treasury counterpart of reconcile_macro_event; identical read-only contract."""
+    return _reconcile(adapt_treasury(event, datetime.now(timezone.utc)), repository,
+                      expect_current, "Treasury shadow reconciliation mismatch")
+
+
+def _reconcile(adapted, repository, expect_current, warning):
     record = adapted["record"]
     result = dict(event_found=False, version_found=False, version_match=False,
                   current_version_match=False, provenance_match=False,
@@ -65,5 +75,5 @@ def reconcile_macro_event(event, repository, *, expect_current=True):
         if value is False:
             result["mismatches"].append(key)
     if result["mismatches"]:
-        _warn_mismatch()
+        _warn_mismatch(warning)
     return result

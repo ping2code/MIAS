@@ -1,0 +1,13 @@
+{
+  "corpus_version": 1,
+  "observed_at": "2026-09-23T12:00:00+00:00",
+  "families": ["quarterly_refunding", "borrowing_estimates", "debt_limit", "issuance_policy",
+               "auction_announcement", "auction_result", "yield_curve"],
+  "expected_observations": 27,
+  "expected_duplicates": 6,
+  "expected_counts": {"events": 12, "event_versions": 19, "event_provenance": 20, "event_history": 36},
+  "expected_promotions": {
+    "first": 12, "duplicate": 8, "newer_material": 1, "older": 1, "cosmetic": 1,
+    "caller_disabled": 2, "ambiguous": 2
+  }
+}

@@ -36,6 +36,7 @@ if MACRO_MAX_AGE_HOURS <= 0:
 
 TREASURY_MAX_AGE_HOURS = int(os.getenv("TREASURY_MAX_AGE_HOURS", "48"))
 TREASURY_YIELD_MOVE_BPS = float(os.getenv("TREASURY_YIELD_MOVE_BPS", "15"))
+TREASURY_PERSISTENCE_SHADOW_ENABLED = os.getenv("TREASURY_PERSISTENCE_SHADOW_ENABLED", "false").lower() == "true"
 if TREASURY_MAX_AGE_HOURS <= 0:
     raise ValueError("TREASURY_MAX_AGE_HOURS must be positive")
 if not 0 < TREASURY_YIELD_MOVE_BPS < float("inf"):

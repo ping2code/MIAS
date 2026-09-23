@@ -5,6 +5,7 @@ import copy
 import json
 import math
 from datetime import datetime, timezone
+from time import monotonic
 from uuid import uuid4
 
 from analyzer import deduplicator
@@ -15,12 +16,15 @@ from collector import treasury_sources as sources
 from collector.treasury_normalizer import (
     EASTERN, normalize_release, normalize_debt_letter, normalize_auction, publication,
 )
-from shared.config import DEDUP_TTL_SECONDS, TREASURY_MAX_AGE_HOURS, TREASURY_YIELD_MOVE_BPS
+from shared.config import (
+    DEDUP_TTL_SECONDS, TREASURY_MAX_AGE_HOURS, TREASURY_YIELD_MOVE_BPS, TREASURY_PERSISTENCE_SHADOW_ENABLED,
+)
 from shared.logger import get_logger
 
 
 logger = get_logger("treasury_collector")
 LEASE_SECONDS = 900
+_shadow_last_failure = float("-inf")
 RELEASE_LEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
     return redis.call('del', KEYS[1])
@@ -44,6 +48,21 @@ def analyze_treasury_event(event):
         "tails, surprises, or unusually strong/weak demand."
     )
     return analyze_market_event(event)
+
+
+def _shadow(event, *, make_current=True):
+    global _shadow_last_failure
+    if not TREASURY_PERSISTENCE_SHADOW_ENABLED:
+        return
+    try:
+        from persistence.treasury_shadow import submit_treasury
+        submit_treasury(event, make_current=make_current)
+    except Exception:
+        # Even import/initialization/enqueue failures cannot change collector outcomes.
+        now = monotonic()
+        if now - _shadow_last_failure >= 60:
+            _shadow_last_failure = now
+            logger.warning("Treasury shadow submission failed")
 
 
 def deliver_treasury_alert(message):
@@ -156,6 +175,7 @@ def _process(event, enable_ai, send_alerts, stats):
         stats["duplicates"] += 1
         if send_alerts:
             _deliver(cached, stats)
+        _shadow(cached)
         return None
     lease = state_key(event, "event")
     token = _acquire(lease)
@@ -174,6 +194,7 @@ def _process(event, enable_ai, send_alerts, stats):
         _release(lease, token)
     if send_alerts:
         _deliver(event, stats)
+    _shadow(event)
     return event
 
 
@@ -238,6 +259,7 @@ def collect_treasury_events(*, enable_ai=True, send_alerts=False):
         if reason:
             stats[reason] += 1
             logger.info("Skipping %s Treasury event category=%s", reason, event["treasury_category"])
+            _shadow(event, make_current=False)
             continue
         try:
             result = _process(event, enable_ai, send_alerts, stats)
