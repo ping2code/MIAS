@@ -77,8 +77,9 @@ under the same event. Tests cover both cases. Freshly processed new versions are
 promoted. Re-observing an existing old version never moves the pointer backward.
 Freshness-skipped observations do not promote over an existing richer version;
 the repository still sets the first version as current for a new event. A current
-pointer is not alert eligibility. Concurrent promotions use repository lock order,
-not a new semantic revision ordering policy.
+pointer is not alert eligibility. Phase 2D adds a conservative source-publication
+ordering policy: only strictly newer comparable material versions promote; older,
+cosmetic and ambiguous observations are retained without replacing current.
 
 Aware publication timestamps round-trip as UTC. The current HTML normalizer
 encodes date-only Eastern midnight as an instant: the adapter retains the local

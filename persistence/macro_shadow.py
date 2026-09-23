@@ -10,7 +10,7 @@ import math
 from threading import Thread, Event, Lock, Condition
 from time import monotonic
 
-from persistence.adapters.macro import adapt_macro
+from persistence.adapters.macro import adapt_macro, macro_promotion
 from persistence.config import DatabaseSettings
 from persistence.database import make_engine, transaction, PersistenceError
 from persistence.repository import EventRepository
@@ -24,12 +24,13 @@ def persist_macro(engine, event, observed_at, *, make_current=True, report=False
     adapted = adapt_macro(event, observed_at, make_current=make_current)
     with transaction(engine) as session:
         repo = EventRepository(session)
-        row = repo.record(**adapted["record"])
+        row = repo.record(**adapted["record"], promotion_policy=macro_promotion)
         for key, values in adapted["provenance"]:
             repo.add_provenance(row["id"], key, **values)
         for kind, values in adapted["histories"]:
             repo.append_history(row["id"], kind, values)
-    return {"version": row, "duplicate": repo.inserted_count == 0} if report else row
+    return {"version": row, "duplicate": repo.inserted_count == 0,
+            "promotion": repo.promotion_reason} if report else row
 
 
 def runtime_engine():
@@ -47,6 +48,7 @@ def empty_stats():
     return dict(queued=0, persisted=0, duplicate=0, failed=0, dropped_queue_full=0,
                 dropped_shutdown=0, rejected_shutdown=0, dropped_invalid=0,
                 worker_started=0, worker_stopped=0, drain_timeouts=0, cleanup_failed=0,
+                promotion_held=0, promotion_ambiguous=0,
                 queue_depth=0, in_flight=0, last_success_at=None, last_failure_at=None)
 
 
@@ -67,6 +69,8 @@ _MESSAGES = {
     "drain_timeout": "Macro shadow drain timeout; pending work discarded; check in_flight",
     "start": "Macro shadow worker started",
     "stop": "Macro shadow worker stopped",
+    "promotion_held": "Macro shadow current version retained by source-order policy",
+    "promotion_ambiguous": "Macro shadow ambiguous version ordering; current retained",
 }
 
 
@@ -157,6 +161,15 @@ class ShadowWriter:
                         engine = self.engine_factory()
                     result = persist_macro(engine, event, observed_at, make_current=make_current, report=True)
                 except Exception as error:
+                    # Discard a possibly poisoned/stale pool. The next accepted
+                    # task gets a fresh lazy engine; this is bounded recovery,
+                    # not a retry of the failed task.
+                    if engine is not None:
+                        try:
+                            engine.dispose()
+                        except Exception:
+                            pass
+                        engine = None
                     with self._condition:
                         self._stats["failed"] += 1
                         self._stats["last_failure_at"] = datetime.now(timezone.utc).isoformat()
@@ -164,12 +177,18 @@ class ShadowWriter:
                     self._log("database_failure" if isinstance(error, PersistenceError) else "task_failure")
                 else:
                     duplicate = bool(result and result.get("duplicate"))
+                    promotion = result.get("promotion") if result else None
+                    held = promotion in {"older", "cosmetic", "ambiguous", "caller_disabled"}
                     with self._condition:
                         self._stats["persisted"] += 1
                         self._stats["duplicate"] += int(duplicate)
+                        self._stats["promotion_held"] += int(held)
+                        self._stats["promotion_ambiguous"] += int(promotion == "ambiguous")
                         self._stats["last_success_at"] = datetime.now(timezone.utc).isoformat()
                         self._stats["in_flight"] = 0
                     self._log("duplicate" if duplicate else "success")
+                    if held:
+                        self._log("promotion_ambiguous" if promotion == "ambiguous" else "promotion_held")
         finally:
             try:
                 if engine is not None:

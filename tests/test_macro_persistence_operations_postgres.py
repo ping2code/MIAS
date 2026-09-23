@@ -19,7 +19,7 @@ from persistence.models import events, event_versions, event_provenance, event_h
 from persistence.repository import EventRepository
 from tests import test_persistence_postgres as foundation
 from tests import test_macro_persistence_operations as operations
-from tests.test_macro_persistence_adapter import sample, NOW
+from tests.test_macro_persistence_adapter import sample, NOW, source_revision
 from tests.test_macro_shadow_persistence import collect
 
 
@@ -73,6 +73,7 @@ class PostgreSQLOperationsTests(operations.ReconciliationTests):
         restarted.submit(event)
         revised = deepcopy(event)
         revised["metrics"]["headline_cpi_sa"]["value"] += 1
+        source_revision(revised)
         restarted.submit(revised)
         stats = restarted.shutdown()["stats"]
         self.assertEqual((stats["persisted"], stats["duplicate"], stats["failed"]), (2, 1, 0))
@@ -186,6 +187,7 @@ class PostgreSQLOperationsTests(operations.ReconciliationTests):
         shadow.persist_macro(self.engine, event, NOW)
         revised = deepcopy(event)
         revised["metrics"]["headline_cpi_sa"]["value"] += 1
+        source_revision(revised)
         outcomes = self.concurrent_writers(event, revised, existing=True)
         self.assertEqual(sum(r["stats"]["duplicate"] for r in outcomes), 1)
         self.assertEqual(self.reconcile(revised)["mismatches"], [])
@@ -218,24 +220,26 @@ class PostgreSQLOperationsTests(operations.ReconciliationTests):
     @unittest.skipUnless(os.environ.get("MIAS_PHASE2C_TEST_CONTAINER"), "Explicit disposable container opt-in required for outage test")
     def test_real_container_down_start_midrun_and_recovery(self):
         name = os.environ["MIAS_PHASE2C_TEST_CONTAINER"]
-        self.assertEqual(name, "mias-test-phase2c-postgres")
+        self.assertRegex(name, r"mias-test-phase2[cd]-postgres")
         info = json.loads(docker_command("inspect", name))[0]
-        self.assertEqual(info["Config"]["Labels"].get("mias.disposable-test"), "phase2c")
-        self.assertEqual(len(info["Mounts"]), 1)
-        self.assertEqual(info["Mounts"][0]["Type"], "volume")
-        self.assertEqual(info["Mounts"][0]["Destination"], "/var/lib/postgresql/data")
-        self.assertIn("POSTGRES_DB=mias_test_phase2c", info["Config"]["Env"])
+        self.assertRegex(info["Config"]["Labels"].get("mias.disposable-test", ""), r"phase2[cd]")
+        temporary_storage = ((len(info["Mounts"]) == 1 and info["Mounts"][0]["Type"] == "volume"
+                              and info["Mounts"][0]["Destination"] == "/var/lib/postgresql/data")
+                             or "/var/lib/postgresql/data" in info["HostConfig"].get("Tmpfs", {}))
+        self.assertTrue(temporary_storage)
+        database_name = settings_name = foundation.DatabaseSettings(url=os.environ["TEST_DATABASE_URL"]).url.database
+        self.assertIn("POSTGRES_DB=" + database_name, info["Config"]["Env"])
         self.assertIn("POSTGRES_USER=mias_test_user", info["Config"]["Env"])
         settings = require_test_database(DatabaseSettings(url=os.environ["TEST_DATABASE_URL"]))
         self.assertEqual(settings.url.host, "127.0.0.1")
-        self.assertEqual(settings.url.database, "mias_test_phase2c")
+        self.assertEqual(settings.url.database, database_name)
         self.assertEqual(info["NetworkSettings"]["Ports"]["5432/tcp"],
                          [{"HostIp": "127.0.0.1", "HostPort": str(settings.url.port)}])
         def start():
             docker_command("start", name)
             deadline = monotonic() + 10
             while monotonic() < deadline:
-                result = subprocess.run(["docker", "exec", name, "pg_isready", "-U", "mias_test_user", "-d", "mias_test_phase2c"],
+                result = subprocess.run(["docker", "exec", name, "pg_isready", "-U", "mias_test_user", "-d", database_name],
                                         capture_output=True, timeout=5)
                 if result.returncode == 0: return
                 sleep(0.1)

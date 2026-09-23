@@ -1,0 +1,10 @@
+{
+  "corpus_version": 1,
+  "observed_at": "2026-09-23T12:00:00+00:00",
+  "categories": ["cpi", "ppi", "employment", "gdp", "pce", "retail_sales"],
+  "scenarios": ["initial", "duplicate", "material", "older", "cosmetic", "stale", "missing_date", "with_ai", "provenance_duplicate"],
+  "extra_scenarios": ["cpi_explicit_correction", "cpi_correction_duplicate"],
+  "expected_counts": {"events": 7, "event_versions": 37, "event_provenance": 75, "event_history": 56},
+  "expected_observations": 56,
+  "expected_duplicates": 13
+}

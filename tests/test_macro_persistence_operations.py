@@ -14,7 +14,7 @@ from persistence.models import event_history, event_provenance
 from persistence.reconciliation import reconcile_macro_event
 from persistence.repository import EventRepository
 from tests import test_macro_persistence_adapter as adapter_tests
-from tests.test_macro_persistence_adapter import sample, NOW
+from tests.test_macro_persistence_adapter import sample, NOW, source_revision
 from tests.test_macro_shadow_persistence import collect
 
 
@@ -273,6 +273,7 @@ class ReconciliationTests(unittest.TestCase):
         row = shadow.persist_macro(self.engine, event, NOW)
         newer = deepcopy(event)
         newer["metrics"]["headline_cpi_sa"]["value"] += 1
+        source_revision(newer)
         shadow.persist_macro(self.engine, newer, NOW)
         self.assertIn("current_version_match", self.reconcile(event)["mismatches"])
         self.assertEqual(self.reconcile(event, expect_current=False)["mismatches"], [])

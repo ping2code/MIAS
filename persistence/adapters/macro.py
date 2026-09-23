@@ -88,3 +88,41 @@ def adapt_macro(event, observed_at, *, make_current=True):
                             identity_version="macro-v1", version_key="macro-content-v1:" + digest(normalized),
                             normalized=normalized, observed_at=observed_at, make_current=make_current),
                 provenance=provenance, histories=histories)
+
+
+def macro_promotion(current, candidate):
+    """Conservative source ordering, evaluated under the repository's event lock.
+
+    Observation/recording/fetch times, content hashes and numeric metric direction
+    are never ordering evidence. Unknown order retains the current pointer.
+    """
+    identity_fields = ("agency", "release_category", "reference_period", "release_id", "release_stage")
+    if any(current["attributes"].get(key) != candidate["attributes"].get(key) for key in identity_fields):
+        return False, "ambiguous"
+
+    def material(value):
+        attrs = value["attributes"]
+        facts = {key: attrs[key] for key in FACTS if key in attrs and key not in {
+            "original_published_at", "data_source_url", "release_feed_url", "source_id", "native_id"}}
+        # Prose is the only parser-owned release content for current BEA/Census
+        # events. Whitespace-only edits and title/URL changes are cosmetic.
+        return dict(summary=" ".join(value["summary"].split()), facts=facts,
+                    event_type=value["event_type"], market_scope=value["market_scope"],
+                    stage=value["stage"], revision_key=value["revision_key"])
+
+    if _canonical(material(current)) == _canonical(material(candidate)):
+        return False, "cosmetic"
+    precision = candidate["timestamp_precision"]
+    if precision != current["timestamp_precision"]:
+        return False, "ambiguous"
+    if precision in {"minute", "second"}:
+        before, after = current["published_at"], candidate["published_at"]
+    elif precision == "date":
+        before, after = current["publication_date"], candidate["publication_date"]
+    else:
+        return False, "ambiguous"
+    if before is None or after is None or after == before:
+        return False, "ambiguous"
+    if after < before:
+        return False, "older"
+    return True, "newer_material"

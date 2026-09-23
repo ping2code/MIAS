@@ -18,6 +18,12 @@ from persistence.models import metadata, events, event_versions, event_provenanc
 from persistence.repository import EventRepository
 from persistence.macro_shadow import persist_macro
 
+def source_revision(event):
+    """Synthetic material update with explicit source publication chronology."""
+    event["published_at"] = (datetime.fromisoformat(event["published_at"]) + timedelta(minutes=1)).isoformat()
+    return event
+
+
 NOW = datetime(2026, 9, 23, 12, tzinfo=timezone.utc)
 
 
@@ -85,6 +91,7 @@ class AdapterTests(unittest.TestCase):
         first = persist_macro(self.engine, event, NOW)
         changed = deepcopy(event)
         changed["metrics"]["headline_cpi_sa"]["value"] += 1
+        source_revision(changed)
         second = persist_macro(self.engine, changed, NOW + timedelta(minutes=1))
         self.assertEqual(first["event_id"], second["event_id"])
         self.assertNotEqual(first["id"], second["id"])

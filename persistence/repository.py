@@ -55,6 +55,7 @@ class EventRepository:
         self.session = session
         # Per-repository diagnostic only; meaningful after the caller commits.
         self.inserted_count = 0
+        self.promotion_reason = None
 
     def _insert(self, table, values, keys):
         dialect = self.session.get_bind().dialect.name
@@ -64,11 +65,12 @@ class EventRepository:
         self.inserted_count += int(inserted is not None)
 
     def record(self, *, source_family, event_key, identity_version, version_key,
-               normalized, observed_at, make_current=False):
+               normalized, observed_at, make_current=False, promotion_policy=None):
         """Append immutable content; promotion requires an explicit caller decision.
 
         The first version becomes current. Backfills default to not promoting.
         Re-observing an old version never rolls the pointer back.
+        An optional source policy is evaluated while holding the event row lock.
         """
         allowed = {c.name for c in event_versions.c} - {"id", "event_id", "version_key", "content_hash", "observed_at", "recorded_at"}
         if set(normalized) - allowed:
@@ -89,13 +91,21 @@ class EventRepository:
         if existing:
             if existing["content_hash"] != digest:
                 raise IdentityConflict("Version key already belongs to different normalized content")
+            self.promotion_reason = "duplicate"
             return dict(existing)
         version_id = str(uuid4())
         values = dict(id=version_id, event_id=event["id"], version_key=version_key,
                       content_hash=digest, observed_at=observed_at, recorded_at=datetime.now(timezone.utc), **data)
         self.session.execute(event_versions.insert().values(**values))
         self.inserted_count += 1
-        if event["current_version_id"] is None or make_current:
+        promote = event["current_version_id"] is None
+        self.promotion_reason = "first" if promote else "caller_disabled"
+        if not promote and make_current:
+            if promotion_policy is None:
+                promote, self.promotion_reason = True, "caller_requested"
+            else:
+                promote, self.promotion_reason = promotion_policy(self.current(event["id"]), data)
+        if promote:
             self.session.execute(events.update().where(events.c.id == event["id"]).values(current_version_id=version_id))
         return dict(self.session.execute(sa.select(event_versions).where(event_versions.c.id == version_id)).mappings().one())
 
