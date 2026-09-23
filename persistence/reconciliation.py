@@ -1,9 +1,10 @@
-"""Read-only macro/Treasury audit: no repair, replay, scoring, or collector interaction."""
+"""Read-only macro/Treasury/geopolitical audit: no repair, replay, scoring, or collector interaction."""
 from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
 
 from persistence.adapters.macro import adapt_macro, digest
+from persistence.adapters.geopolitical import adapt_geopolitical, RELEVANCE
 from persistence.adapters.treasury import adapt_treasury
 from persistence.repository import _canonical
 from shared.logger import get_logger
@@ -43,11 +44,35 @@ def reconcile_treasury_event(event, repository, *, expect_current=True):
                       expect_current, "Treasury shadow reconciliation mismatch")
 
 
-def _reconcile(adapted, repository, expect_current, warning):
+def reconcile_geopolitical_event(event, repository, *, expect_current=True):
+    """Geopolitical counterpart; adds explicit relevance and document->policy checks.
+
+    Never consults or repairs Redis alias/policy state: the stored history is
+    compared with the collector-resolved event supplied by the caller.
+    """
+    adapted = adapt_geopolitical(event, datetime.now(timezone.utc))
+
+    def extra(version, provenance):
+        expected = {key: event[key] for key in RELEVANCE if key in event}
+        relevance = all(_canonical(version["attributes"].get(key)) == _canonical(value)
+                        for key, value in expected.items())
+        documents = {values["document_id"] for _, values in adapted["provenance"]}
+        linked = {row["document_id"] for row in provenance
+                  if row["attributes"].get("relation") == "policy_document"
+                  and row["attributes"].get("policy_id") == event["policy_id"]}
+        return dict(relevance_match=relevance, relationship_match=documents <= linked)
+
+    return _reconcile(adapted, repository, expect_current,
+                      "Geopolitical shadow reconciliation mismatch", extra)
+
+
+def _reconcile(adapted, repository, expect_current, warning, extra=None):
     record = adapted["record"]
     result = dict(event_found=False, version_found=False, version_match=False,
                   current_version_match=False, provenance_match=False,
                   score_match=None, decision_match=None, ai_match=None, mismatches=[])
+    if extra is not None:
+        result.update(relevance_match=False, relationship_match=False)
     expected_history = dict(adapted["histories"])
     for kind in expected_history:
         result[kind + "_match"] = False
@@ -60,7 +85,10 @@ def _reconcile(adapted, repository, expect_current, warning):
             result["version_match"] = (version["content_hash"] == digest(record["normalized"]) and
                 all(_canonical(version[key]) == _canonical(value) for key, value in record["normalized"].items()))
             result["current_version_match"] = anchor["current_version_id"] == version["id"]
-            provenance = {row["provenance_key"]: row for row in repository.provenance(version["id"])}
+            rows = repository.provenance(version["id"])
+            provenance = {row["provenance_key"]: row for row in rows}
+            if extra is not None:
+                result.update(extra(version, rows))
             result["provenance_match"] = all(
                 key in provenance and all(_canonical(provenance[key][field]) == _canonical(value)
                     for field, value in values.items() if field != "retrieved_at")

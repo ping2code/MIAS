@@ -3,6 +3,7 @@
 import copy
 import json
 from datetime import datetime, timezone
+from time import monotonic
 from uuid import uuid4
 
 from analyzer import deduplicator
@@ -13,11 +14,15 @@ from alert_engine.formatter import format_alert
 from collector.geopolitical_normalizer import normalize_document
 from collector.geopolitical_identity import PREFIX, resolve_identity
 from collector import geopolitical_sources as sources
-from shared.config import GEOPOLITICAL_MAX_AGE_HOURS, GEOPOLITICAL_ALIAS_TTL_DAYS, DEDUP_TTL_SECONDS
+from shared.config import (
+    GEOPOLITICAL_MAX_AGE_HOURS, GEOPOLITICAL_ALIAS_TTL_DAYS, DEDUP_TTL_SECONDS,
+    GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED,
+)
 from shared.logger import get_logger
 
 logger = get_logger("geopolitical_collector")
 LEASE_SECONDS = 900
+_shadow_last_failure = float("-inf")
 RELEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end
 return 0
@@ -49,6 +54,22 @@ def analyze_geopolitical_event(event):
     from analyzer.openai_analyzer import analyze_market_event
     event["summary"] += "\nSummarize stated official facts only. Importance does not imply market direction. Do not infer unstated legal effects or numeric facts."
     return analyze_market_event(event)
+
+
+def _shadow(event, *, make_current=True):
+    """Opt-in historical copy of a resolved result; never touches Redis or delivery."""
+    global _shadow_last_failure
+    if not GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED:
+        return
+    try:
+        from persistence.geopolitical_shadow import submit_geopolitical
+        submit_geopolitical(event, make_current=make_current)
+    except Exception:
+        # Even import/initialization/enqueue failures cannot change collector outcomes.
+        now = monotonic()
+        if now - _shadow_last_failure >= 60:
+            _shadow_last_failure = now
+            logger.warning("Geopolitical shadow submission failed")
 
 
 def deliver_geopolitical_alert(message):
@@ -130,6 +151,7 @@ def _process(event, enable_ai, send_alerts, stats):
     reason = freshness(event, datetime.now(timezone.utc))
     if reason:
         stats[reason] += 1
+        _shadow(event, make_current=False)
         return None
     cache_key, lease = state_key(event, "processed"), state_key(event, "event")
     cached = redis.get(cache_key)
@@ -144,6 +166,7 @@ def _process(event, enable_ai, send_alerts, stats):
         stats["duplicates"] += 1
         if send_alerts:
             _deliver(cached, redis, stats)
+        _shadow(cached)
         return None
     token = _acquire(redis, lease)
     if not token:
@@ -161,6 +184,7 @@ def _process(event, enable_ai, send_alerts, stats):
         redis.eval(RELEASE, 1, lease, token)
     if send_alerts:
         _deliver(event, redis, stats)
+    _shadow(event)
     return event
 
 

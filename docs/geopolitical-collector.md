@@ -236,6 +236,15 @@ labeled and are not real government actions. No production Redis keys or live
 AI/Telegram calls are involved. Lua behavior is covered with mocked Redis; an
 actual Redis-server integration test was not run in this environment.
 
+## Optional shadow persistence
+
+`GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED` defaults to `false`. When explicitly
+`true`, already-resolved, already-computed results are copied to a bounded
+background PostgreSQL writer. Redis alias/policy state stays the only runtime
+identity coordinator; PostgreSQL is a historical record and is never read back
+into Redis. Alerts, Redis keys, AI calls and Telegram delivery are unchanged. See
+[Persistence Phase 2F](persistence-phase2f.md).
+
 ## Remaining reliability limits
 
 - Conservative clause and current-instrument matching intentionally misses some
