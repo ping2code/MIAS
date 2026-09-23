@@ -115,11 +115,12 @@ Programmatic tests supply an explicitly verified connection. Production online
 migration tooling must be approved separately. Downgrade deletes foundation tables
 and their data; it is for disposable tests only, not production rollback.
 
-The optional PostgreSQL integration suite creates a unique schema in the identified
-test database, runs upgrade head / downgrade -1 / upgrade head, checks metadata
-and repository behavior, and drops that schema within a transaction. It does not
-read credentials from files or modify host services. Without TEST_DATABASE_URL it
-reports a skip. Real PostgreSQL integration is pending in the current environment.
+The PostgreSQL integration suite creates a unique schema per test in the identified
+test database and removes it afterward. Migrations and repository transactions
+commit independently, allowing actual concurrent connections. Without
+TEST_DATABASE_URL the suite reports skips, which do not constitute live validation.
+Phase 2A live validation passed on PostgreSQL 16.15; see
+[persistence-phase2a.md](persistence-phase2a.md) for setup, results and limitations.
 SQLite migration roundtrips and PostgreSQL offline DDL are independently tested.
 
 ```sh

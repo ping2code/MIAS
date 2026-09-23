@@ -66,6 +66,21 @@ class ConfigurationTests(unittest.TestCase):
             engine = make_engine(DatabaseSettings(url="postgresql://localhost/mias"))
             engine.dispose()
 
+    def test_imports_do_not_connect_or_load_dotenv(self):
+        import subprocess
+        import sys
+        result = subprocess.run([sys.executable, "-c", """
+from unittest.mock import patch
+with patch('psycopg.connect', side_effect=AssertionError('connection forbidden')), \
+     patch('sqlalchemy.create_engine', side_effect=AssertionError('engine forbidden')), \
+     patch('dotenv.load_dotenv', side_effect=AssertionError('dotenv forbidden')):
+    import persistence.config
+    import persistence.database
+    import persistence.models
+    import persistence.repository
+"""], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_health_failure_redacted(self):
         engine = make_engine(DatabaseSettings(url="sqlite://", sqlite_enabled=True))
         with patch.object(engine, "connect", side_effect=sa.exc.OperationalError("secret", {}, Exception("private"))):
