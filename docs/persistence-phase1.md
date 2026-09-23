@@ -1,5 +1,10 @@
 # Persistence Phase 1
 
+Current implementation: [Phase 2B macro shadow persistence](persistence-phase2b.md)
+adds opt-in macro writes and immutable outcome snapshots. This document records
+the earlier phase and its validation scope.
+
+
 Standalone PostgreSQL foundation; no collector invokes it yet. Existing Redis,
 scoring, identities, OpenAI and Telegram paths are unchanged. No dotenv imports,
 automatic connections, migrations on startup, raw-source payload storage, or

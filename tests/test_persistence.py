@@ -78,6 +78,8 @@ with patch('psycopg.connect', side_effect=AssertionError('connection forbidden')
     import persistence.database
     import persistence.models
     import persistence.repository
+    import persistence.adapters.macro
+    import persistence.macro_shadow
 """], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -243,7 +245,7 @@ class MigrationTests(unittest.TestCase):
                     with session.begin():
                         EventRepository(session).record(source_family="fed", event_key="fixture", identity_version="v1",
                             version_key="initial", normalized=normalized(), observed_at=NOW)
-                command.downgrade(config, "-1")
+                command.downgrade(config, "base")
                 self.assertEqual(sa.inspect(connection).get_table_names(), ["alembic_version"])
                 command.upgrade(config, "head")
         finally:

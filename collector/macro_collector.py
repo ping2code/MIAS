@@ -5,6 +5,7 @@ import copy
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
+from time import monotonic
 
 import requests
 
@@ -16,7 +17,7 @@ from collector.macro_normalizer import (
     MACRO_SOURCES, discover_bea_release, normalize_macro_release, official_url,
 )
 from collector.bls_source import BLSDataError, fetch_bls_feed, normalize_bls_feed, enrich_bls_event
-from shared.config import MACRO_MAX_AGE_HOURS, DEDUP_TTL_SECONDS
+from shared.config import MACRO_MAX_AGE_HOURS, DEDUP_TTL_SECONDS, MACRO_PERSISTENCE_SHADOW_ENABLED
 from shared.logger import get_logger
 
 
@@ -24,6 +25,7 @@ logger = get_logger("macro_collector")
 LEASE_SECONDS = 900
 BLS_RETRY_SECONDS = 4 * 3600  # v1 allows only 25 queries/day; avoid polling API lag.
 MAX_DOCUMENT_BYTES = 2_000_000
+_shadow_last_failure = float("-inf")
 RELEASE_LEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
     return redis.call('del', KEYS[1])
@@ -42,6 +44,21 @@ return 0
 def analyze_macro_event(event):
     from analyzer.openai_analyzer import analyze_market_event
     return analyze_market_event(event)
+
+
+def _shadow(event, *, make_current=True):
+    global _shadow_last_failure
+    if not MACRO_PERSISTENCE_SHADOW_ENABLED:
+        return
+    try:
+        from persistence.macro_shadow import submit_macro
+        submit_macro(event, make_current=make_current)
+    except Exception:
+        # Even import/initialization/enqueue failures cannot change collector outcomes.
+        now = monotonic()
+        if now - _shadow_last_failure >= 60:
+            _shadow_last_failure = now
+            logger.warning("Macro shadow submission failed")
 
 
 def deliver_macro_alert(message):
@@ -162,6 +179,7 @@ def _process(event, enable_ai, send_alerts, stats):
         stats["duplicates"] += 1
         if send_alerts:
             _deliver(cached_event, stats)
+        _shadow(cached_event)
         return None
 
     lease = state_key(event, "event")
@@ -194,6 +212,7 @@ def _process(event, enable_ai, send_alerts, stats):
         _release(lease, token)
     if send_alerts:
         _deliver(event, stats)
+    _shadow(event)
     return event
 
 
@@ -227,6 +246,7 @@ def collect_macro_events(*, enable_ai=True, send_alerts=False):
         if reason:
             stats[reason] += 1
             logger.info("Skipping %s macro event category=%s", reason, source["category"])
+            _shadow(event, make_current=False)
             continue
         try:
             result = _process(event, enable_ai, send_alerts, stats)

@@ -60,7 +60,7 @@ class PostgreSQLTests(unit.RepositoryTests):
             with self.engine.begin() as connection:
                 config = unit.migration_config(connection)
                 if direction == "downgrade":
-                    command.downgrade(config, "-1")
+                    command.downgrade(config, "base")
                     self.assertEqual(sa.inspect(connection).get_table_names(), ["alembic_version"])
                     self.assertEqual(connection.exec_driver_sql(
                         "SELECT count(*) FROM pg_constraint WHERE connamespace = current_schema()::regnamespace"

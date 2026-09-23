@@ -1,5 +1,10 @@
 # Persistence Phase 2A: PostgreSQL validation
 
+Current implementation: [Phase 2B macro shadow persistence](persistence-phase2b.md)
+adds opt-in macro writes and immutable outcome snapshots. This document records
+the earlier phase and its validation scope.
+
+
 Validated on PostgreSQL **16.15 (Debian 16.15-1.pgdg13+2)**, x86_64,
 using Docker image `postgres:16`, digest
 `sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6`.

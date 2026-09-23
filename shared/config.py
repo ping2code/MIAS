@@ -30,6 +30,7 @@ if FED_MAX_AGE_HOURS <= 0:
     raise ValueError("FED_MAX_AGE_HOURS must be positive")
 
 MACRO_MAX_AGE_HOURS = int(os.getenv("MACRO_MAX_AGE_HOURS", "48"))
+MACRO_PERSISTENCE_SHADOW_ENABLED = os.getenv("MACRO_PERSISTENCE_SHADOW_ENABLED", "false").lower() == "true"
 if MACRO_MAX_AGE_HOURS <= 0:
     raise ValueError("MACRO_MAX_AGE_HOURS must be positive")
 

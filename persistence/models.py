@@ -106,3 +106,18 @@ event_provenance = sa.Table(
     sa.Index("ix_event_provenance_document", "source_name", "document_id"),
     sa.Index("ix_event_provenance_version", "event_version_id"),
 )
+
+# Immutable snapshots of already-computed outcomes; never delivery state.
+event_history = sa.Table(
+    "event_history", metadata,
+    sa.Column("id", ID, primary_key=True),
+    sa.Column("event_version_id", ID, sa.ForeignKey("event_versions.id", ondelete="RESTRICT"), nullable=False),
+    sa.Column("kind", sa.String(16), nullable=False),
+    sa.Column("content_hash", sa.String(64), nullable=False),
+    sa.Column("attributes", JSON, nullable=False),
+    sa.Column("recorded_at", UTCDateTime(), nullable=False),
+    sa.CheckConstraint("kind IN ('score','decision','ai')", name="history_kind"),
+    sa.CheckConstraint("length(content_hash) = 64", name="history_hash"),
+    sa.UniqueConstraint("event_version_id", "kind", "content_hash", name="uq_event_history_snapshot"),
+    sa.Index("ix_event_history_version_recorded", "event_version_id", "recorded_at"),
+)

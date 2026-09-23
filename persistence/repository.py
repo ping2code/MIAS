@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from persistence.models import events, event_versions, event_provenance
+from persistence.models import events, event_versions, event_provenance, event_history
 
 
 class IdentityConflict(ValueError):
@@ -113,6 +113,21 @@ class EventRepository:
         row = self.session.execute(sa.select(event_versions).join(events,
             events.c.current_version_id == event_versions.c.id).where(events.c.id == event_id)).mappings().first()
         return dict(row) if row else None
+
+    def append_history(self, version_id, kind, attributes):
+        """Idempotent immutable snapshot; caller supplies already-computed outcomes."""
+        attributes = _attributes(attributes)
+        digest = hashlib.sha256(_canonical(attributes).encode()).hexdigest()
+        keys = dict(event_version_id=version_id, kind=kind, content_hash=digest)
+        self._insert(event_history, dict(id=str(uuid4()), **keys, attributes=attributes,
+                     recorded_at=datetime.now(timezone.utc)), list(keys))
+        return dict(self.session.execute(sa.select(event_history).where(
+            *(event_history.c[key] == value for key, value in keys.items()))).mappings().one())
+
+    def history(self, version_id):
+        return [dict(row) for row in self.session.execute(sa.select(event_history).where(
+            event_history.c.event_version_id == version_id).order_by(
+                event_history.c.recorded_at, event_history.c.id)).mappings()]
 
     def versions(self, event_id):
         return [dict(row) for row in self.session.execute(sa.select(event_versions).where(
