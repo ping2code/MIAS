@@ -9,3 +9,6 @@ requests==2.34.2
 urllib3==2.8.0
 openai==3.16.2
 pypdf==6.19.0
+SQLAlchemy==2.0.54
+psycopg[binary]==3.3.6
+alembic==1.20.0
