@@ -110,6 +110,10 @@ live-event claims are made for those paths.
 
 ## Finding (not repaired): geopolitical disclosure time promoted after Redis expiry
 
+Fixed in [Phase 2N](persistence-phase2n.md) (disclosure-only promotion rule, audit and
+operator-applied correction); the regression rerun is in
+[persistence-phase2n-staging-regression.md](persistence-phase2n-staging-regression.md).
+
 Consider this sequence:
 
 1. An action is persisted with an earliest disclosure of 12:00 (BIS release)

@@ -6,12 +6,17 @@
     python -m persistence.geopolitical_tools audit     [--json] [--page-size N] [--after CURSOR]
                                                        [--max-events N] [--batch-size N]
                                                        [--save-snapshot FILE | --compare-to FILE]
+    python -m persistence.geopolitical_tools disclosure-audit   [--json] [--max-events N]
+    python -m persistence.geopolitical_tools disclosure-correct [--json] [--max-events N] [--apply]
+                                                       [--changes-out FILE | --revert FILE]
 
 The database comes from the process environment (DATABASE_URL and DB_* limits)
 via ``DatabaseSettings.from_env``; ``.env`` is never read and ``shared.config``
 is never imported. Nothing connects at import time. ``backfill`` is the only
 command that writes (registry table only); every other command runs in a
-read-only transaction on PostgreSQL. No command touches Redis, the collector,
+read-only transaction on PostgreSQL. ``disclosure-correct --apply`` (Phase 2N) is the
+only other writer and changes only ``events.current_version_id``; without ``--apply``
+it is a read-only dry run. No command touches Redis, the collector,
 or event history. Credentials and connection strings are never printed.
 
 Exit codes: 0 ok, 1 check failed (unhealthy status / acceptance not met),
@@ -33,6 +38,9 @@ from persistence import geopolitical_durable_identity as durable_identity
 from persistence.geopolitical_audit import (
     audit_geopolitical_identity_divergence, audit_geopolitical_identity_divergence_page,
     capture_identity_audit_snapshot, compare_identity_audits,
+)
+from persistence.geopolitical_disclosure import (
+    audit_disclosure_pointers, correct_disclosure_pointers, revert_disclosure_corrections,
 )
 from persistence.geopolitical_registry import AnchorRegistryRepository, KEY, backfill_geopolitical_anchor_registry
 
@@ -215,7 +223,37 @@ def cmd_audit(engine, args):
     return (EXIT_OK if comparison["accepted"] else EXIT_FAILED), comparison
 
 
-COMMANDS = {"status": cmd_status, "backfill": cmd_backfill, "conflicts": cmd_conflicts, "audit": cmd_audit}
+def cmd_disclosure_audit(engine, args):
+    with _session(engine, read_only=True) as session:
+        return EXIT_OK, audit_disclosure_pointers(session, max_events=args.max_events)
+
+
+def cmd_disclosure_correct(engine, args):
+    if args.revert and args.changes_out:
+        raise ToolError(EXIT_USAGE, "usage error: --revert and --changes-out are exclusive")
+    changes = None
+    if args.revert:
+        try:
+            with open(args.revert, encoding="utf-8") as handle:
+                changes = json.load(handle)["changes"]
+        except (OSError, ValueError, KeyError, TypeError):
+            raise ToolError(EXIT_USAGE, "usage error: change report unreadable") from None
+    with _session(engine, read_only=not args.apply) as session:
+        report = (revert_disclosure_corrections(session, changes, apply=args.apply) if changes is not None
+                  else correct_disclosure_pointers(session, apply=args.apply, max_events=args.max_events))
+    if args.changes_out:
+        try:
+            with open(args.changes_out, "x", encoding="utf-8") as handle:
+                json.dump(report, handle, sort_keys=True, indent=2, default=str)
+        except OSError:
+            raise ToolError(EXIT_USAGE, "usage error: change report exists or is not writable") from None
+    report["note"] = ("dry run: nothing changed; rerun with --apply to change current_version_id only"
+                      if not args.apply else "applied: only events.current_version_id changed (guarded)")
+    return EXIT_OK, report
+
+
+COMMANDS = {"status": cmd_status, "backfill": cmd_backfill, "conflicts": cmd_conflicts, "audit": cmd_audit,
+            "disclosure-audit": cmd_disclosure_audit, "disclosure-correct": cmd_disclosure_correct}
 
 
 def build_parser():
@@ -225,7 +263,7 @@ def build_parser():
     for name in COMMANDS:
         command = sub.add_parser(name)
         command.add_argument("--json", action="store_true", help="machine-readable output")
-        if name in ("status", "backfill", "audit"):
+        if name in ("status", "backfill", "audit", "disclosure-audit", "disclosure-correct"):
             command.add_argument("--max-events", type=_positive(100_000 if name != "backfill" else 1_000_000),
                                  default=10_000 if name != "backfill" else 100_000)
     sub.choices["conflicts"].add_argument("--limit", type=_positive(1_000), default=50)
@@ -236,6 +274,10 @@ def build_parser():
     audit.add_argument("--batch-size", type=_positive(5_000), default=500)
     audit.add_argument("--save-snapshot", metavar="FILE", help="write a full acceptance snapshot (refuses to overwrite)")
     audit.add_argument("--compare-to", metavar="FILE", help="compare current history with a saved snapshot")
+    correct = sub.choices["disclosure-correct"]
+    correct.add_argument("--apply", action="store_true", help="write: change only current_version_id (guarded)")
+    correct.add_argument("--changes-out", metavar="FILE", help="write the change report (refuses to overwrite)")
+    correct.add_argument("--revert", metavar="FILE", help="revert a previous change report (with --apply)")
     return parser
 
 

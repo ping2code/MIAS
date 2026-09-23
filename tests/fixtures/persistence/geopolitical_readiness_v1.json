@@ -4,8 +4,8 @@
   "expected_observations": 24,
   "expected_duplicates": 5,
   "expected_counts": {"events": 14, "event_versions": 16, "event_provenance": 21, "event_history": 44},
-  "expected_promotions": {"first": 14, "duplicate": 8, "older": 1, "caller_disabled": 1},
-  "expected_not_current": ["earlier_companion_disclosure", "stale_companion"],
+  "expected_promotions": {"first": 14, "duplicate": 8, "earlier_disclosure": 1, "caller_disabled": 1},
+  "expected_not_current": ["trade", "stale_companion"],
   "expected_not_persisted": ["missing_date", "unresolved_identity", "broad_no_symbols"],
   "families": ["policy_action", "sanctions_action", "trade_action", "regulatory_action", "operational_disruption"]
 }

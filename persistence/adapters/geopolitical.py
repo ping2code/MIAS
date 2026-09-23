@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from collector.geopolitical_normalizer import PUBLISHERS
 from persistence.adapters.macro import digest, instant, select, source_order_promotion, validated_ai
+from persistence.repository import _canonical
 
 EVENT_TYPES = {"policy_action", "sanctions_action", "trade_action", "regulatory_action", "operational_disruption"}
 # Parser/relevance/identity facts copied verbatim. The collector-resolved
@@ -103,19 +104,86 @@ def adapt_geopolitical(event, observed_at, *, make_current=True):
                 provenance=provenance, histories=histories)
 
 
+def content_material(value):
+    """Substantive content of one analyzed document's version, excluding disclosure time.
+
+    Parser-owned facts (minus first-publication evidence), whitespace-normalized
+    summary, family, scope, stage and revision. Headline/URL are presentation.
+    """
+    attrs = value["attributes"]
+    facts = {key: attrs[key] for key in FACTS if key in attrs and key not in NON_MATERIAL}
+    return dict(summary=" ".join(value["summary"].split()), facts=facts,
+                event_type=value["event_type"], market_scope=value["market_scope"],
+                stage=value["stage"], revision_key=value["revision_key"])
+
+
+# Action-level substance shared by every official document of one resolved action.
+# Document-level facts (agency, document ID/type, body/summary, quotes, anchors,
+# legal references, scheduled/first publication) are the analyzed document's
+# presentation, not the action.
+ACTION_FACTS = ("policy_id", "identity_status", "geopolitical_category", "policy_action", "policy_stage",
+                "legal_status", "revision_id", "effective_at", "policy_scope", "metrics", "symbols",
+                "direct_symbols", "related_symbols", "relevant", "relevance_reasons", "matched_entities",
+                "matched_products", "matched_jurisdictions")
+
+
+def action_material(value):
+    attrs = value["attributes"]
+    return dict(facts={key: attrs[key] for key in ACTION_FACTS if key in attrs}, event_type=value["event_type"],
+                market_scope=value["market_scope"], stage=value["stage"], revision_key=value["revision_key"])
+
+
+def same_document(first, second):
+    return first["attributes"].get("document_id") == second["attributes"].get("document_id")
+
+
+def substantively_equal(first, second):
+    """Same analyzed document: full content; different companion documents: action-level substance."""
+    view = content_material if same_document(first, second) else action_material
+    return _canonical(view(first)) == _canonical(view(second))
+
+
+def disclosure(value):
+    """Comparable disclosure instant/date for a version, or None when not comparable."""
+    precision = value["timestamp_precision"]
+    if precision in {"minute", "second"}:
+        return precision, value["published_at"]
+    if precision == "date":
+        return precision, value["publication_date"]
+    return precision, None
+
+
 def geopolitical_promotion(current, candidate):
-    """Phase 2D source-ordering contract applied to resolved policy actions.
+    """Phase 2D source ordering for resolved policy actions, with disclosure-only handling (Phase 2N).
 
     Stages, families and revisions are part of the collector identity, so a
-    proposal/final/amendment never competes here. The disclosure time is
-    material: an earlier companion disclosure is held as "older", never promoted.
+    proposal/final/amendment never competes here. Disclosure time is not content:
+
+    - substantively equal (see ``substantively_equal``), identical disclosure: ``cosmetic``;
+    - substantively equal, later disclosure: ``disclosure_only`` (held; a later
+      companion/re-analysis never replaces current by timestamp alone);
+    - substantively equal, strictly earlier comparable disclosure:
+      ``earlier_disclosure`` (promoted: the earliest known disclosure wins, so
+      every observation order converges on the same current version);
+    - substantively equal, incomparable/missing disclosure: ``ambiguous``;
+    - different companion documents that disagree on action-level facts:
+      ``ambiguous`` (one document never overrides another by timestamp);
+    - same document, changed content: the unchanged shared rules
+      (``newer_material`` / ``older`` / ``ambiguous``).
     """
+    if any(current["attributes"].get(key) != candidate["attributes"].get(key) for key in IDENTITY_FACTS):
+        return False, "ambiguous"
+    if substantively_equal(current, candidate):
+        (before_precision, before), (after_precision, after) = disclosure(current), disclosure(candidate)
+        if (before_precision, before) == (after_precision, after):
+            return False, "cosmetic"
+        if before_precision != after_precision or before is None or after is None:
+            return False, "ambiguous"
+        return (True, "earlier_disclosure") if after < before else (False, "disclosure_only")
+    if not same_document(current, candidate):
+        return False, "ambiguous"
+
     def material(value):
-        attrs = value["attributes"]
-        facts = {key: attrs[key] for key in FACTS if key in attrs and key not in NON_MATERIAL}
-        return dict(summary=" ".join(value["summary"].split()), facts=facts,
-                    event_type=value["event_type"], market_scope=value["market_scope"],
-                    stage=value["stage"], revision_key=value["revision_key"],
-                    disclosure=[value["published_at"], value["publication_date"]])
+        return dict(content_material(value), disclosure=[value["published_at"], value["publication_date"]])
 
     return source_order_promotion(current, candidate, IDENTITY_FACTS, material)

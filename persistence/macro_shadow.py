@@ -54,6 +54,7 @@ _MESSAGES = {
     "stop": "Macro shadow worker stopped",
     "promotion_held": "Macro shadow current version retained by source-order policy",
     "promotion_ambiguous": "Macro shadow ambiguous version ordering; current retained",
+    "promotion_disclosure_only": "Macro shadow disclosure-only version retained; current unchanged",
 }
 
 
@@ -90,7 +91,8 @@ class ShadowWriter:
                 return
             self._last_log[outcome] = now
         try:
-            emit = self.logger.info if outcome in {"success", "duplicate", "start", "stop"} else self.logger.warning
+            emit = (self.logger.info if outcome in {"success", "duplicate", "start", "stop", "promotion_disclosure_only"}
+                    else self.logger.warning)
             emit(self.messages[outcome])
         except Exception:
             pass  # An unavailable log sink cannot kill the worker or affect alerts.
@@ -170,17 +172,20 @@ class ShadowWriter:
                 else:
                     duplicate = bool(result and result.get("duplicate"))
                     promotion = result.get("promotion") if result else None
-                    held = promotion in {"older", "cosmetic", "ambiguous", "caller_disabled"}
+                    held = promotion in {"older", "cosmetic", "ambiguous", "caller_disabled", "disclosure_only"}
                     with self._condition:
                         self._stats["persisted"] += 1
                         self._stats["duplicate"] += int(duplicate)
                         self._stats["promotion_held"] += int(held)
                         self._stats["promotion_ambiguous"] += int(promotion == "ambiguous")
+                        self._stats["promotion_disclosure_only"] += int(promotion == "disclosure_only")
                         self._stats["last_success_at"] = datetime.now(timezone.utc).isoformat()
                         self._stats["in_flight"] = 0
                     self._log("duplicate" if duplicate else "success")
                     if held:
-                        self._log("promotion_ambiguous" if promotion == "ambiguous" else "promotion_held")
+                        # A later companion disclosure is expected, healthy traffic: INFO, not WARNING.
+                        self._log({"ambiguous": "promotion_ambiguous", "disclosure_only": "promotion_disclosure_only"}
+                                  .get(promotion, "promotion_held"))
         finally:
             try:
                 if engine is not None:

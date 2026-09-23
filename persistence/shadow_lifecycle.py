@@ -23,7 +23,7 @@ def empty_stats():
     return dict(queued=0, persisted=0, duplicate=0, failed=0, dropped_queue_full=0,
                 dropped_shutdown=0, rejected_shutdown=0, dropped_invalid=0,
                 worker_started=0, worker_stopped=0, drain_timeouts=0, cleanup_failed=0,
-                promotion_held=0, promotion_ambiguous=0,
+                promotion_held=0, promotion_ambiguous=0, promotion_disclosure_only=0,
                 queue_depth=0, in_flight=0, last_success_at=None, last_failure_at=None)
 
 

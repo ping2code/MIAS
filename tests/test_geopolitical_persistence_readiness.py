@@ -120,11 +120,18 @@ class GeopoliticalReadinessTests(unittest.TestCase):
         self.assertEqual(result["promotion"], "newer_material")
         self.assertEqual(self.current(first["version"])["id"], result["version"]["id"])
 
-    def test_older_late_observation_and_earlier_disclosure_held(self):
-        current = self.persist(sample("trade"))
+    def test_earlier_companion_disclosure_promotes_and_material_older_is_held(self):
+        # Phase 2N: identical content with a strictly earlier disclosure wins (earliest known disclosure).
+        later = self.persist(sample("trade"))
         earlier = self.persist(sample("earlier_companion_disclosure"), NOW + timedelta(days=1))
-        self.assertEqual(earlier["promotion"], "older")
-        self.assertEqual(self.current(current["version"])["id"], current["version"]["id"])
+        self.assertEqual(earlier["promotion"], "earlier_disclosure")
+        self.assertEqual(self.current(later["version"])["id"], earlier["version"]["id"])
+        # A materially different, older observation is still held as "older".
+        older = sample("trade")
+        older["summary"] += " Synthetic superseded wording."
+        older["published_at"] = "2026-09-22T10:00:00+00:00"
+        self.assertEqual(self.persist(older)["promotion"], "older")
+        self.assertEqual(self.current(later["version"])["id"], earlier["version"]["id"])
 
     def test_cosmetic_and_stale_repost_do_not_refresh(self):
         current = self.persist(sample("bis_final"))
@@ -239,9 +246,9 @@ class GeopoliticalReadinessTests(unittest.TestCase):
 
     def test_historical_current_expectation_and_read_only(self):
         self.persist(sample("trade"))
-        self.persist(sample("earlier_companion_disclosure"))
-        self.assertIn("current_version_match", self.reconcile(sample("earlier_companion_disclosure"))["mismatches"])
-        self.assertEqual(self.reconcile(sample("earlier_companion_disclosure"), expect_current=False)["mismatches"], [])
+        self.persist(sample("earlier_companion_disclosure"))  # Earliest disclosure becomes current (Phase 2N).
+        self.assertIn("current_version_match", self.reconcile(sample("trade"))["mismatches"])
+        self.assertEqual(self.reconcile(sample("trade"), expect_current=False)["mismatches"], [])
         statements = []
         def observe(connection, cursor, statement, parameters, context, executemany):
             statements.append(statement)

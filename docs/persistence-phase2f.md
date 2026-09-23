@@ -144,7 +144,7 @@ Validated behavior:
 | New companion document | new provenance row only |
 | Cosmetic headline/whitespace change | `cosmetic`, held |
 | Strictly newer comparable material version | `newer_material`, promoted |
-| Companion revealing an earlier disclosure, or older late observation | `older`, held |
+| Companion revealing an earlier disclosure, or older late observation | `older`, held (superseded by [Phase 2N](persistence-phase2n.md): an earlier disclosure of substantively equal content is now `earlier_disclosure` and promoted; a later one is `disclosure_only`) |
 | Resolved stale repost | `caller_disabled`, held, unscored |
 | Equal time or changed identity facts | `ambiguous`, held |
 

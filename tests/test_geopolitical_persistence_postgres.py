@@ -94,7 +94,7 @@ class PostgreSQLGeopoliticalOperationsTests(unittest.TestCase):
         self.assertEqual(enabled, baseline)
         self.assertTrue(result["stopped"])
         self.assertEqual((result["stats"]["failed"], result["stats"]["persisted"]), (0, len(submitted)))
-        not_current = {"earlier_companion_disclosure", "stale_companion"}
+        not_current = {"trade", "stale_companion"}  # Earliest disclosure is current (Phase 2N).
         for label, event, _ in submitted:
             self.assertEqual(self.reconcile(event, expect_current=label not in not_current)["mismatches"], [], label)
         self.assertEqual(self.count(events), 14)
@@ -147,8 +147,10 @@ class PostgreSQLGeopoliticalOperationsTests(unittest.TestCase):
         writer.submit(sample("bis_final"))
         writer.submit(sample("stale_companion"), make_current=False)
         stats = writer.shutdown()["stats"]
-        self.assertEqual((stats["persisted"], stats["promotion_held"], stats["promotion_ambiguous"]), (4, 2, 0))
-        self.assertEqual(self.reconcile(sample("trade"))["mismatches"], [])
+        # earlier_disclosure promotes; only the stale caller-disabled observation is held (Phase 2N).
+        self.assertEqual((stats["persisted"], stats["promotion_held"], stats["promotion_ambiguous"]), (4, 1, 0))
+        self.assertEqual(self.reconcile(sample("earlier_companion_disclosure"))["mismatches"], [])
+        self.assertEqual(self.reconcile(sample("trade"), expect_current=False)["mismatches"], [])
         self.assertEqual(self.reconcile(sample("stale_companion"), expect_current=False)["mismatches"], [])
 
     def test_worker_exception_rollback_then_recreation(self):
