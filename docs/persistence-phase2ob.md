@@ -1,5 +1,8 @@
 # Persistence Phase 2O-B: SEC shadow persistence
 
+Real-process operational validation, read-only shared-accession and repeat-observation audits
+(`python -m persistence.sec_audit`): [Phase 2P report](persistence-phase2p-sec-operational-report.md).
+
 Phase 2O-B adds opt-in, shadow-only, non-blocking persistence for SEC filing
 events. It reuses the existing persistence architecture unchanged: the
 repository, schema (no migration; `sec` was already an allowed

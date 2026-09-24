@@ -57,10 +57,11 @@ def docker(*args, check=True):
     return result.stdout
 
 
-def verify_container(name, port, *, volume):
+def verify_container(name, port, *, volume, label=None):
+    label = label or LABEL
     info = json.loads(docker("inspect", name))[0]
-    if info["Config"]["Labels"].get("mias.disposable-test") != LABEL:
-        raise StagingStop(f"{name} is not a {LABEL} disposable container")
+    if info["Config"]["Labels"].get("mias.disposable-test") != label:
+        raise StagingStop(f"{name} is not a {label} disposable container")
     bindings = [b for ports in info["NetworkSettings"]["Ports"].values() for b in (ports or [])]
     if bindings != [{"HostIp": "127.0.0.1", "HostPort": str(port)}]:
         raise StagingStop(f"{name} is not loopback-only on {port}")
@@ -71,17 +72,17 @@ def verify_container(name, port, *, volume):
     return info
 
 
-def database_url(name):
-    settings = require_test_database(DatabaseSettings(url=f"postgresql://mias_test_user@127.0.0.1:{PG_PORT}/{name}"))
-    if settings.url.host != "127.0.0.1" or not settings.url.database.startswith("mias_test_phase2m"):
+def database_url(name, *, prefix="mias_test_phase2m", port=PG_PORT):
+    settings = require_test_database(DatabaseSettings(url=f"postgresql://mias_test_user@127.0.0.1:{port}/{name}"))
+    if settings.url.host != "127.0.0.1" or not settings.url.database.startswith(prefix):
         raise StagingStop("Unsafe staging database target")
     return settings.url.render_as_string(hide_password=False)
 
 
-def pg_ready(timeout=30):
+def pg_ready(timeout=30, *, container=PG_CONTAINER, database=PG_ADMIN_DB):
     deadline = monotonic() + timeout
     while monotonic() < deadline:
-        if subprocess.run(["docker", "exec", PG_CONTAINER, "pg_isready", "-U", "mias_test_user", "-d", PG_ADMIN_DB],
+        if subprocess.run(["docker", "exec", container, "pg_isready", "-U", "mias_test_user", "-d", database],
                           capture_output=True, timeout=10).returncode == 0:
             return
         sleep(0.2)

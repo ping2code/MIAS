@@ -16,11 +16,21 @@ command on stdout (logs go to stderr):
     {"op": "drain_wait"}                            wait until queued shadow work is written
     {"op": "exit"}                                  drain, reconcile, graceful exit
     {"op": "hard_exit"}                             drain, reconcile, os._exit (no atexit)
+
+SEC (Phase 2P, ``--collector sec``): ``live`` fetches the configured watchlist;
+``controlled``/``replay`` process the given ``filings`` (no network). The SEC
+collector always delivers ``ALERT`` decisions, so its Telegram entry point is a
+recording stub (would-be sends are reported, nothing is sent); the real Telegram
+transport (``requests.post``) and OpenAI client construction stay tripwires.
 """
 import argparse
+from contextlib import redirect_stdout
 from copy import deepcopy
 from datetime import datetime
+import hashlib
+import io
 import json
+import logging
 import os
 import sys
 from unittest.mock import patch
@@ -108,7 +118,7 @@ def _bucket(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--collector", choices=("geo", "fed"), required=True)
+    parser.add_argument("--collector", choices=("geo", "fed", "sec"), required=True)
     args = parser.parse_args()
     http = HttpEvidence()
     telegram, openai = Guard("Telegram"), Guard("OpenAI")
@@ -116,6 +126,8 @@ def main():
     with patch.object(requests, "get", http):
         if args.collector == "geo":
             run = GeoProcess(telegram, openai, submissions)
+        elif args.collector == "sec":
+            run = SecProcess(telegram, openai, submissions)
         else:
             run = FedProcess(telegram, openai, submissions)
         for line in sys.stdin:
@@ -291,6 +303,84 @@ class FedProcess:
         from persistence.reconciliation import reconcile_fed_event
         return dict(op="finish", shadow_stopped=drained["stopped"], shadow_stats=_shadow_summary(drained["stats"]),
                     reconciliation=_reconcile(self.submissions, reconcile_fed_event))
+
+
+class _Capture(logging.Handler):
+    """Collector-visible log records (logger, level, message) for parity comparison."""
+
+    def __init__(self):
+        super().__init__(logging.INFO)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append((record.name, record.levelname, record.getMessage()))
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
+
+
+class SecProcess:
+    FILING_KEYS = ("symbol", "form", "accession_number", "filing_date", "primary_document")
+
+    def __init__(self, telegram, openai, submissions):
+        # alert_engine.telegram_notifier calls load_dotenv() at import: keep .env unread.
+        with patch("dotenv.load_dotenv"):
+            from collector import sec_collector as sec
+        from persistence import sec_shadow as shadow
+        self.sec, self.shadow, self.submissions = sec, shadow, submissions
+        self.would_send, self.capture = [], _Capture()
+        for name in ("sec_collector", "deduplicator"):
+            logging.getLogger(name).addHandler(self.capture)
+        def stub(message):
+            self.would_send.append(message)
+            return {"ok": True, "result": {"message_id": len(self.would_send)}}
+        patches = [patch.object(sec, "send_telegram_alert", stub), patch.object(requests, "post", telegram),
+                   patch.object(shadow, "submit_sec", _spy(shadow, "submit_sec", submissions, "sec"))]
+        try:
+            import openai as openai_module
+            patches.append(patch.object(openai_module, "OpenAI", openai))
+        except ImportError:
+            pass
+        for p in patches:
+            p.start()
+
+    def cycle(self, command):
+        before, sent_before, logs_before = len(self.submissions), len(self.would_send), len(self.capture.records)
+        fetched = self.sec.collect_sec_filings() if command["op"] == "live" else deepcopy(command["filings"])
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):  # The collector prints ALERT messages; keep the protocol channel clean.
+            events = self.sec.process_sec_filings(deepcopy(fetched))
+        new = self.submissions[before:]
+        logs = self.capture.records[logs_before:]
+        sent = self.would_send[sent_before:]
+        from persistence.adapters.sec import filing_document
+        return dict(op=command["op"], label=command.get("label"),
+                    fetched=[{k: f.get(k) for k in self.FILING_KEYS} for f in fetched] if command["op"] == "live" else None,
+                    input_count=len(fetched), processed=len(events),
+                    events=[dict(symbol=e["symbols"][0], form=e["sec_form"], accession=e["accession_number"],
+                                 primary_document=filing_document(e)[1], filing_date=e["published_at"],
+                                 score=e["impact_score"], level=e["impact_level"], decision=e["alert_decision"],
+                                 fingerprint=self.sec.deduplicator.create_fingerprint(e)) for e in events],
+                    events_digest=_digest(events), stdout_digest=_digest(stdout.getvalue()),
+                    stdout_lines=len(stdout.getvalue().splitlines()),
+                    collector_logs=[r for r in logs if "shadow" not in r[2].lower()],
+                    shadow_logs=[r for r in logs if "shadow" in r[2].lower()],
+                    would_send=len(sent), would_send_digests=[_digest(m) for m in sent],
+                    submitted=len(new), submitted_fingerprints=[e["sec_fingerprint"] for _, e, _, _ in new])
+
+    def drain_wait(self):
+        return _drain(self.shadow)
+
+    def finish(self):
+        drained = self.shadow.shutdown(drain=True, timeout=20)
+        from persistence.reconciliation import reconcile_sec_event
+        stats = drained["stats"]
+        return dict(op="finish", shadow_stopped=drained["stopped"], shadow_stats=_shadow_summary(stats),
+                    shadow_timestamps=dict(last_success_at=stats.get("last_success_at"),
+                                           last_failure_at=stats.get("last_failure_at")),
+                    would_send_total=len(self.would_send),
+                    reconciliation=_reconcile(self.submissions, reconcile_sec_event))
 
 
 def _synthetic_fed(entry):
