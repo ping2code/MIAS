@@ -1,4 +1,12 @@
-"""Best-effort bounded Treasury shadow writes; reuses the macro writer contract."""
+"""Best-effort bounded Treasury shadow writes; reuses the macro writer contract.
+
+Phase 2S-A: a healthy live Treasury cycle submits ~115 observations in one burst,
+more than the shared default queue (64), so the tail was dropped every cycle.
+The Treasury writer's bounded capacity comes from ``TREASURY_PERSISTENCE_QUEUE_SIZE``
+(default 256, validated 64..4096). Submission stays non-blocking, overflow is
+still dropped and counted, and nothing is retried.
+"""
+import os
 
 from persistence import macro_shadow
 from persistence.adapters.treasury import adapt_treasury, treasury_promotion
@@ -6,6 +14,7 @@ from persistence.database import transaction
 from persistence.repository import EventRepository
 from persistence.shadow_lifecycle import ShadowLifecycle
 from shared.logger import get_logger
+from shared.queue_settings import treasury_queue_size
 
 logger = get_logger("treasury_shadow")
 
@@ -28,6 +37,11 @@ def runtime_engine():
     return macro_shadow.runtime_engine(application_name="mias_treasury_shadow")
 
 
+def configured_capacity(environ=None):
+    """Validated Treasury queue capacity; an invalid value fails writer initialization (counted, never alert-critical)."""
+    return treasury_queue_size(os.environ if environ is None else environ)
+
+
 _MESSAGES = {key: value.replace("Macro shadow", "Treasury shadow")
              for key, value in macro_shadow._MESSAGES.items()}
 
@@ -38,8 +52,10 @@ class TreasuryShadowWriter(macro_shadow.ShadowWriter):
     messages = _MESSAGES
     thread_name = "mias-treasury-shadow"
 
-    def __init__(self, engine_factory=runtime_engine, capacity=64):
-        super().__init__(engine_factory=engine_factory, capacity=capacity)
+    def __init__(self, engine_factory=runtime_engine, capacity=None):
+        # The lazily created production writer reads the process environment (never .env directly).
+        super().__init__(engine_factory=engine_factory,
+                         capacity=configured_capacity() if capacity is None else capacity)
 
     def _persist(self, engine, event, observed_at, make_current):
         # Module-level lookup keeps the Treasury persist function patchable in tests.

@@ -171,6 +171,25 @@ The writer statistics are the Phase 2C/2D set:
 The module adds `dropped_initializing`, `failed_initializing` and
 `rejected_shutdown`.
 
+**Queue capacity (Phase 2S-A).** Phase 2S found that a healthy live Treasury
+cycle submits about 115 observations in one burst (37 yield observations and 78
+release/auction items, most of them historical). The shared 64-slot queue then
+dropped the same 50 tail observations as `dropped_queue_full` on every cycle:
+300 drops across six processes in the first bounded Phase 2S run. Treasury's
+writer now takes a bounded, validated capacity from
+`TREASURY_PERSISTENCE_QUEUE_SIZE`:
+
+- default 256; valid range 64..4096 (`shared/queue_settings.py`);
+- an invalid value fails `shared.config` import at collector startup, like the
+  other settings; in a lazily created writer it is counted as
+  `failed_initializing` and never reaches the collector;
+- every other family keeps the shared 64.
+
+Submission stays non-blocking. The queue is still bounded, overflow is still
+dropped and counted, and nothing is retried. A healthy cycle is expected to show
+`dropped_queue_full == 0`; any non-zero value means the burst outgrew the
+configured capacity.
+
 `shutdown(drain=True|False, timeout<=30)` has the same bounded contract. A
 timeout discards and counts pending work and reports `in_flight`. `drain=False`
 waits at most 100 ms. Shutdown is idempotent and rejects later submissions.

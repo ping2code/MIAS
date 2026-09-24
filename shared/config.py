@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
 
+from shared.queue_settings import treasury_queue_size
+
 load_dotenv()
 
 ALERT_THRESHOLD = int(os.getenv("ALERT_THRESHOLD", "70"))
@@ -38,6 +40,8 @@ if MACRO_MAX_AGE_HOURS <= 0:
 TREASURY_MAX_AGE_HOURS = int(os.getenv("TREASURY_MAX_AGE_HOURS", "48"))
 TREASURY_YIELD_MOVE_BPS = float(os.getenv("TREASURY_YIELD_MOVE_BPS", "15"))
 TREASURY_PERSISTENCE_SHADOW_ENABLED = os.getenv("TREASURY_PERSISTENCE_SHADOW_ENABLED", "false").lower() == "true"
+# Bounded shadow queue for Treasury's larger healthy burst (other families keep the shared default of 64).
+TREASURY_PERSISTENCE_QUEUE_SIZE = treasury_queue_size(os.environ)
 if TREASURY_MAX_AGE_HOURS <= 0:
     raise ValueError("TREASURY_MAX_AGE_HOURS must be positive")
 if not 0 < TREASURY_YIELD_MOVE_BPS < float("inf"):
