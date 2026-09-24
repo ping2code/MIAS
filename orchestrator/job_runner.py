@@ -23,7 +23,8 @@ ENV_EXACT = {"PATH", "HOME", "LANG", "LC_ALL", "TZ", "VIRTUAL_ENV", "PYTHONDONTW
              "DATABASE_URL"}
 # Configuration families the collectors read today (shared/config.py, persistence config, Telegram, OpenAI).
 ENV_PREFIXES = ("MIAS_", "ALERT_", "DISPLAY_", "REDIS_", "DB_", "FED_", "MACRO_", "TREASURY_", "GEOPOLITICAL_", "SEC_",
-                "NEWS_", "TELEGRAM_", "OPENAI_", "NEAR_DUPLICATE_", "HEADLINE_", "DEDUP_", "RSS_")
+                "NEWS_", "TELEGRAM_", "OPENAI_", "NEAR_DUPLICATE_", "HEADLINE_", "DEDUP_", "RSS_",
+                "MARKET_DATA_", "TECHNICAL_")  # Phase 4C: technical runner provider/persistence settings.
 
 
 def child_environment(environ):

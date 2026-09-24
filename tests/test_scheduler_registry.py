@@ -1,4 +1,4 @@
-"""Phase 3 collector registry: six collectors, existing entry points, argument lists only, no collector imports."""
+"""Scheduler registry: six collectors plus the Phase 4C technical runner (disabled by default), argument lists only."""
 import subprocess
 import sys
 import unittest
@@ -13,8 +13,11 @@ from orchestrator.models import JobDefinition, OverlapPolicy
 class RegistryTests(unittest.TestCase):
     def test_registry_contains_all_six_collectors_in_deterministic_order(self):
         definitions = registry.build_definitions(load_settings({}))
-        self.assertEqual([d.name for d in definitions], ["news", "fed", "sec", "macro", "treasury", "geopolitical"])
-        self.assertEqual(set(FAMILIES), {"macro", "treasury", "geopolitical", "fed", "sec", "news"})
+        self.assertEqual([d.name for d in definitions],
+                         ["news", "fed", "sec", "macro", "treasury", "geopolitical", "technical"])
+        self.assertEqual(set(FAMILIES), {"macro", "treasury", "geopolitical", "fed", "sec", "news", "technical"})
+        self.assertEqual([d.name for d in definitions if d.enabled],
+                         ["news", "fed", "sec", "macro", "treasury", "geopolitical"])  # Technical is off by default.
         self.assertEqual(definitions, registry.build_definitions(load_settings({})))
 
     def test_commands_are_existing_entry_points_as_argument_lists(self):
@@ -22,7 +25,8 @@ class RegistryTests(unittest.TestCase):
         expected = dict(news=("/py", "-m", "collector.multi_source_collector"), fed=("/py", "-m", "collector.fed_collector"),
                         sec=("/py", "-m", "collector.sec_collector"), macro=("/py", "-m", "collector.macro_collector"),
                         treasury=("/py", "-m", "collector.treasury_collector"),
-                        geopolitical=("/py", "-m", "orchestrator.entrypoints", "geopolitical"))
+                        geopolitical=("/py", "-m", "orchestrator.entrypoints", "geopolitical"),
+                        technical=("/py", "-m", "technical.runner"))
         self.assertEqual({n: d.argv for n, d in definitions.items()}, expected)
         for definition in definitions.values():
             self.assertIsInstance(definition.argv, tuple)
@@ -35,7 +39,7 @@ class RegistryTests(unittest.TestCase):
         definitions = {d.name: d for d in registry.build_definitions(load_settings(env), python="/py")}
         for name in ("fed", "macro", "treasury", "geopolitical"):
             self.assertEqual(definitions[name].argv[-1], "--send-alerts")
-        for name in ("news", "sec"):
+        for name in ("news", "sec", "technical"):
             self.assertNotIn("--send-alerts", definitions[name].argv)
         default = {d.name: d for d in registry.build_definitions(load_settings({}), python="/py")}
         self.assertFalse(any("--send-alerts" in d.argv for d in default.values()))  # Default: unchanged policy.

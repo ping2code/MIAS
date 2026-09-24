@@ -18,9 +18,9 @@ class SchedulerConfigTests(unittest.TestCase):
         for family in settings.families:
             interval, timeout, offset = DEFAULTS[family.name]
             self.assertEqual((family.enabled, family.interval_seconds, family.timeout_seconds, family.start_offset_seconds,
-                              family.send_alerts), (True, interval, timeout, offset, False))
+                              family.send_alerts), (family.name != "technical", interval, timeout, offset, False))
         offsets = [f.start_offset_seconds for f in settings.families]
-        self.assertEqual(len(set(offsets)), 6)  # Deterministic, distinct start offsets: no start-up stampede.
+        self.assertEqual(len(set(offsets)), 7)  # Deterministic, distinct start offsets: no start-up stampede.
 
     def test_overrides(self):
         settings = load_settings({"MIAS_SCHEDULER_ENABLED": "TRUE", "MIAS_SCHEDULER_DRY_RUN": "true", "NEWS_INTERVAL_SECONDS": "120",
@@ -51,7 +51,10 @@ class SchedulerConfigTests(unittest.TestCase):
         self.assertEqual(cli.main(["status-config"], environ=env, out=out, err=err), 0)
         view = json.loads(out.getvalue())
         self.assertNotIn(SECRET, out.getvalue() + err.getvalue())
-        self.assertEqual(sorted(view["registry"]), ["fed", "geopolitical", "macro", "news", "sec", "treasury"])
+        self.assertEqual(sorted(view["registry"]), ["fed", "geopolitical", "macro", "news", "sec", "technical", "treasury"])
+        self.assertEqual(view["registry"]["technical"], dict(module="technical.runner", args=[]))
+        self.assertEqual((view["families"]["technical"]["enabled"], view["families"]["technical"]["send_alerts"]),
+                         (False, "never (no alert path)"))
         self.assertEqual(view["registry"]["geopolitical"], dict(module="orchestrator.entrypoints", args=["geopolitical"]))
         self.assertFalse(any("python" in json.dumps(v).lower() for v in view["registry"].values()))  # No interpreter paths.
 

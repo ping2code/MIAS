@@ -152,3 +152,102 @@ geopolitical_anchor_registry = sa.Table(
     sa.CheckConstraint("last_seen_at >= first_seen_at", name="observation_order"),
     sa.Index("ix_geopolitical_anchor_registry_policy", "policy_id"),
 )
+
+# Phase 4C: durable technical snapshots (one row per completed bar, symbol, interval and engine version).
+# Scalar columns hold the frequently queried metrics; JSON holds only structured arrays/evidence.
+TECHNICAL_INTERVALS = ("1m", "5m", "15m", "30m", "1h", "1d")
+TECHNICAL_STATES = ("bullish_setup", "bearish_setup", "bullish_momentum", "bearish_momentum", "breakout_watch",
+                    "breakdown_watch", "range", "mixed", "insufficient_data")
+TECHNICAL_TRENDS = ("bullish", "bearish", "range", "mixed", "insufficient_data")
+BREAKOUT_STATES = ("breakout", "breakdown", "failed_breakout", "failed_breakdown", "none")
+
+
+def _in(column, values, nullable=False):
+    listed = ",".join(f"'{v}'" for v in values)
+    return f"{column} IS NULL OR {column} IN ({listed})" if nullable else f"{column} IN ({listed})"
+
+
+technical_snapshots = sa.Table(
+    "technical_snapshots", metadata,
+    sa.Column("id", ID, primary_key=True),
+    sa.Column("symbol", sa.String(16), nullable=False),
+    sa.Column("interval", sa.String(8), nullable=False),
+    sa.Column("snapshot_timestamp", UTCDateTime(), nullable=False),
+    sa.Column("engine_version", sa.String(32), nullable=False),
+    sa.Column("source_provider", sa.String(32), nullable=False),
+    sa.Column("provider_delay_seconds", sa.Integer, nullable=False),
+    sa.Column("is_completed_bar", sa.Boolean, nullable=False),
+    sa.Column("session_type", sa.String(8), nullable=True),
+    sa.Column("price", sa.Float, nullable=False),
+    sa.Column("ema9", sa.Float, nullable=True),
+    sa.Column("ema20", sa.Float, nullable=True),
+    sa.Column("ema50", sa.Float, nullable=True),
+    sa.Column("ema200", sa.Float, nullable=True),
+    sa.Column("vwap", sa.Float, nullable=True),
+    sa.Column("rsi14", sa.Float, nullable=True),
+    sa.Column("atr14", sa.Float, nullable=True),
+    sa.Column("volume", sa.BigInteger, nullable=False),
+    sa.Column("average_volume", sa.Float, nullable=True),
+    sa.Column("relative_volume", sa.Float, nullable=True),
+    sa.Column("trend", sa.String(24), nullable=False),
+    sa.Column("last_high_type", sa.String(4), nullable=True),
+    sa.Column("last_low_type", sa.String(4), nullable=True),
+    sa.Column("significant_high", JSON, nullable=True),
+    sa.Column("significant_low", JSON, nullable=True),
+    sa.Column("gap_type", sa.String(16), nullable=True),
+    sa.Column("gap_percent", sa.Float, nullable=True),
+    sa.Column("gap_absolute", sa.Float, nullable=True),
+    sa.Column("breakout_state", sa.String(24), nullable=False),
+    sa.Column("breakout_level", sa.Float, nullable=True),
+    sa.Column("momentum", sa.String(24), nullable=True),
+    sa.Column("ema_alignment", sa.String(24), nullable=True),
+    sa.Column("vwap_position", sa.String(32), nullable=True),
+    sa.Column("technical_state", sa.String(24), nullable=False),
+    sa.Column("confidence", sa.String(8), nullable=False),
+    sa.Column("agreeing", sa.Integer, nullable=False),
+    sa.Column("conflicting", sa.Integer, nullable=False),
+    sa.Column("support_levels", JSON, nullable=False),
+    sa.Column("resistance_levels", JSON, nullable=False),
+    sa.Column("reasons", JSON, nullable=False),
+    sa.Column("ema_state", JSON, nullable=False),
+    sa.Column("vwap_state", JSON, nullable=False),
+    sa.Column("evidence", JSON, nullable=False),
+    sa.Column("warmup_start", UTCDateTime(), nullable=False),
+    sa.Column("warmup_bars", sa.Integer, nullable=False),
+    sa.Column("content_hash", sa.String(64), nullable=False),
+    sa.Column("created_at", UTCDateTime(), nullable=False),
+    sa.UniqueConstraint("symbol", "interval", "snapshot_timestamp", "engine_version",
+                        name="uq_technical_snapshots_identity"),
+    sa.CheckConstraint(_in("interval", TECHNICAL_INTERVALS), name="interval"),
+    sa.CheckConstraint(_in("technical_state", TECHNICAL_STATES), name="technical_state"),
+    sa.CheckConstraint(_in("confidence", ("LOW", "MEDIUM", "HIGH")), name="confidence"),
+    sa.CheckConstraint(_in("trend", TECHNICAL_TRENDS), name="trend"),
+    sa.CheckConstraint(_in("breakout_state", BREAKOUT_STATES), name="breakout_state"),
+    sa.CheckConstraint(_in("gap_type", ("gap_up", "gap_down", "no_gap"), nullable=True), name="gap_type"),
+    sa.CheckConstraint(_in("session_type", ("regular", "pre", "post"), nullable=True), name="session_type"),
+    sa.CheckConstraint("is_completed_bar", name="completed_bar"),
+    sa.CheckConstraint("length(symbol) > 0 AND length(engine_version) > 0 AND length(content_hash) = 64",
+                       name="identity_shape"),
+    sa.CheckConstraint("volume >= 0 AND warmup_bars > 0 AND provider_delay_seconds >= 0 AND price > 0",
+                       name="value_bounds"),
+    sa.Index("ix_technical_snapshots_state", "symbol", "interval", "technical_state"),
+    sa.Index("ix_technical_snapshots_created_at", "created_at"),
+)
+
+# Rejected rewrites of an existing snapshot identity: recorded once per distinct content, never applied.
+technical_snapshot_conflicts = sa.Table(
+    "technical_snapshot_conflicts", metadata,
+    sa.Column("id", ID, primary_key=True),
+    sa.Column("snapshot_id", ID, sa.ForeignKey("technical_snapshots.id", ondelete="RESTRICT"), nullable=False),
+    sa.Column("symbol", sa.String(16), nullable=False),
+    sa.Column("interval", sa.String(8), nullable=False),
+    sa.Column("snapshot_timestamp", UTCDateTime(), nullable=False),
+    sa.Column("engine_version", sa.String(32), nullable=False),
+    sa.Column("existing_hash", sa.String(64), nullable=False),
+    sa.Column("rejected_hash", sa.String(64), nullable=False),
+    sa.Column("rejected_snapshot", JSON, nullable=False),
+    sa.Column("detected_at", UTCDateTime(), nullable=False),
+    sa.UniqueConstraint("snapshot_id", "rejected_hash", name="uq_technical_snapshot_conflicts_rejection"),
+    sa.CheckConstraint("existing_hash <> rejected_hash AND length(rejected_hash) = 64", name="distinct_hash"),
+    sa.Index("ix_technical_snapshot_conflicts_identity", "symbol", "interval", "snapshot_timestamp"),
+)

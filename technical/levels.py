@@ -59,22 +59,31 @@ def _tolerance(price, atr, pct, atr_mult):
 
 
 def cluster_levels(pivots, *, atr=None, cluster_pct=0.35, cluster_atr=0.5, min_touches=2):
-    """Levels from already-confirmed pivots (deterministic: sorted by price, then bar index)."""
+    """Levels from already-confirmed pivots (deterministic: sorted by price, then bar index).
+
+    Phase 4C performance note: each cluster keeps a plain list of its prices, and
+    means use ``sum(list)``. That is the same compensated float summation over the
+    same values in the same order as the Phase 4 generator form, so results are
+    bit-identical (see ``tests/test_levels_equivalence.py``) and avoid generator
+    overhead.
+    """
     ordered = sorted(pivots, key=lambda p: (p.price, p.index))
-    clusters, current = [], []
+    atr_term = (atr or 0.0) * cluster_atr
+    clusters, current, prices = [], [], []
     for pivot in ordered:
         if current:
-            mean = sum(p.price for p in current) / len(current)
-            if pivot.price - mean > _tolerance(mean, atr, cluster_pct, cluster_atr):
-                clusters.append(current)
-                current = []
+            mean = sum(prices) / len(prices)
+            if pivot.price - mean > max(mean * cluster_pct / 100.0, atr_term):
+                clusters.append((current, prices))
+                current, prices = [], []
         current.append(pivot)
+        prices.append(pivot.price)
     if current:
-        clusters.append(current)
+        clusters.append((current, prices))
     levels = []
-    for cluster in clusters:
+    for cluster, cluster_prices in clusters:
         if len(cluster) >= min_touches:
-            levels.append(Level(price=sum(p.price for p in cluster) / len(cluster), touches=len(cluster),
+            levels.append(Level(price=sum(cluster_prices) / len(cluster_prices), touches=len(cluster),
                                 first_seen=min(p.timestamp for p in cluster), last_seen=max(p.timestamp for p in cluster),
                                 highs=sum(p.kind == "high" for p in cluster), lows=sum(p.kind == "low" for p in cluster)))
     return levels

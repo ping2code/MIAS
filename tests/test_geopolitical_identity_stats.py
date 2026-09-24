@@ -179,7 +179,7 @@ class PostgreSQLStagingRolloutTests(unittest.TestCase):
 
     def check(self, evidence):
         self.assertEqual(evidence["acceptance"], "PASS")
-        self.assertEqual(evidence["migration_revision"], "0003_geo_anchor_registry")
+        self.assertEqual(evidence["migration_revision"], "0004_technical_snapshots")  # Migration head.
         self.assertTrue(evidence["postgresql_version"].startswith("16."))
         pre = evidence["pre_registry_history"]
         self.assertEqual((pre["writer"]["failed"], pre["counters"]["registry_error"] > 0), (0, True))  # Registry absent at 0002.

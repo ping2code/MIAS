@@ -8,6 +8,7 @@
 | macro        | python -m collector.macro_collector [--send-alerts]  | AI on; alerts only with --send-alerts              |
 | treasury     | python -m collector.treasury_collector [--send-alerts] | AI on; alerts only with --send-alerts            |
 | geopolitical | python -m orchestrator.entrypoints geopolitical [--send-alerts] | wrapper with Fed-style flags/defaults   |
+| technical    | python -m technical.runner                           | no alerts, no AI; disabled by default (Phase 4C)   |
 """
 import sys
 
@@ -16,7 +17,7 @@ from orchestrator.models import JobDefinition, OverlapPolicy
 
 MODULES = dict(news="collector.multi_source_collector", fed="collector.fed_collector", sec="collector.sec_collector",
                macro="collector.macro_collector", treasury="collector.treasury_collector",
-               geopolitical="orchestrator.entrypoints")
+               geopolitical="orchestrator.entrypoints", technical="technical.runner")
 ENTRY_ARGS = dict(geopolitical=("geopolitical",))
 
 
@@ -29,7 +30,7 @@ def command(name, *, send_alerts=False, python=None):
 
 
 def build_definitions(settings, *, python=None):
-    """Job definitions in registry order (news, fed, sec, macro, treasury, geopolitical)."""
+    """Job definitions in registry order (news, fed, sec, macro, treasury, geopolitical, technical)."""
     by_name = {f.name: f for f in settings.families}
     return [JobDefinition(name=name, argv=command(name, send_alerts=by_name[name].send_alerts, python=python),
                           enabled=by_name[name].enabled, interval_seconds=by_name[name].interval_seconds,

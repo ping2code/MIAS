@@ -67,6 +67,7 @@ class PolygonProvider(MarketDataProvider):
                                    max_rate_limit_wait_seconds=settings.max_rate_limit_wait_seconds, session=session,
                                    **extra)
         self._host = urlsplit(settings.base_url).hostname
+        self.diagnostics = []  # One safe summary per fetch (no payloads); used by market_data.live_check.
 
     def as_of(self):
         return self._clock() - timedelta(seconds=self.settings.delay_seconds)
@@ -100,10 +101,13 @@ class PolygonProvider(MarketDataProvider):
         to_ms = int(end.timestamp() * 1000) - 1  # The vendor's range end is inclusive.
         url = f"{self.settings.base_url}/v2/aggs/ticker/{symbol}/range/{multiplier}/{timespan}/{from_ms}/{to_ms}"
         params = dict(adjusted="true" if self.settings.adjusted else "false", sort="asc", limit="50000")
-        results = []
+        results, statuses, adjusted_echo = [], set(), set()
         for page in range(MAX_PAGES):
             payload = self.http.get_json(url, params=params)
             results.extend(self._results(payload, url))
+            statuses.add(payload.get("status"))
+            if "adjusted" in payload:
+                adjusted_echo.add(payload.get("adjusted"))
             next_url = payload.get("next_url")
             if not next_url:
                 break
@@ -113,10 +117,16 @@ class PolygonProvider(MarketDataProvider):
             url, params = next_url, None
         else:
             raise ProviderError("payload", f"more than {MAX_PAGES} pages from {safe_target(url)}")
+        volume_kinds = sorted({type(item.get("v")).__name__ for item in results if isinstance(item, dict)})
         bars = [self._bar(symbol, interval, item, i) for i, item in enumerate(results)]
         bars = list(validate_calendar_series(bars, self.calendar))
+        raw_count = len(bars)
         if not self.settings.include_extended_hours:
             bars = [b for b in bars if b.session is Session.REGULAR]
+        self.diagnostics.append(dict(symbol=symbol, source_interval=interval.label, pages=page + 1,
+                                     statuses=sorted(str(s) for s in statuses), adjusted_requested=self.settings.adjusted,
+                                     adjusted_echo=sorted(str(a) for a in adjusted_echo), raw_bars=raw_count,
+                                     kept_bars=len(bars), volume_json_types=volume_kinds))
         logger.info("event=market_data_fetch provider=polygon symbol=%s interval=%s bars=%d", symbol, interval.label,
                     len(bars))
         return bars

@@ -5,11 +5,16 @@ production polling intervals remain a separate decision.
 """
 from dataclasses import dataclass
 
-FAMILIES = ("news", "fed", "sec", "macro", "treasury", "geopolitical")
+FAMILIES = ("news", "fed", "sec", "macro", "treasury", "geopolitical", "technical")
 # (interval seconds, timeout seconds, start offset seconds): deterministic offsets avoid a start-up stampede.
 DEFAULTS = dict(news=(300, 240, 0), fed=(600, 300, 5), sec=(900, 300, 10),
-                macro=(1800, 900, 15), treasury=(1800, 900, 20), geopolitical=(1800, 1500, 25))
-PREFIX = dict(news="NEWS", fed="FED", sec="SEC", macro="MACRO", treasury="TREASURY", geopolitical="GEOPOLITICAL")
+                macro=(1800, 900, 15), treasury=(1800, 900, 20), geopolitical=(1800, 1500, 25),
+                technical=(1800, 900, 30))
+PREFIX = dict(news="NEWS", fed="FED", sec="SEC", macro="MACRO", treasury="TREASURY", geopolitical="GEOPOLITICAL",
+              technical="TECHNICAL")
+# Phase 4C: the technical runner is registered but disabled unless TECHNICAL_SCHEDULE_ENABLED=true
+# (its live provider contract and request budget are not yet validated).
+DISABLED_BY_DEFAULT = ("technical",)
 # Families whose existing entry points take ``--send-alerts`` (opt-in; SEC/News entry points always deliver today).
 SEND_ALERTS_FLAG = ("fed", "macro", "treasury", "geopolitical")
 MIN_INTERVAL, MAX_INTERVAL, MAX_OFFSET = 60, 86_400, 3_600
@@ -70,6 +75,7 @@ class SchedulerSettings:
                     families={f.name: dict(enabled=f.enabled, interval_seconds=f.interval_seconds,
                                            timeout_seconds=f.timeout_seconds, start_offset_seconds=f.start_offset_seconds,
                                            send_alerts=f.send_alerts if f.name in SEND_ALERTS_FLAG
+                                           else "never (no alert path)" if f.name == "technical"
                                            else "always (entry point delivers ALERT items)")
                               for f in self.families})
 
@@ -84,7 +90,8 @@ def load_settings(environ):
         if timeout >= interval:
             raise SchedulerConfigError(f"{prefix}_TIMEOUT_SECONDS must be below {prefix}_INTERVAL_SECONDS")
         families.append(FamilySettings(
-            name=name, enabled=_bool(environ, f"{prefix}_SCHEDULE_ENABLED", True), interval_seconds=interval,
+            name=name, enabled=_bool(environ, f"{prefix}_SCHEDULE_ENABLED", name not in DISABLED_BY_DEFAULT),
+            interval_seconds=interval,
             timeout_seconds=timeout,
             start_offset_seconds=_int(environ, f"{prefix}_START_OFFSET_SECONDS", offset_default, 0, MAX_OFFSET),
             send_alerts=_bool(environ, f"{prefix}_SCHEDULE_SEND_ALERTS", False) if name in SEND_ALERTS_FLAG else False))

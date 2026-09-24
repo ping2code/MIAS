@@ -20,10 +20,12 @@ import requests
 
 logger = logging.getLogger("market_data.http")
 TRANSIENT_STATUS = frozenset({500, 502, 503, 504})
+# Only these headers are recorded (short values, never credentials).
+RATE_LIMIT_HEADERS = ("Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset")
 
 
 class ProviderError(RuntimeError):
-    """A provider request failed; ``kind`` is auth, rate_limit, http, transport, redirect or payload."""
+    """A provider request failed; ``kind`` is auth, rate_limit, http, transport, redirect, payload or budget."""
 
     def __init__(self, kind, message, status=None):
         super().__init__(message)
@@ -44,11 +46,16 @@ class JsonHttpClient:
         self._session = session or requests.Session()
         self._sleep = sleep
         self.requests_made = 0
+        self.max_requests = None      # Optional hard cap (live checks); None means unlimited.
+        self.status_counts = {}       # HTTP status -> count (diagnostics; no payloads).
+        self.rate_limit_headers = {}  # Last seen values of the safe, documented rate-limit headers.
 
     def get_json(self, url, params=None):
         target = safe_target(url)
         for attempt in range(self.max_retries + 1):
             last = attempt == self.max_retries
+            if self.max_requests is not None and self.requests_made >= self.max_requests:
+                raise ProviderError("budget", f"request budget of {self.max_requests} exhausted before {target}")
             self.requests_made += 1
             try:
                 response = self._session.get(url, params=params, headers=self._headers, timeout=self.timeout_seconds,
@@ -60,6 +67,11 @@ class JsonHttpClient:
                 self._wait(attempt, None, f"{kind}", target)
                 continue
             status = response.status_code
+            self.status_counts[status] = self.status_counts.get(status, 0) + 1
+            for name in RATE_LIMIT_HEADERS:
+                value = response.headers.get(name)
+                if value is not None:
+                    self.rate_limit_headers[name] = str(value)[:32]
             if status == 200:
                 try:
                     return json.loads(response.text, parse_float=Decimal)

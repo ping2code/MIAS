@@ -69,7 +69,7 @@ STAGING_DB = "mias_test_phase2s_all"
 REDIS = dict(staging=("mias-test-phase2s-redis", 56379), control=("mias-test-phase2s-redis-control", 56380))
 PG_IMAGE = "postgres@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6"
 REDIS_IMAGE = "redis@sha256:c7d14d623c137a1bb6c3a6755b0b0aad499177087c2140eefcf2f122950b172d"
-HEAD, EARLIER = "0003_geo_anchor_registry", "0002_macro_shadow_history"
+HEAD, EARLIER = "0004_technical_snapshots", "0002_macro_shadow_history"  # Head moved with Phase 4C.
 FAMILIES = family_audit.FAMILIES
 COLLECTOR = dict(macro="macro", treasury="treasury", geopolitical="geo", fed="fed", sec="sec", news="news")
 SWITCHES = dict(macro=dict(MACRO_PERSISTENCE_SHADOW_ENABLED=True), treasury=dict(TREASURY_PERSISTENCE_SHADOW_ENABLED=True),
