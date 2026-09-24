@@ -58,3 +58,4 @@ if GEOPOLITICAL_MAX_AGE_HOURS <= 0 or GEOPOLITICAL_ALIAS_TTL_DAYS * 24 <= GEOPOL
     raise ValueError("Geopolitical alias retention must exceed positive freshness window")
 
 SEC_PERSISTENCE_SHADOW_ENABLED = os.getenv("SEC_PERSISTENCE_SHADOW_ENABLED", "false").lower() == "true"
+NEWS_PERSISTENCE_SHADOW_ENABLED = os.getenv("NEWS_PERSISTENCE_SHADOW_ENABLED", "false").lower() == "true"

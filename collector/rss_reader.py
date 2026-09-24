@@ -1,3 +1,5 @@
+from time import monotonic
+
 import feedparser
 
 from analyzer.scoring_engine import calculate_impact_score
@@ -8,6 +10,7 @@ from alert_engine.formatter import format_alert
 from analyzer.relevance_detector import detect_symbols
 from collector.normalizer import normalize_entry
 
+from analyzer import deduplicator
 from analyzer.deduplicator import (
     is_duplicate,
     is_near_duplicate_headline,
@@ -15,10 +18,28 @@ from analyzer.deduplicator import (
 
 from alert_engine.telegram_notifier import send_telegram_alert
 from shared.logger import get_logger
-from shared.config import RSS_ENTRY_LIMIT
+from shared.config import RSS_ENTRY_LIMIT, NEWS_PERSISTENCE_SHADOW_ENABLED
 
 
 logger = get_logger("collector")
+_shadow_last_failure = float("-inf")
+
+
+def _shadow(event, outcome):
+    """Opt-in historical copy of the final collector state; never touches Redis, AI or delivery."""
+    global _shadow_last_failure
+    if not NEWS_PERSISTENCE_SHADOW_ENABLED:
+        return
+    try:
+        from persistence.news_shadow import submit_news
+        submit_news(dict(event, news_fingerprint=deduplicator.create_fingerprint(event),
+                         news_collector_outcome=outcome))
+    except Exception:
+        # Even import/initialization/enqueue failures cannot change collector outcomes.
+        now = monotonic()
+        if now - _shadow_last_failure >= 60:
+            _shadow_last_failure = now
+            logger.warning("News shadow submission failed")
 
 
 def read_feed(feed_url, source_label=None):
@@ -94,6 +115,7 @@ def read_feed(feed_url, source_label=None):
 
             if is_near_duplicate_headline(event):
                 stats["duplicates"] += 1
+                _shadow(event, "near_duplicate_suppressed")
                 continue
 
             event = calculate_impact_score(event)
@@ -155,6 +177,8 @@ def read_feed(feed_url, source_label=None):
                         "Telegram alert failed: %s",
                         error
                     )
+
+            _shadow(event, "processed")
 
         events.append(event)
 

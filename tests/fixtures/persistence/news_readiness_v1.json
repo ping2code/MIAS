@@ -1,0 +1,414 @@
+{
+  "corpus_version": 1,
+  "observed_at": "2026-09-24T12:00:00+00:00",
+  "expected_observations": 24,
+  "expected_duplicates": 2,
+  "expected_counts": {
+    "events": 17,
+    "event_versions": 19,
+    "event_provenance": 20,
+    "event_history": 43
+  },
+  "expected_promotions": {
+    "first": 17,
+    "ambiguous": 2,
+    "duplicate": 5
+  },
+  "expected_not_current": [
+    "headline_small_edit",
+    "headline_rewrite"
+  ],
+  "expected_decisions": {
+    "ALERT": 4,
+    "DISPLAY_ONLY": 16,
+    "None": 4
+  },
+  "expected_outcomes": {
+    "processed": 20,
+    "near_duplicate_suppressed": 4
+  },
+  "expected_identities": {
+    "news-url-v1": 16,
+    "news-fingerprint-v1": 1
+  },
+  "expected_collector_outcomes": {
+    "meta_reuters": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 1,
+      "telegram": 1,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "ALERT"
+      ]
+    },
+    "nvda_yahoo": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "related_cnbc": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "meta_yahoo_publisher": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "low_quality": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "ai_penalty": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 1,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "ai_failure": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 1,
+      "telegram": 1,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "ALERT"
+      ]
+    },
+    "no_symbol": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 0,
+        "duplicates": 0,
+        "processed": 0
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [],
+      "decisions": []
+    },
+    "stale": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "missing_timestamp": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "unparsed_timestamp": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "no_link": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "exact_duplicate": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 1,
+        "processed": 0
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [],
+      "decisions": []
+    },
+    "cross_feed_duplicate": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 1,
+        "processed": 0
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [],
+      "decisions": []
+    },
+    "same_headline_same_publisher": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 1,
+        "processed": 0
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "near_duplicate_suppressed"
+      ],
+      "decisions": [
+        null
+      ]
+    },
+    "same_headline_other_publisher": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 1,
+        "processed": 0
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "near_duplicate_suppressed"
+      ],
+      "decisions": [
+        null
+      ]
+    },
+    "headline_small_edit": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 1,
+        "processed": 0
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "near_duplicate_suppressed"
+      ],
+      "decisions": [
+        null
+      ]
+    },
+    "headline_rewrite": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "near_duplicate_below": {
+      "stats": {
+        "fetched": 2,
+        "relevant": 2,
+        "duplicates": 0,
+        "processed": 2
+      },
+      "ai_calls": 1,
+      "telegram": 1,
+      "submitted": [
+        "processed",
+        "processed"
+      ],
+      "decisions": [
+        "ALERT",
+        "DISPLAY_ONLY"
+      ]
+    },
+    "near_duplicate_above": {
+      "stats": {
+        "fetched": 2,
+        "relevant": 2,
+        "duplicates": 1,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed",
+        "near_duplicate_suppressed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY",
+        null
+      ]
+    },
+    "redis_fail_open": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "repeat_after_ttl_expiry": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 1,
+      "telegram": 1,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "ALERT"
+      ]
+    },
+    "cross_feed_after_expiry": {
+      "stats": {
+        "fetched": 1,
+        "relevant": 1,
+        "duplicates": 0,
+        "processed": 1
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY"
+      ]
+    },
+    "repeat_after_restart": {
+      "stats": {
+        "fetched": 2,
+        "relevant": 2,
+        "duplicates": 0,
+        "processed": 2
+      },
+      "ai_calls": 0,
+      "telegram": 0,
+      "submitted": [
+        "processed",
+        "processed"
+      ],
+      "decisions": [
+        "DISPLAY_ONLY",
+        "DISPLAY_ONLY"
+      ]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-"""Read-only macro/Treasury/geopolitical/Fed/SEC audit: no repair, replay, scoring, or collector interaction."""
+"""Read-only macro/Treasury/geopolitical/Fed/SEC/News audit: no repair, replay, scoring, or collector interaction."""
 from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
@@ -6,6 +6,7 @@ from time import monotonic
 from persistence.adapters.macro import adapt_macro, digest
 from persistence.adapters.fed import adapt_fed
 from persistence.adapters.geopolitical import adapt_geopolitical, RELEVANCE
+from persistence.adapters.news import adapt_news
 from persistence.adapters.sec import adapt_sec
 from persistence.adapters.treasury import adapt_treasury
 from persistence.repository import _canonical
@@ -90,6 +91,17 @@ def reconcile_sec_event(event, repository, *, expect_current=True):
 
     return _reconcile(adapted, repository, expect_current, "SEC shadow reconciliation mismatch",
                       extra, extra_keys=("accession_match",))
+
+
+def reconcile_news_event(event, repository, *, expect_current=True):
+    """News counterpart; ``event`` is the submitted snapshot (with ``news_fingerprint`` and outcome).
+
+    The collector outcome (processed or near-duplicate suppressed) is part of the
+    decision snapshot, so ``decision_match`` also checks near-duplicate metadata.
+    ``ai_match`` is checked only when validated enrichment was present.
+    """
+    return _reconcile(adapt_news(event, datetime.now(timezone.utc)), repository, expect_current,
+                      "News shadow reconciliation mismatch")
 
 
 def _reconcile(adapted, repository, expect_current, warning, extra=None,
