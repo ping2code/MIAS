@@ -56,3 +56,5 @@ if not 10 <= GEOPOLITICAL_IDENTITY_STATS_LOG_INTERVAL_SECONDS <= 86400:
     raise ValueError("GEOPOLITICAL_IDENTITY_STATS_LOG_INTERVAL_SECONDS must be between 10 and 86400")
 if GEOPOLITICAL_MAX_AGE_HOURS <= 0 or GEOPOLITICAL_ALIAS_TTL_DAYS * 24 <= GEOPOLITICAL_MAX_AGE_HOURS:
     raise ValueError("Geopolitical alias retention must exceed positive freshness window")
+
+SEC_PERSISTENCE_SHADOW_ENABLED = os.getenv("SEC_PERSISTENCE_SHADOW_ENABLED", "false").lower() == "true"

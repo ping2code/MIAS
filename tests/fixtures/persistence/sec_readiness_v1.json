@@ -1,0 +1,124 @@
+{
+  "corpus_version": 1,
+  "observed_at": "2026-09-23T12:00:00+00:00",
+  "expected_observations": 19,
+  "expected_duplicates": 6,
+  "expected_counts": {
+    "events": 13,
+    "event_versions": 13,
+    "event_provenance": 13,
+    "event_history": 26
+  },
+  "expected_promotions": {
+    "first": 13,
+    "duplicate": 6
+  },
+  "expected_not_current": [],
+  "expected_decisions": {
+    "ALERT": 11,
+    "DISPLAY_ONLY": 6,
+    "IGNORE": 2
+  },
+  "forms": [
+    "8-K",
+    "10-Q",
+    "10-K",
+    "4",
+    "144",
+    "3",
+    "N-PX",
+    "8-K/A"
+  ],
+  "expected_collector_outcomes": {
+    "meta_8k": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "meta_10q": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "meta_10k": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "meta_form4": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "meta_form144": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "meta_form3": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "meta_npx": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "meta_8ka": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "nvda_8k": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "same_accession_repeat": {
+      "processed": 0,
+      "telegram": 0,
+      "submitted": 0
+    },
+    "same_form_different_accession": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "same_date_different_accession": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "telegram_failure": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "missing_optional_metadata": {
+      "processed": 1,
+      "telegram": 0,
+      "submitted": 1
+    },
+    "redis_fail_open": {
+      "processed": 2,
+      "telegram": 2,
+      "submitted": 2
+    },
+    "repeat_after_ttl_expiry": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    },
+    "repeat_after_restart": {
+      "processed": 2,
+      "telegram": 1,
+      "submitted": 2
+    },
+    "provenance_duplicate": {
+      "processed": 1,
+      "telegram": 1,
+      "submitted": 1
+    }
+  }
+}

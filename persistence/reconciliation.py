@@ -1,4 +1,4 @@
-"""Read-only macro/Treasury/geopolitical/Fed audit: no repair, replay, scoring, or collector interaction."""
+"""Read-only macro/Treasury/geopolitical/Fed/SEC audit: no repair, replay, scoring, or collector interaction."""
 from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
@@ -6,6 +6,7 @@ from time import monotonic
 from persistence.adapters.macro import adapt_macro, digest
 from persistence.adapters.fed import adapt_fed
 from persistence.adapters.geopolitical import adapt_geopolitical, RELEVANCE
+from persistence.adapters.sec import adapt_sec
 from persistence.adapters.treasury import adapt_treasury
 from persistence.repository import _canonical
 from shared.logger import get_logger
@@ -73,13 +74,32 @@ def reconcile_geopolitical_event(event, repository, *, expect_current=True):
                       "Geopolitical shadow reconciliation mismatch", extra)
 
 
-def _reconcile(adapted, repository, expect_current, warning, extra=None):
+def reconcile_sec_event(event, repository, *, expect_current=True):
+    """SEC counterpart; ``event`` is the submitted snapshot (with ``sec_fingerprint``).
+
+    Adds an explicit accession check: the stored version and its provenance must
+    carry the event's accession number. SEC has no AI path, so ``ai_match`` stays
+    None (not applicable).
+    """
+    adapted = adapt_sec(event, datetime.now(timezone.utc))
+    accession = event["accession_number"]
+
+    def extra(version, provenance):
+        return dict(accession_match=version["attributes"].get("accession_number") == accession
+                    and any(row["document_id"] == accession for row in provenance))
+
+    return _reconcile(adapted, repository, expect_current, "SEC shadow reconciliation mismatch",
+                      extra, extra_keys=("accession_match",))
+
+
+def _reconcile(adapted, repository, expect_current, warning, extra=None,
+               extra_keys=("relevance_match", "relationship_match")):
     record = adapted["record"]
     result = dict(event_found=False, version_found=False, version_match=False,
                   current_version_match=False, provenance_match=False,
                   score_match=None, decision_match=None, ai_match=None, mismatches=[])
     if extra is not None:
-        result.update(relevance_match=False, relationship_match=False)
+        result.update(dict.fromkeys(extra_keys, False))
     expected_history = dict(adapted["histories"])
     for kind in expected_history:
         result[kind + "_match"] = False

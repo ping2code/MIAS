@@ -1,8 +1,12 @@
+from time import monotonic
+
 import requests
 
+from shared.config import SEC_PERSISTENCE_SHADOW_ENABLED
 from shared.logger import get_logger
 from collector.sec_normalizer import normalize_sec_filing
 from analyzer.sec_scoring import score_sec_event
+from analyzer import deduplicator
 from analyzer.deduplicator import is_duplicate
 from alert_engine.decision_engine import evaluate_alert
 from alert_engine.formatter import format_alert
@@ -10,6 +14,7 @@ from alert_engine.telegram_notifier import send_telegram_alert
 
 
 logger = get_logger("sec_collector")
+_shadow_last_failure = float("-inf")
 
 
 SEC_COMPANIES = {
@@ -86,6 +91,23 @@ def collect_sec_filings():
     return all_filings
 
 
+def _shadow(event):
+    """Opt-in historical copy of an already-computed result; never touches Redis or delivery."""
+    global _shadow_last_failure
+    if not SEC_PERSISTENCE_SHADOW_ENABLED:
+        return
+    try:
+        from persistence.sec_shadow import submit_sec
+        # The collector's own Redis fingerprint is the authoritative identity.
+        submit_sec(dict(event, sec_fingerprint=deduplicator.create_fingerprint(event)))
+    except Exception:
+        # Even import/initialization/enqueue failures cannot change collector outcomes.
+        now = monotonic()
+        if now - _shadow_last_failure >= 60:
+            _shadow_last_failure = now
+            logger.warning("SEC shadow submission failed")
+
+
 def process_sec_filings(filings):
     events = []
 
@@ -131,6 +153,8 @@ def process_sec_filings(filings):
                     "Telegram SEC alert failed: %s",
                     error
                 )
+
+        _shadow(event)
 
     return events
 
