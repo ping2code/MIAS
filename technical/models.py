@@ -22,13 +22,15 @@ class TechnicalConfig:
     rsi_weak: float = 45.0
     rsi_oversold: float = 30.0
     elevated_relative_volume: float = 1.5
+    max_pivot_history: int = 200       # Phase 4B: levels use at most this many most recent confirmed pivots.
 
     def __post_init__(self):
         if len(self.ema_periods) != 4 or sorted(self.ema_periods) != list(self.ema_periods):
             raise ValueError("ema_periods must be four ascending periods (fast, medium, slow, long)")
         if not self.rsi_oversold < self.rsi_weak <= self.rsi_strong < self.rsi_overbought:
             raise ValueError("RSI zones must satisfy oversold < weak <= strong < overbought")
-        for name in ("rsi_period", "atr_period", "volume_lookback", "pivot_window", "min_touches", "failure_lookback"):
+        for name in ("rsi_period", "atr_period", "volume_lookback", "pivot_window", "min_touches", "failure_lookback",
+                     "max_pivot_history"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
@@ -90,3 +92,17 @@ class TechnicalSnapshot:
         data["signal"] = self.signal.to_dict() if self.signal else None
         data["support_levels"], data["resistance_levels"] = list(self.support_levels), list(self.resistance_levels)
         return data
+
+
+@dataclass(frozen=True)
+class MultiTimeframeSnapshot:
+    """Independent per-timeframe snapshots side by side (Phase 4B). There is deliberately no combined state or score."""
+    symbol: str
+    timestamp: object     # The latest bar timestamp across the available timeframes (None if none).
+    timeframes: dict      # interval label -> TechnicalSnapshot, or None when that timeframe is unavailable.
+    missing: dict = field(default_factory=dict)  # interval label -> reason, for every None entry.
+
+    def to_dict(self):
+        return dict(symbol=self.symbol, timestamp=self.timestamp.isoformat() if self.timestamp else None,
+                    timeframes={k: (v.to_dict() if v else None) for k, v in self.timeframes.items()},
+                    missing=dict(self.missing))

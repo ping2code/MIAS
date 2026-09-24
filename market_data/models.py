@@ -54,6 +54,7 @@ class Session(str, Enum):
     REGULAR = "regular"
     PRE = "pre"
     POST = "post"
+    CLOSED = "closed"  # Phase 4B: set only by calendar-aware classification (market_data.calendar).
 
 
 def classify_session(timestamp):

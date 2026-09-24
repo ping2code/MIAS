@@ -1,9 +1,9 @@
 """Market data provider contract and a deterministic fixture provider.
 
-No live vendor adapter ships in Phase 4. The repository has no market-price
-source; the free Yahoo chart endpoints are unofficial, with unclear licensing
-terms. Adding one is a separate, licensing-reviewed decision (see
-docs/phase4-technical-signals.md).
+Phase 4 shipped no live vendor adapter: the free Yahoo chart endpoints are
+unofficial, with unclear licensing terms. Phase 4B adds the documented
+Polygon.io/Massive aggregates adapter in ``market_data.providers.polygon``,
+configured through ``market_data.config`` (see docs/phase4b-real-market-data.md).
 """
 from abc import ABC, abstractmethod
 

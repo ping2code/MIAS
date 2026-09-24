@@ -97,7 +97,11 @@ def structure_state(pivots):
     """Trend and evidence from already-confirmed, labelled pivots."""
     highs = [p for p in pivots if p.kind == "high"]
     lows = [p for p in pivots if p.kind == "low"]
-    last_high, last_low = (highs[-1] if highs else None), (lows[-1] if lows else None)
+    return structure_from(highs[-1] if highs else None, lows[-1] if lows else None, len(highs), len(lows))
+
+
+def structure_from(last_high, last_low, high_count, low_count):
+    """The same trend table from just the latest labelled high/low and the confirmed counts (bounded state)."""
     high_type = last_high.label if last_high else None
     low_type = last_low.label if last_low else None
     if high_type is None or low_type is None:
@@ -113,4 +117,4 @@ def structure_state(pivots):
     return dict(trend=trend, last_high_type=high_type, last_low_type=low_type,
                 last_significant_high=last_high.to_dict() if last_high else None,
                 last_significant_low=last_low.to_dict() if last_low else None,
-                confirmed_highs=len(highs), confirmed_lows=len(lows))
+                confirmed_highs=high_count, confirmed_lows=low_count)

@@ -34,3 +34,25 @@ def format_snapshot(snapshot):
     lines += ["Signal:", f"{s.signal.state.upper()} (confidence {s.signal.confidence})", "", "Reasons:"]
     lines += [f"- {reason}" for reason in s.signal.reasons]
     return "\n".join(lines)
+
+
+def _timeframe_title(label):
+    return "Daily" if label == "1d" else label
+
+
+def format_multi_timeframe(multi):
+    """Each timeframe reported independently; there is no combined verdict."""
+    lines = [multi.symbol, ""]
+    for label, s in multi.timeframes.items():
+        lines.append(f"{_timeframe_title(label)}:")
+        if s is None:
+            lines += [f"  unavailable ({multi.missing.get(label, 'missing')})", ""]
+            continue
+        vwap = s.vwap_state["position"]
+        lines += [f"  State: {s.signal.state} (confidence {s.signal.confidence})",
+                  f"  Structure: {s.last_high_type or '—'} / {s.last_low_type or '—'} ({s.trend.replace('_', ' ')})",
+                  f"  RSI: {_fmt(s.rsi, 1)}",
+                  f"  Price: {s.price:.2f}" + ("" if vwap is None else f", {vwap.replace('_', ' ')}"),
+                  f"  Bar: {s.timestamp.isoformat()}", ""]
+    lines.append("Timeframes are independent; no combined signal is produced.")
+    return "\n".join(lines)
