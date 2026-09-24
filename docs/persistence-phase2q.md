@@ -1,5 +1,8 @@
 # Persistence Phase 2Q: News/RSS shadow persistence
 
+Real-process operational validation and the read-only URL-variant and repeat-observation audits
+(`python -m persistence.news_audit`): [Phase 2R report](persistence-phase2r-news-operational-report.md).
+
 Phase 2Q adds opt-in, shadow-only, non-blocking persistence for News/RSS
 articles (`collector/rss_reader.py`, used by `multi_source_collector`). It reuses
 the existing architecture unchanged: repository, schema (no migration; `news`

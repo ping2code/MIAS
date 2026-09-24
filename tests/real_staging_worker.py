@@ -22,6 +22,13 @@ SEC (Phase 2P, ``--collector sec``): ``live`` fetches the configured watchlist;
 collector always delivers ``ALERT`` decisions, so its Telegram entry point is a
 recording stub (would-be sends are reported, nothing is sent); the real Telegram
 transport (``requests.post``) and OpenAI client construction stay tripwires.
+
+News (Phase 2R, ``--collector news``): ``live`` reads the configured RSS feeds;
+``controlled``/``replay`` feed the given ``feeds`` entries through the real
+``read_feed`` (no network). ``analyze_market_event`` is a deterministic stub that
+counts attempts and applies only enrichment supplied in the command (otherwise it
+raises, exercising the collector's AI-failure path); no OpenAI call is possible.
+Telegram is a recording stub as for SEC. A fixed ``clock`` pins recency scoring.
 """
 import argparse
 from contextlib import redirect_stdout
@@ -118,7 +125,7 @@ def _bucket(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--collector", choices=("geo", "fed", "sec"), required=True)
+    parser.add_argument("--collector", choices=("geo", "fed", "sec", "news"), required=True)
     args = parser.parse_args()
     http = HttpEvidence()
     telegram, openai = Guard("Telegram"), Guard("OpenAI")
@@ -128,6 +135,8 @@ def main():
             run = GeoProcess(telegram, openai, submissions)
         elif args.collector == "sec":
             run = SecProcess(telegram, openai, submissions)
+        elif args.collector == "news":
+            run = NewsProcess(telegram, openai, submissions)
         else:
             run = FedProcess(telegram, openai, submissions)
         for line in sys.stdin:
@@ -381,6 +390,135 @@ class SecProcess:
                                            last_failure_at=stats.get("last_failure_at")),
                     would_send_total=len(self.would_send),
                     reconciliation=_reconcile(self.submissions, reconcile_sec_event))
+
+
+class NewsProcess:
+    ENTRY_KEYS = ("title", "link", "published", "summary")
+
+    def __init__(self, telegram, openai, submissions):
+        # alert_engine.telegram_notifier calls load_dotenv() at import: keep .env unread.
+        with patch("dotenv.load_dotenv"):
+            from collector import rss_reader as news
+            from shared.sources import RSS_SOURCES
+        from analyzer import scoring_engine
+        from analyzer.headline_similarity import normalize_headline
+        from persistence import news_shadow as shadow
+        self.news, self.scoring, self.shadow, self.sources = news, scoring_engine, shadow, RSS_SOURCES
+        self.normalize_headline, self.submissions = normalize_headline, submissions
+        self.would_send, self.ai_attempts, self.ai_results, self.capture = [], [], {}, _Capture()
+        self.controlled, self.feed_evidence = None, {}
+        for name in ("collector", "deduplicator"):
+            logging.getLogger(name).addHandler(self.capture)
+        real_parse = feedparser.parse
+        def parse(target, *args, **kwargs):
+            if self.controlled is not None:
+                return self.controlled
+            parsed = real_parse(target, *args, **kwargs)
+            self.feed_evidence[target] = dict(
+                http_status=parsed.get("status"), bozo=bool(parsed.get("bozo")), items=len(parsed.get("entries", [])),
+                content_type=(parsed.get("headers") or {}).get("content-type", "").split(";")[0],
+                entries=[self._plain(e) for e in parsed.get("entries", [])])
+            return parsed
+        def ai(event):
+            self.ai_attempts.append(event["url"])
+            result = self.ai_results.get(event["url"])
+            if result is None:
+                raise RuntimeError("deterministic AI stub: no enrichment configured")
+            for key, value in result.items():
+                event[f"ai_{key}"] = value
+            return event
+        def stub(message):
+            self.would_send.append(message)
+            return {"ok": True, "result": {"message_id": len(self.would_send)}}
+        patches = [patch.object(news, "analyze_market_event", ai), patch.object(news, "send_telegram_alert", stub),
+                   patch.object(requests, "post", telegram), patch.object(news.feedparser, "parse", parse),
+                   patch.object(shadow, "submit_news", _spy(shadow, "submit_news", submissions, "news"))]
+        try:
+            import openai as openai_module
+            patches.append(patch.object(openai_module, "OpenAI", openai))
+        except ImportError:
+            pass
+        for p in patches:
+            p.start()
+
+    def _plain(self, entry):
+        plain = {k: entry.get(k) for k in self.ENTRY_KEYS if entry.get(k) is not None}
+        if isinstance(entry.get("source"), dict) and entry["source"].get("title"):
+            plain["source"] = {"title": entry["source"]["title"]}
+        return plain
+
+    def _read(self, url, label, clock):
+        if clock is None:
+            return self.news.read_feed(url, source_label=label)
+        now = datetime.fromisoformat(clock)
+        with patch.object(self.scoring, "datetime", wraps=datetime) as fixed:
+            fixed.now.side_effect = lambda tz=None: now
+            return self.news.read_feed(url, source_label=label)
+
+    def cycle(self, command):
+        from types import SimpleNamespace
+        before, sent_before, ai_before, logs_before = (len(self.submissions), len(self.would_send),
+                                                       len(self.ai_attempts), len(self.capture.records))
+        self.ai_results = command.get("ai") or {}
+        feeds, fetched, stdout = [], {}, io.StringIO()
+        if command["op"] == "live":
+            plan = [(source["url"], source["name"], None) for source in self.sources]
+        else:
+            plan = [(f"controlled://{f['label']}", f["label"], f["entries"]) for f in command["feeds"]]
+        with redirect_stdout(stdout):  # The collector prints ALERT messages; keep the protocol channel clean.
+            for url, label, entries in plan:
+                self.controlled = None if entries is None else SimpleNamespace(bozo=False, feed={}, entries=deepcopy(entries))
+                feed_before, feed_ai_before = len(self.submissions), len(self.ai_attempts)
+                events, stats = self._read(url, label, command.get("clock"))
+                evidence = self.feed_evidence.pop(url, None)
+                if evidence is not None:
+                    fetched[label] = evidence.pop("entries")[:self.news.RSS_ENTRY_LIMIT]
+                outcomes = [e["news_collector_outcome"] for _, e, _, _ in self.submissions[feed_before:]]
+                feeds.append(dict(label=label, http=evidence, stats=stats, returned=len(events),
+                                  alert_candidates=len(self.ai_attempts) - feed_ai_before,  # AI runs for ALERT only.
+                                  near_duplicate_suppressed=outcomes.count("near_duplicate_suppressed"),
+                                  submissions=len(outcomes), events=[self._event(e) for e in events if e.get("relevant")]))
+        self.controlled = None
+        new = self.submissions[before:]
+        logs, sent, attempts = self.capture.records[logs_before:], self.would_send[sent_before:], self.ai_attempts[ai_before:]
+        return dict(op=command["op"], label=command.get("label"), feeds=feeds, fetched=fetched or None,
+                    processed=sum(f["stats"]["processed"] for f in feeds),
+                    events_digest=_digest([f["events"] for f in feeds]), stdout_digest=_digest(stdout.getvalue()),
+                    stdout_lines=len(stdout.getvalue().splitlines()),
+                    collector_logs=[r for r in logs if "shadow" not in r[2].lower()],
+                    shadow_logs=[r for r in logs if "shadow" in r[2].lower()],
+                    ai_attempts=len(attempts), ai_attempts_digest=_digest(attempts),
+                    would_send=len(sent), would_send_digests=[_digest(m) for m in sent],
+                    submitted=len(new), submitted_outcomes=[e["news_collector_outcome"] for _, e, _, _ in new],
+                    submitted_keys=[self._key(e) for _, e, _, _ in new])
+
+    def _event(self, event):
+        return dict(url_digest=_digest(event.get("url")), publisher=event.get("publisher"), symbols=event.get("symbols"),
+                    score=event.get("impact_score"), level=event.get("impact_level"), decision=event.get("alert_decision"),
+                    original_score=event.get("original_impact_score"), adjustment=event.get("quality_adjustment"),
+                    ai_event_type=event.get("ai_event_type"), score_reasons=event.get("score_reasons"),
+                    **self._key(event))
+
+    def _key(self, event):
+        from persistence.adapters.news import article_identity
+        fingerprint = self.news.deduplicator.create_fingerprint(event)
+        normalized = self.normalize_headline((event.get("headline") or "").strip())
+        identity = article_identity(dict(event, news_fingerprint=fingerprint))
+        return dict(fingerprint=fingerprint, headline_key=hashlib.sha256(normalized.encode()).hexdigest(),
+                    identity=identity[0], identity_key=identity[1])
+
+    def drain_wait(self):
+        return _drain(self.shadow)
+
+    def finish(self):
+        drained = self.shadow.shutdown(drain=True, timeout=20)
+        from persistence.reconciliation import reconcile_news_event
+        stats = drained["stats"]
+        return dict(op="finish", shadow_stopped=drained["stopped"], shadow_stats=_shadow_summary(stats),
+                    shadow_timestamps=dict(last_success_at=stats.get("last_success_at"),
+                                           last_failure_at=stats.get("last_failure_at")),
+                    would_send_total=len(self.would_send), ai_attempts_total=len(self.ai_attempts),
+                    reconciliation=_reconcile(self.submissions, reconcile_news_event))
 
 
 def _synthetic_fed(entry):
