@@ -29,6 +29,13 @@ News (Phase 2R, ``--collector news``): ``live`` reads the configured RSS feeds;
 counts attempts and applies only enrichment supplied in the command (otherwise it
 raises, exercising the collector's AI-failure path); no OpenAI call is possible.
 Telegram is a recording stub as for SEC. A fixed ``clock`` pins recency scoring.
+
+Macro/Treasury (Phase 2S, ``--collector macro|treasury``): ``live`` runs one real
+collection cycle with ``enable_ai=False`` and ``send_alerts=False``; their AI and
+delivery entry points are tripwires, as for Fed. Macro's BLS data API
+(``requests.post``) is recorded as HTTP evidence too. Geopolitical ``live`` accepts
+``"all_sources": true`` to include the HTML-index sources (default: the Phase 2M
+API/RSS subset). Every result carries process RSS and thread counts.
 """
 import argparse
 from contextlib import redirect_stdout
@@ -125,7 +132,7 @@ def _bucket(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--collector", choices=("geo", "fed", "sec", "news"), required=True)
+    parser.add_argument("--collector", choices=("geo", "fed", "sec", "news", "macro", "treasury"), required=True)
     args = parser.parse_args()
     http = HttpEvidence()
     telegram, openai = Guard("Telegram"), Guard("OpenAI")
@@ -137,14 +144,20 @@ def main():
             run = SecProcess(telegram, openai, submissions)
         elif args.collector == "news":
             run = NewsProcess(telegram, openai, submissions)
+        elif args.collector == "macro":
+            run = MacroProcess(telegram, openai, submissions)
+        elif args.collector == "treasury":
+            run = TreasuryProcess(telegram, openai, submissions)
         else:
             run = FedProcess(telegram, openai, submissions)
         for line in sys.stdin:
             command = json.loads(line)
             if command["op"] in ("exit", "hard_exit"):
                 result = run.finish()
+                writer = getattr(getattr(run, "shadow", None), "_writer", None)
                 result.update(pid=os.getpid(), http=http.summary(), telegram_calls=telegram.calls,
-                              openai_calls=openai.calls, submissions=len(submissions))
+                              openai_calls=openai.calls, submissions=len(submissions), resources=_resources(),
+                              shadow_capacity=getattr(writer, "capacity", None))  # None when no writer was started.
                 print(json.dumps(result, sort_keys=True, default=str), flush=True)
                 if command["op"] == "hard_exit":
                     sys.stderr.flush()
@@ -155,7 +168,8 @@ def main():
                 result = run.drain_wait()
             else:
                 result = run.cycle(command)
-            result.update(pid=os.getpid(), telegram_calls=telegram.calls, openai_calls=openai.calls)
+            result.update(pid=os.getpid(), telegram_calls=telegram.calls, openai_calls=openai.calls,
+                          resources=_resources())
             print(json.dumps(result, sort_keys=True, default=str), flush=True)
     return 0
 
@@ -216,6 +230,7 @@ class GeoProcess:
                       patch.object(shadow, "submit_geopolitical", _spy(shadow, "submit_geopolitical", submissions, "geo")),
                       # Bounded live staging subset: API/RSS sources only (see report).
                       patch.object(sources, "SOURCES", {k: sources.SOURCES[k] for k in LIVE_GEO_SOURCES})]
+        self.all_sources = dict(sources.SOURCES)  # Captured before the bounded-subset patch starts.
         for p in self.stack:
             p.start()
         self.real_fetch = sources.fetch_documents
@@ -228,7 +243,9 @@ class GeoProcess:
                 documents = self.real_fetch(agency)
                 per_source[agency] = dict(items=len(documents), source_errors=sum(1 for d in documents if d.get("source_error")))
                 return documents
-            with patch.object(self.sources, "fetch_documents", side_effect=fetch):
+            selected = self.all_sources if command.get("all_sources") else self.sources.SOURCES
+            with patch.object(self.sources, "fetch_documents", side_effect=fetch), \
+                 patch.object(self.sources, "SOURCES", selected):
                 events, stats = self.geo.collect_geopolitical_events(enable_ai=False, send_alerts=False)
         else:
             from tests.geopolitical_readiness_corpus import DOCS
@@ -519,6 +536,79 @@ class NewsProcess:
                                            last_failure_at=stats.get("last_failure_at")),
                     would_send_total=len(self.would_send), ai_attempts_total=len(self.ai_attempts),
                     reconciliation=_reconcile(self.submissions, reconcile_news_event))
+
+
+class _SourceFamilyProcess:
+    """Macro/Treasury: one real live cycle per command; AI and delivery are tripwires (runs never enable them)."""
+
+    def __init__(self, telegram, openai, submissions, *, collector, shadow, submit, analyze, deliver, reconcile):
+        self.collector, self.shadow, self.submissions, self.reconcile_name = collector, shadow, submissions, reconcile
+        for p in (patch.object(collector, deliver, telegram), patch.object(collector, analyze, openai),
+                  patch.object(shadow, submit, _spy(shadow, submit, submissions, shadow.__name__))):
+            p.start()
+
+    def cycle(self, command):
+        before = len(self.submissions)
+        events, stats = self.run()
+        new = self.submissions[before:]
+        return dict(op=command["op"], label=command.get("label"), stats=stats, processed_events=len(events),
+                    submitted=len(new), submitted_historical=sum(1 for _, _, current, _ in new if not current),
+                    keys=sorted({e["event_id"] for _, e, _, _ in new}))
+
+    def drain_wait(self):
+        return _drain(self.shadow)
+
+    def finish(self):
+        drained = self.shadow.shutdown(drain=True, timeout=20)
+        import persistence.reconciliation as reconciliation
+        stats = drained["stats"]
+        return dict(op="finish", shadow_stopped=drained["stopped"], shadow_stats=_shadow_summary(stats),
+                    shadow_timestamps=dict(last_success_at=stats.get("last_success_at"),
+                                           last_failure_at=stats.get("last_failure_at")),
+                    reconciliation=_reconcile(self.submissions, getattr(reconciliation, self.reconcile_name)))
+
+
+class MacroProcess(_SourceFamilyProcess):
+    def __init__(self, telegram, openai, submissions):
+        from collector import macro_collector as macro
+        from persistence import macro_shadow as shadow
+        self.post = HttpEvidence()
+        self.post.real = requests.post
+        patch.object(requests, "post", self.post).start()  # Record the BLS data API calls as evidence.
+        super().__init__(telegram, openai, submissions, collector=macro, shadow=shadow, submit="submit_macro",
+                         analyze="analyze_macro_event", deliver="deliver_macro_alert", reconcile="reconcile_macro_event")
+
+    def run(self):
+        return self.collector.collect_macro_events(enable_ai=False, send_alerts=False)
+
+    def finish(self):
+        return dict(super().finish(), http_post=self.post.summary())
+
+
+class TreasuryProcess(_SourceFamilyProcess):
+    def __init__(self, telegram, openai, submissions):
+        from collector import treasury_collector as treasury
+        from persistence import treasury_shadow as shadow
+        super().__init__(telegram, openai, submissions, collector=treasury, shadow=shadow, submit="submit_treasury",
+                         analyze="analyze_treasury_event", deliver="deliver_treasury_alert",
+                         reconcile="reconcile_treasury_event")
+
+    def run(self):
+        return self.collector.collect_treasury_events(enable_ai=False, send_alerts=False)
+
+
+def _resources():
+    """Process RSS (kB) and thread counts from /proc when available (Linux); never raises."""
+    values = dict(python_threads=__import__("threading").active_count())
+    try:
+        with open("/proc/self/status") as status:
+            for line in status:
+                if line.startswith(("VmRSS:", "Threads:")):
+                    key, value = line.split(":", 1)
+                    values["rss_kb" if key == "VmRSS" else "os_threads"] = int(value.split()[0])
+    except OSError:
+        pass
+    return values
 
 
 def _synthetic_fed(entry):
