@@ -95,77 +95,261 @@ Caveats that apply to every table:
 
 ### Cross-run summary
 
-**State frequency (share of bars)**
+All figures below are generated directly from the six `evaluation.technical_replay` JSON outputs.
 
-| State | META 1d | NVDA 1d | META 1h | NVDA 1h | META 5m | NVDA 5m |
+### 1. Bar counts
+
+| Run | Bars | First bar | Last bar | Session-bounded labels | Final state (23 Sep bar) |
+|---|---|---|---|---|---|
+| META 5m | 33,588 | 2025-01-02 | 2026-09-23 15:55 | true | bearish_momentum (MEDIUM) |
+| META 1h | 3,015 | 2025-01-02 | 2026-09-23 15:30 | true | range (LOW) |
+| META 1d | 432 | 2025-01-02 | 2026-09-23 00:00 | false | breakout_watch (HIGH) |
+| NVDA 5m | 33,588 | 2025-01-02 | 2026-09-23 15:55 | true | breakout_watch (LOW) |
+| NVDA 1h | 3,015 | 2025-01-02 | 2026-09-23 15:30 | true | breakout_watch (LOW) |
+| NVDA 1d | 432 | 2025-01-02 | 2026-09-23 00:00 | false | bullish_momentum (MEDIUM) |
+
+The counts match the XNYS calendar exactly: 432 sessions (2025-01-02 to 2026-09-23) including 3 early closes (2025-07-03, 2025-11-28 and 2025-12-24). That gives 432 daily bars, 429×7 + 3×4 = 3,015 hourly bars and 429×78 + 3×42 = 33,588 five-minute bars. **No bars are missing in any run.**
+
+### 2. State frequency (share of bars)
+
+| State | META 5m | META 1h | META 1d | NVDA 5m | NVDA 1h | NVDA 1d |
 |---|---|---|---|---|---|---|
-| bullish_setup | 5.6% | 21.8% | 8.0% | 12.2% | 13.9% | 15.0% |
-| bullish_momentum | 2.8% | 5.8% | 2.6% | 2.9% | 3.5% | 3.9% |
-| breakout_watch | 11.8% | 10.6% | 10.4% | 10.5% | 4.8% | 5.9% |
-| bearish_setup | 16.2% | 3.9% | 9.3% | 6.5% | 14.4% | 12.7% |
-| bearish_momentum | 3.5% | 0.7% | 1.6% | 2.1% | 3.8% | 3.2% |
-| breakdown_watch | 10.0% | 7.4% | 10.3% | 10.3% | 5.0% | 5.8% |
-| range | 13.2% | 13.2% | 16.1% | 14.5% | 20.0% | 20.8% |
-| mixed | 32.6% | 32.2% | 41.0% | 40.4% | 34.6% | 32.7% |
+| bullish_setup | 13.9% | 8.0% | 5.6% | 15.0% | 12.2% | 21.8% |
+| bullish_momentum | 3.5% | 2.6% | 2.8% | 3.9% | 2.9% | 5.8% |
+| breakout_watch | 4.8% | 10.4% | 11.8% | 5.9% | 10.5% | 10.6% |
+| bearish_setup | 14.4% | 9.3% | 16.2% | 12.7% | 6.5% | 3.9% |
+| bearish_momentum | 3.8% | 1.6% | 3.5% | 3.2% | 2.1% | 0.7% |
+| breakdown_watch | 5.0% | 10.3% | 10.0% | 5.8% | 10.3% | 7.4% |
+| range | 20.0% | 16.1% | 13.2% | 20.8% | 14.5% | 13.2% |
+| mixed | 34.6% | 41.0% | 32.6% | 32.7% | 40.4% | 32.2% |
+| insufficient_data | 0.1% | 0.6% | 4.4% | 0.1% | 0.6% | 4.4% |
 
-**Mean 5-bar forward return in basis points** (n in parentheses). Compare each value
-with the run's all-bars baseline, because the daily runs carry strong upward drift.
 
-| State | META 1d | NVDA 1d | META 1h | NVDA 1h | META 5m | NVDA 5m |
+### 3. Duration (mean run length in bars; longest run in parentheses)
+
+| State | META 5m | META 1h | META 1d | NVDA 5m | NVDA 1h | NVDA 1d |
 |---|---|---|---|---|---|---|
-| bullish_setup | -252.6 (24) | +87.4 (94) | +1.4 (53) | +23.0 (73) | -1.8 (4356) | -1.0 (4722) |
-| bullish_momentum | -111.0 (12) | -211.0 (23) | +10.3 (16) | -39.5 (18) | -2.1 (1113) | -1.5 (1247) |
-| breakout_watch | +86.3 (48) | +169.8 (45) | -6.9 (153) | -8.1 (155) | -1.1 (1520) | -1.6 (1821) |
-| bearish_setup | +190.4 (70) | +650.3 (17) | +18.0 (56) | +48.2 (49) | -0.0 (4489) | -0.0 (3929) |
-| bearish_momentum | -31.9 (15) | +188.6 (3) | -7.4 (12) | -49.0 (9) | +1.8 (1184) | -2.7 (1021) |
-| breakdown_watch | -146.7 (43) | +246.6 (32) | +8.5 (149) | +1.4 (145) | +2.3 (1538) | +0.4 (1811) |
-| range | +52.9 (55) | -264.4 (57) | +2.4 (125) | +10.6 (115) | +0.2 (6336) | +1.7 (6574) |
-| mixed | +6.2 (141) | +157.5 (137) | +1.0 (288) | +6.4 (288) | +0.8 (10873) | -0.1 (10284) |
-| *all bars (baseline)* | +33.0 (427) | +70.3 (427) | +2.8 (858) | +5.7 (858) | +0.2 (31428) | -0.0 (31428) |
+| bullish_setup | 4.78 (35) | 2.22 (10) | 3.00 (7) | 4.54 (39) | 2.63 (17) | 4.70 (38) |
+| bullish_momentum | 2.57 (17) | 2.14 (8) | 2.40 (5) | 2.64 (22) | 1.89 (6) | 2.50 (8) |
+| breakout_watch | 1.06 (3) | 1.14 (4) | 1.21 (2) | 1.06 (4) | 1.15 (4) | 1.02 (2) |
+| bearish_setup | 4.81 (40) | 2.23 (14) | 3.04 (10) | 4.20 (34) | 2.01 (7) | 1.70 (3) |
+| bearish_momentum | 2.76 (14) | 2.09 (7) | 2.14 (4) | 2.54 (17) | 2.03 (7) | 1.00 (1) |
+| breakdown_watch | 1.05 (6) | 1.17 (4) | 1.13 (2) | 1.07 (3) | 1.14 (3) | 1.19 (3) |
+| range | 3.94 (24) | 2.38 (11) | 2.48 (8) | 3.69 (23) | 2.47 (8) | 3.17 (9) |
+| mixed | 4.23 (28) | 2.69 (13) | 2.52 (12) | 3.91 (45) | 2.70 (20) | 2.67 (9) |
+| insufficient_data | 19.00 (19) | 19.00 (19) | 19.00 (19) | 19.00 (19) | 19.00 (19) | 19.00 (19) |
 
-### Observations (descriptive only; for review, not tuning)
+
+### 4. Transitions
+
+| Run | State changes | Per 100 bars | Changes involving `mixed` | Three most frequent |
+|---|---|---|---|---|
+
+| META 5m | 10,472 | 31.2 | 52% | `breakdown_watch->mixed` 663, `range->mixed` 640, `mixed->breakdown_watch` 634 |
+
+| META 1h | 1,498 | 49.7 | 61% | `mixed->breakdown_watch` 139, `mixed->breakout_watch` 136, `breakout_watch->mixed` 134 |
+
+| META 1d | 202 | 46.8 | 55% | `breakout_watch->mixed` 21, `mixed->breakout_watch` 21, `mixed->breakdown_watch` 19 |
+
+| NVDA 5m | 11,417 | 34.0 | 49% | `mixed->breakdown_watch` 711, `breakdown_watch->mixed` 707, `breakout_watch->mixed` 696 |
+
+| NVDA 1h | 1,490 | 49.4 | 60% | `mixed->breakdown_watch` 148, `breakdown_watch->mixed` 138, `breakout_watch->mixed` 128 |
+
+| NVDA 1d | 185 | 42.8 | 56% | `breakout_watch->mixed` 22, `mixed->breakout_watch` 21, `breakdown_watch->mixed` 14 |
+
+
+### 5. Forward returns: mean at 1 / 3 / 5 / 10 bars, in basis points
+
+Compare each row with the *all bars* baseline of the same run. "—" means no observations (see section 8).
+
+
+**5m**
+
+| State | META (1/3/5/10) | NVDA (1/3/5/10) |
+|---|---|---|
+| bullish_setup | -0.2 / -1.1 / -1.8 / -3.2 | -0.2 / -0.8 / -1.0 / -0.9 |
+| bullish_momentum | -0.7 / -1.3 / -2.1 / -1.1 | +0.2 / +0.3 / -1.5 / -3.0 |
+| breakout_watch | -0.3 / -1.3 / -1.1 / +0.4 | -1.1 / -1.2 / -1.6 / -0.3 |
+| bearish_setup | -0.1 / +0.2 / -0.0 / +0.8 | -0.1 / +0.1 / -0.0 / +0.1 |
+| bearish_momentum | +0.8 / +1.2 / +1.8 / +1.7 | -0.3 / -1.8 / -2.7 / -8.2 |
+| breakdown_watch | +0.3 / +0.9 / +2.3 / +1.8 | -0.1 / +0.9 / +0.4 / +0.3 |
+| range | -0.1 / -0.1 / +0.2 / +1.6 | +0.5 / +1.2 / +1.7 / +3.6 |
+| mixed | +0.2 / +0.8 / +0.8 / +0.8 | +0.0 / -0.1 / -0.1 / +0.2 |
+| *all bars (baseline)* | +0.0 / +0.1 / +0.2 / +0.4 | +0.0 / +0.1 / -0.0 / +0.3 |
+
+
+**1h**
+
+| State | META (1/3/5/10) | NVDA (1/3/5/10) |
+|---|---|---|
+| bullish_setup | -2.6 / -7.5 / +1.4 / — | +1.1 / +8.6 / +23.0 / — |
+| bullish_momentum | +2.6 / +13.8 / +10.3 / — | -5.2 / -14.8 / -39.5 / — |
+| breakout_watch | +3.3 / +4.7 / -6.9 / — | +3.6 / -3.6 / -8.1 / — |
+| bearish_setup | +0.9 / -1.0 / +18.0 / — | +7.7 / +20.2 / +48.2 / — |
+| bearish_momentum | +3.0 / +9.4 / -7.4 / — | -18.2 / -58.7 / -49.0 / — |
+| breakdown_watch | +3.7 / +11.5 / +8.5 / — | +4.7 / +13.4 / +1.4 / — |
+| range | +1.0 / +0.2 / +2.4 / — | +2.9 / -0.2 / +10.6 / — |
+| mixed | -0.9 / -1.2 / +1.0 / — | -0.7 / +4.0 / +6.4 / — |
+| *all bars (baseline)* | +0.7 / +1.8 / +2.8 / — | +1.2 / +3.7 / +5.7 / — |
+
+
+**1d**
+
+| State | META (1/3/5/10) | NVDA (1/3/5/10) |
+|---|---|---|
+| bullish_setup | -40.9 / -203.6 / -252.6 / -237.8 | +10.7 / +23.5 / +87.4 / +308.3 |
+| bullish_momentum | -35.4 / -55.2 / -111.0 / -392.0 | +0.4 / -133.9 / -211.0 / -364.8 |
+| breakout_watch | +19.1 / +85.9 / +86.3 / +43.3 | +6.7 / +82.8 / +169.8 / +301.8 |
+| bearish_setup | +53.0 / +140.5 / +190.4 / +390.3 | +155.4 / +500.3 / +650.3 / +430.1 |
+| bearish_momentum | -88.2 / -156.6 / -31.9 / +260.2 | -61.1 / -100.1 / +188.6 / +635.3 |
+| breakdown_watch | -18.7 / -88.4 / -146.7 / +38.5 | +50.0 / +178.5 / +246.6 / +285.2 |
+| range | +18.3 / +19.0 / +52.9 / -64.0 | -77.7 / -196.4 / -264.4 / -63.5 |
+| mixed | -0.3 / +16.6 / +6.2 / -80.7 | +49.0 / +131.0 / +157.5 / +127.5 |
+| *all bars (baseline)* | +8.3 / +22.8 / +33.0 / +61.3 | +15.4 / +43.2 / +70.3 / +136.9 |
+
+
+### 6. MFE / MAE (mean, basis points, oriented to the state's direction)
+
+Format: `MFE / MAE`. For a bullish state, MFE is the best high and MAE the worst low within the horizon. For a bearish state, it is the reverse.
+
+
+**1-bar horizon**
+
+| State | META 5m | META 1h | META 1d | NVDA 5m | NVDA 1h | NVDA 1d |
+|---|---|---|---|---|---|---|
+| bullish_setup | +11 / -12 | +33 / -35 | +78 / -152 | +13 / -14 | +36 / -38 | +147 / -100 |
+| bullish_momentum | +15 / -16 | +40 / -38 | +124 / -137 | +15 / -15 | +36 / -42 | +175 / -127 |
+| breakout_watch | +18 / -18 | +46 / -42 | +165 / -92 | +20 / -22 | +53 / -50 | +134 / -148 |
+| bearish_setup | +13 / -13 | +40 / -41 | +121 / -210 | +17 / -16 | +53 / -61 | +194 / -372 |
+| bearish_momentum | +14 / -14 | +47 / -40 | +248 / -75 | +20 / -20 | +63 / -44 | +141 / -149 |
+| breakdown_watch | +18 / -18 | +42 / -45 | +146 / -109 | +22 / -21 | +57 / -59 | +132 / -233 |
+
+
+**5-bar horizon**
+
+| State | META 5m | META 1h | META 1d | NVDA 5m | NVDA 1h | NVDA 1d |
+|---|---|---|---|---|---|---|
+| bullish_setup | +25 / -27 | +83 / -91 | +139 / -435 | +28 / -31 | +89 / -70 | +366 / -296 |
+| bullish_momentum | +32 / -35 | +96 / -86 | +239 / -335 | +31 / -33 | +72 / -118 | +316 / -515 |
+| breakout_watch | +38 / -39 | +86 / -87 | +435 / -294 | +41 / -44 | +87 / -103 | +464 / -303 |
+| bearish_setup | +28 / -27 | +90 / -106 | +332 / -570 | +37 / -35 | +105 / -149 | +322 / -886 |
+| bearish_momentum | +31 / -32 | +93 / -94 | +639 / -427 | +44 / -40 | +135 / -72 | +454 / -362 |
+| breakdown_watch | +37 / -37 | +91 / -95 | +511 / -335 | +46 / -44 | +121 / -126 | +374 / -667 |
+
+### 7. Differences
+
+**META vs NVDA**
+
+- **Daily profiles differ sharply, in line with each stock's own drift.**
+  - NVDA spent 21.8% of days in `bullish_setup` vs META's 5.6%, and 3.9% in
+    `bearish_setup` vs META's 16.2%.
+  - NVDA's bearish daily runs were short: `bearish_setup` 1.70 bars on average,
+    and `bearish_momentum` occurred only 3 times, each lasting one bar.
+  - The all-bars 5-day baseline was +70 bps for NVDA and +33 bps for META.
+- **Intraday profiles are nearly the same.** The largest META-NVDA gap in any
+  state's share is 2.0 points on 5m and 4.2 points on 1h (`bullish_setup`, 8.0%
+  vs 12.2%).
+- **Daily forward returns by state disagree between the symbols.**
+  - `bullish_setup` at 5 bars: −253 bps (META) vs +87 bps (NVDA).
+  - `breakdown_watch` at 5 bars: −147 vs +247 bps.
+- **Only two daily patterns appear in both symbols:**
+  - `breakout_watch` had a favourable excursion above its adverse one (5-bar MFE /
+    MAE of +435 / −294 bps for META and +464 / −303 for NVDA);
+  - `bearish_setup` had the adverse excursion dominate (+332 / −570 and
+    +322 / −886).
+
+**5m vs 1h vs 1d**
+
+- **Frequency:**
+  - watch states are about half as frequent on 5m (4.8-5.9%) as on 1h and 1d
+    (7.4-11.8%);
+  - `range` is most common on 5m (about 20%);
+  - `mixed` is most common on 1h (about 41%).
+- **Duration:** states persist longest on 5m. For example, `bullish_setup`
+  averages about 4.5-4.8 bars (up to 39) on 5m, vs about 2.2-4.7 on 1h and 1d.
+  Watch states last about one bar on every timeframe, as designed.
+- **Transitions:** 31-34 state changes per 100 bars on 5m, about 49 on 1h and
+  43-47 on 1d. 49-61% of all changes involve `mixed`, and the most
+  frequent changes on every run are between `mixed` and the watch states.
+- **Excursion size scales with the bar interval.** 1-bar MFE is about 11-22 bps
+  on 5m, 33-63 bps on 1h and 78-248 bps on 1d.
+- **Symmetry:** intraday MFE and MAE are nearly symmetric for every state (for
+  example 5m `breakout_watch` at 5 bars: +38 / −39 bps). Only daily excursions are
+  asymmetric, and mostly inconsistently between the symbols.
+- **Forward returns by state:** within about ±4 bps of the baseline on 5m, and
+  within a few tens of bps on 1h (thin samples beyond 3 bars). The spreads on 1d
+  are large but small-sample, and the daily baseline itself carries upward drift.
+
+### 8. Small samples
+
+A state or label with fewer than 30 observations is treated as **small**: its means
+can be dominated by a few days and should not be read as a pattern.
+
+**States with fewer than 30 occurrences** (all daily; `insufficient_data`, 19 bars
+per run, is excluded):
+
+| Run | State | Occurrences |
+|---|---|---|
+| META 1d | bullish_setup | 24 |
+| META 1d | bullish_momentum | 12 |
+| META 1d | bearish_momentum | 15 |
+| NVDA 1d | bullish_momentum | 25 |
+| NVDA 1d | bearish_setup | 17 |
+| NVDA 1d | bearish_momentum | 3 |
+
+**Forward-return labels with fewer than 30 observations, by construction:**
+
+- **1h, 10-bar: zero observations in both runs.** Labels are session-bounded, and a
+  session has at most 7 hourly bars.
+- **1h, 5-bar:** only each session's first two bars qualify. `bullish_momentum`
+  has n=16 (META) and 18 (NVDA); `bearish_momentum` has n=12 and 9.
+- **1h, 3-bar:** `bearish_momentum` has n=24 (META) and 26 (NVDA).
+- **1d:** every horizon for the small states listed above (for example NVDA
+  `bearish_momentum`, n=3).
+- **All six runs:** `insufficient_data` (warm-up only; ≤19 observations).
+
+### 9. Observations (observational evidence only; for review, not tuning)
 
 1. **5-minute states show no forward-return separation.** With about 33,600 bars
    per symbol, every state's mean forward return is within about ±4 bps at 1, 3,
    5 and 10 bars, close to the ~0 bps baseline. The single exception is NVDA
-   `bearish_momentum` at 10 bars (−8.2 bps, n=957), which is in the state's own
-   direction but tiny. At this timescale the
-   engine describes structure; the states do not anticipate the next few bars.
-2. **1-hour results are limited by a harness choice.** Sessions have only 7 hourly
-   bars, so session-bounded 10-bar labels never exist (n=0), and 5-bar labels come
-   only from each session's first two bars. The 1h forward-return tables are
-   therefore thin and biased toward the open. **Recommended harness change** (next
-   phase): a `--no-session-bound` option, or intraday-appropriate horizons such as
-   1/2/3 bars for 1h.
+   `bearish_momentum` at 10 bars (−8.2 bps, n=957): in the state's own direction,
+   but tiny. At this timescale the engine describes structure; the states do not
+   anticipate the next few bars.
+2. **1-hour results are limited by a harness choice** (section 8). Session-bounded
+   labels leave 10-bar horizons empty and 5-bar horizons biased toward each
+   session's open.
 3. **Daily results are inconsistent across symbols and dominated by drift and small
-   samples.**
-   - The baseline is +33 bps (META) and +70 bps (NVDA) per 5 days.
-   - `bullish_setup` was −253 bps (META, n=24) vs +87 bps (NVDA, n=94).
-   - `bearish_setup` was positive for both, at +190 and +650 bps, but NVDA's n is
-     only 17.
-   - `breakout_watch` was above baseline for both (+86 and +170 bps).
-   - `breakdown_watch` diverged: −147 bps (META) vs +247 bps (NVDA).
-
-   No state's direction is consistently confirmed by what followed on 1d.
+   samples.** No state's direction is consistently borne out on daily bars (see
+   section 7).
 4. **Setup states lag structure (hypothesis).** On daily bars, setup states require
    confirmed HH/HL or LH/LL swings, which confirm `pivot_window` bars after the
-   pivot. The META pattern (bullish setups followed by weakness, bearish setups by
+   pivot. META's pattern (bullish setups followed by weakness, bearish setups by
    strength) is consistent with confirming moves that are largely complete. NVDA
-   does not show the same pattern. Test this with more symbols and periods before
+   does not show the same pattern. Test with more symbols and periods before
    drawing any conclusion.
-5. **`mixed` is the most common state everywhere (33-41%), and `range` the second
-   most common intraday (15-21%).** Both have near-baseline forward returns, which
-   is consistent with no-agreement labels.
-6. **The final state depends on the warm-up history.** For the 23 September bar, five
-   of six evaluation final states match the live runner. **NVDA 1h does not**: the
-   runner reported `mixed` (LOW) and the evaluation `breakout_watch` (LOW).
-   - The runner warms 1h from 90 sessions of history. The evaluation replays from
-     January 2025, so the set of confirmed pivots, and therefore the
-     support/resistance levels, differs.
-   - This is expected under the Phase 4C design, which is deterministic for a given
-     window but not window-independent.
-   - It matters for comparing persisted snapshots with evaluations: compare within
-     the same warm-up policy.
+5. **`mixed` and `range` dominate** (together 45-57% of bars). Both have
+   near-baseline forward returns, which is consistent with no-agreement labels.
+6. **The final state depends on the warm-up history.** Five of six evaluation final
+   states match the live runner for the 23 September bar. **NVDA 1h does not**: the
+   runner reported `mixed` (LOW), and the evaluation `breakout_watch` (LOW).
+   - The runner warms 1h from 90 sessions. The evaluation replays from January
+     2025, so the confirmed pivots and support/resistance levels differ.
+   - This is expected under the Phase 4C design (deterministic for a given window,
+     not window-independent).
+   - Compare persisted snapshots with evaluations only under the same warm-up
+     policy.
+
+### 10. Completion
+
+**Phase 4C real-history evaluation is complete: all 6 of 6 runs (META and NVDA ×
+5m, 1h and 1d) are recorded** as observational evidence only.
+
+- This is not a profitability backtest: there are no orders, fills, costs, sizing
+  or P&L.
+- No threshold, window, buffer or confidence rule has been changed.
+- The raw vendor bars are not stored anywhere in this repository; only the
+  statistics above are.
 
 ### Per-run detail
 
