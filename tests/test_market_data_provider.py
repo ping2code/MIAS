@@ -9,6 +9,7 @@ import requests
 from market_data.calendar import default_calendar
 from market_data.config import MarketDataConfigError, load_market_data_settings
 from market_data.http import JsonHttpClient, ProviderError
+from market_data.aggregation import aggregate
 from market_data.models import EXCHANGE_TZ, Interval, MarketDataError, Session
 from market_data.providers import build_provider
 from market_data.providers.polygon import PolygonProvider
@@ -253,6 +254,71 @@ class ProviderTests(unittest.TestCase):
                                               '"c": 1, "v": NaN}]}' % results[0]["t"])])
         with self.assertRaises(MarketDataError):
             provider(nan).get_bars("META", "5m", et(DAY, 0), et(DAY, 23))
+
+    def overnight_payload(self, extra):
+        """A regular 5m day (09:30-15:55) plus vendor bars at the given ET times, in timestamp order."""
+        bars = calendar_bars("SPY", [DAY], 5, sessions=(Session.PRE, Session.REGULAR, Session.POST))
+        results = to_results(bars)
+        template = dict(results[0])
+        for hour, minute, day in extra:
+            stamp = int(et(day, hour, minute).timestamp() * 1000)
+            results.append(dict(template, t=stamp))
+        return sorted(results, key=lambda r: r["t"]), bars
+
+    def test_overnight_vendor_bars_are_excluded_and_counted(self):
+        results, bars = self.overnight_payload([(20, 0, DAY), (23, 30, DAY), (3, 55, DAY + timedelta(days=1))])
+        p = provider(FakeSession([ok(results)]), MARKET_DATA_INCLUDE_EXTENDED_HOURS="true")
+        got = p.get_bars("SPY", "5m", et(DAY, 0), et(DAY + timedelta(days=1), 12))
+        self.assertEqual(got, bars)  # The series stays valid: every supported-session bar, nothing else.
+        diag = p.diagnostics[-1]
+        self.assertEqual((diag["excluded_overnight_bars"], diag["raw_bars"]), (3, len(bars)))
+        self.assertTrue(all(time(4) <= b.timestamp.time() < time(20) for b in got))
+
+    def test_session_boundaries_are_explicit(self):
+        bars = calendar_bars("SPY", [DAY], 5, sessions=(Session.PRE, Session.REGULAR, Session.POST))
+        times = {b.timestamp.time() for b in bars}
+        self.assertIn(time(4, 0), times)                 # 04:00 is the first pre-market bar.
+        self.assertIn(time(19, 55), times)               # 19:55 is the last post-market bar.
+        results, _ = self.overnight_payload([(20, 0, DAY)])
+        p = provider(FakeSession([ok(results)]), MARKET_DATA_INCLUDE_EXTENDED_HOURS="true")
+        got = p.get_bars("SPY", "5m", et(DAY, 0), et(DAY + timedelta(days=1), 0))
+        self.assertEqual((got[0].timestamp.time(), got[0].session), (time(4, 0), Session.PRE))
+        self.assertEqual((got[-1].timestamp.time(), got[-1].session), (time(19, 55), Session.POST))
+        self.assertEqual(p.diagnostics[-1]["excluded_overnight_bars"], 1)  # 20:00 itself is overnight.
+
+    def test_contract_violations_inside_supported_hours_still_rejected(self):
+        good = to_results(calendar_bars("SPY", [DAY], 5)[:3])
+        cases = dict(
+            holiday=[dict(good[0], t=int(et(date(2026, 9, 7), 10).timestamp() * 1000))],
+            weekend=[dict(good[0], t=int(et(date(2026, 9, 26), 10).timestamp() * 1000))],
+            half_day_after_close=[dict(good[0], t=int(et(date(2026, 11, 27), 17, 30).timestamp() * 1000))],
+            off_grid=[dict(good[0], t=good[0]["t"] + 60_000)],
+            duplicate_overnight=[dict(good[0], t=int(et(DAY, 21).timestamp() * 1000))] * 2)
+        for name, results in cases.items():
+            with self.subTest(case=name), self.assertRaises(MarketDataError):
+                provider(FakeSession([ok(results)]), MARKET_DATA_INCLUDE_EXTENDED_HOURS="true").get_bars(
+                    "SPY", "5m", et(date(2026, 9, 1), 0), et(date(2026, 12, 1), 0))
+
+    def test_no_overnight_bars_means_no_change(self):
+        from market_data.providers.polygon import exclude_unsupported_sessions
+        bars = calendar_bars("META", [DAY, date(2026, 9, 24)], 5, sessions=(Session.PRE, Session.REGULAR, Session.POST))
+        kept, excluded = exclude_unsupported_sessions(bars)
+        self.assertEqual((kept, excluded), (bars, 0))
+        daily = aggregate(bars, "1d", CAL)
+        self.assertEqual(exclude_unsupported_sessions(daily), (daily, 0))  # Daily bars are never session-filtered.
+        p = provider(FakeSession([ok(to_results(bars))]))
+        self.assertEqual(p.get_bars("META", "5m", et(DAY, 0), et(date(2026, 9, 25), 0)),
+                         [b for b in bars if b.session is Session.REGULAR])
+        self.assertEqual(p.diagnostics[-1]["excluded_overnight_bars"], 0)
+
+    def test_derived_intervals_never_see_overnight_bars(self):
+        source = calendar_bars("SPY", [DAY], 30, sessions=(Session.PRE, Session.REGULAR, Session.POST))
+        results = sorted(to_results(source) + [dict(to_results(source)[0],
+                                                     t=int(et(DAY, 20, 30).timestamp() * 1000))], key=lambda r: r["t"])
+        p = provider(FakeSession([ok(results)]), MARKET_DATA_INCLUDE_EXTENDED_HOURS="true")
+        hours = p.get_bars("SPY", "1h", et(DAY, 0), et(DAY + timedelta(days=1), 0))
+        self.assertEqual(hours, aggregate(source, "1h", CAL))
+        self.assertEqual(p.diagnostics[-1]["excluded_overnight_bars"], 1)
 
     def test_timezone_normalization(self):
         bars = calendar_bars("META", [date(2026, 3, 6), date(2026, 3, 9)], 30)

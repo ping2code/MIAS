@@ -46,6 +46,17 @@ class RegistrationTests(unittest.TestCase):
             with self.subTest(env=env), self.assertRaises(SchedulerConfigError):
                 load_settings(env)
 
+    def test_once_daily_cadence_accepted_but_not_enabled_by_default(self):
+        """Phase 4D: the free tier serves data through the previous trading day, so once daily is the useful cadence."""
+        daily = dict(TECHNICAL_INTERVAL_SECONDS="86400", TECHNICAL_TIMEOUT_SECONDS="900", TECHNICAL_START_OFFSET_SECONDS="30")
+        definition = {d.name: d for d in registry.build_definitions(load_settings(daily))}["technical"]
+        self.assertEqual((definition.enabled, definition.interval_seconds, definition.timeout_seconds,
+                          definition.overlap_policy), (False, 86400, 900, OverlapPolicy.SKIP))
+        enabled = {d.name: d for d in registry.build_definitions(load_settings(dict(daily, TECHNICAL_SCHEDULE_ENABLED="true")))}
+        self.assertTrue(enabled["technical"].enabled)
+        with self.assertRaises(SchedulerConfigError):
+            load_settings(dict(daily, TECHNICAL_INTERVAL_SECONDS="86401"))
+
     def test_other_collectors_unchanged(self):
         before = {d.name: d for d in registry.build_definitions(load_settings({}))}
         after = {d.name: d for d in registry.build_definitions(load_settings(dict(TECHNICAL_SCHEDULE_ENABLED="true")))}

@@ -108,3 +108,18 @@ def forward_by_state(states, labels, horizons):
             per_h[str(h)] = entry
         report[state] = dict(direction={1: "bullish", -1: "bearish"}.get(direction, "none"), horizons=per_h)
     return report
+
+
+def transition_probabilities(states):
+    """For each state, its exits and the share of those exits going to each next state (descriptive only)."""
+    out = {}
+    for key, count in transitions(states).items():
+        before, after = key.split("->")
+        entry = out.setdefault(before, dict(exits=0, to={}))
+        entry["exits"] += count
+        entry["to"][after] = dict(count=count)
+    for entry in out.values():
+        for target in entry["to"].values():
+            target["share"] = round(target["count"] / entry["exits"], 6)
+        entry["to"] = dict(sorted(entry["to"].items(), key=lambda kv: (-kv[1]["count"], kv[0])))
+    return dict(sorted(out.items()))

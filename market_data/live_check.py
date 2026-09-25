@@ -88,6 +88,7 @@ def check_one(provider, symbol, interval, days):
         completed_bar_count=sum(e <= as_of for e in ends), source_bars_fetched=raw,
         first_timestamp=bars[0].timestamp.isoformat() if bars else None,
         last_timestamp=bars[-1].timestamp.isoformat() if bars else None, volume_json_types=volume_types,
+        excluded_overnight_bars=sum(d.get("excluded_overnight_bars", 0) for d in diagnostics),
         fractional_volumes=sum(d["fractional_volumes"] for d in diagnostics),
         max_fractional_volume_part=max((d["max_fractional_part"] for d in diagnostics if d["max_fractional_part"]),
                                        key=Decimal, default=None),

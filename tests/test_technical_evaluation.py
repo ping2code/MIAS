@@ -66,13 +66,15 @@ class EvaluateTests(unittest.TestCase):
     def test_report(self):
         bars = SCENARIOS["false_breakout"]("NVDA")
         report = evaluate(bars)
-        self.assertEqual((report["bars"], report["interval"], report["note"]), (78, "5m", NOTE))
+        self.assertEqual((report["metadata"]["bar_count"], report["metadata"]["interval"], report["note"]),
+                         (78, "5m", NOTE))
         self.assertIn("not a backtest", report["note"])
         self.assertEqual(sum(v["count"] for v in report["state_frequency"].values()), 78)
         self.assertEqual(report["final_state"]["state"], "range")
-        self.assertEqual(set(report["forward"]["breakout_watch"]["horizons"]), {"1", "3", "5", "10"})
+        self.assertEqual(set(report["states"]["breakout_watch"]["horizons"]), {"1", "3", "5", "10"})
+        self.assertNotIn("forward", report)  # Phase 4D: the unsuppressed Phase 4C section is gone.
         json.dumps(report)
-        self.assertEqual(evaluate([]), dict(bars=0, note=NOTE))
+        self.assertEqual(evaluate([]), dict(evaluation_format_version="phase4d-v1", bars=0, note=NOTE))
 
     def test_states_use_only_past_data_and_labels_do_not_feed_back(self):
         bars = SCENARIOS["gap_up_failure"]("META")
@@ -110,7 +112,7 @@ class CliTests(unittest.TestCase):
     def test_success(self):
         code, out, _ = self.run_main(self.ARGS, provider=FakeProvider(SCENARIOS["range"]("META")))
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["bars"], 78)
+        self.assertEqual(json.loads(out)["metadata"]["bar_count"], 78)
 
     def test_provider_failure_and_config_errors(self):
         code, _, err = self.run_main(self.ARGS, provider=FakeProvider(error=ProviderError("auth", "HTTP 401 for x")))

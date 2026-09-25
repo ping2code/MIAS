@@ -29,10 +29,15 @@ Validation never repairs data. It raises ``MarketDataError`` for:
 - duplicate or out-of-order timestamps;
 - a bar outside every session or off its session grid.
 
+**Supported-session filter (Phase 4D provider-contract finding):** bars starting
+before 04:00 or at/after 20:00 ET are overnight bars from 24-hour venues. They are
+excluded before any analysis and counted (``excluded_overnight_bars``). See
+``exclude_unsupported_sessions``.
+
 Only **completed** bars are returned: bars ending by ``now - MARKET_DATA_DELAY_SECONDS``
 and, for aggregated intervals, ending within the fetched data's coverage.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 import logging
 from urllib.parse import urlsplit
@@ -43,7 +48,7 @@ from market_data.completion import completed_bars
 from market_data.http import JsonHttpClient, ProviderError, safe_target
 from market_data.models import EXCHANGE_TZ, Interval, MarketBar, MarketDataError, Session, format_decimal
 from market_data.provider import MarketDataProvider
-from market_data.validation import validate_calendar_series
+from market_data.validation import validate_calendar_series, validate_series
 
 logger = logging.getLogger("market_data.polygon")
 NATIVE = {Interval.M1: (1, "minute"), Interval.M5: (5, "minute"), Interval.M15: (15, "minute"),
@@ -53,6 +58,35 @@ OK_STATUS = ("OK", "DELAYED")
 MAX_PAGES = 50
 FIELDS = ("t", "o", "h", "l", "c", "v")
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+SUPPORTED_START, SUPPORTED_END = time(4, 0), time(20, 0)  # MIAS pre-market open .. regular-day post-market end (ET).
+
+
+def exclude_unsupported_sessions(bars):
+    """Explicit supported-session filter (Phase 4D provider-contract finding): (kept bars, excluded count).
+
+    Vendor aggregates can include **overnight** bars from 24-hour venues. The live
+    Phase 4D matrix saw SPY at 2025-02-20 20:00 ET. A bar that *starts* before 04:00
+    or at/after 20:00 exchange time lies outside every MIAS session, so it is
+    excluded, counted and never analysed: no aggregation, indicators, pivots, levels,
+    evaluation or persistence. The boundary is explicit: 04:00 is pre-market (kept),
+    19:55 is post-market (kept), 20:00 is overnight (excluded).
+
+    This is **not** a repair. The whole series has already passed the structural
+    checks (symbol, interval, ordering, duplicates, OHLC). Every bar inside 04:00-20:00
+    still goes through the full calendar contract, so holiday, weekend, off-grid and
+    half-day after-close (17:00-20:00) bars are still rejected. MIAS session
+    semantics are unchanged: there is no overnight session.
+    """
+    kept, excluded = [], 0
+    for bar in bars:
+        local = bar.timestamp.astimezone(EXCHANGE_TZ).time()
+        if bar.interval.intraday and (local < SUPPORTED_START or local >= SUPPORTED_END):
+            excluded += 1
+            continue
+        kept.append(bar)
+    return kept, excluded
 
 
 class PolygonProvider(MarketDataProvider):
@@ -123,7 +157,8 @@ class PolygonProvider(MarketDataProvider):
         volume_kinds = sorted({type(item.get("v")).__name__ for item in results if isinstance(item, dict)})
         fractional = [v - int(v) for v in (item.get("v") for item in results if isinstance(item, dict))
                       if isinstance(v, Decimal) and v.is_finite() and v != int(v)]
-        bars = [self._bar(symbol, interval, item, i) for i, item in enumerate(results)]
+        bars = list(validate_series([self._bar(symbol, interval, item, i) for i, item in enumerate(results)]))
+        bars, overnight = exclude_unsupported_sessions(bars)
         bars = list(validate_calendar_series(bars, self.calendar))
         raw_count = len(bars)
         if not self.settings.include_extended_hours:
@@ -131,11 +166,12 @@ class PolygonProvider(MarketDataProvider):
         self.diagnostics.append(dict(symbol=symbol, source_interval=interval.label, pages=page + 1,
                                      statuses=sorted(str(s) for s in statuses), adjusted_requested=self.settings.adjusted,
                                      adjusted_echo=sorted(str(a) for a in adjusted_echo), raw_bars=raw_count,
-                                     kept_bars=len(bars), volume_json_types=volume_kinds,
+                                     kept_bars=len(bars), excluded_overnight_bars=overnight,
+                                     volume_json_types=volume_kinds,
                                      fractional_volumes=len(fractional),
                                      max_fractional_part=format_decimal(max(fractional)) if fractional else None))
-        logger.info("event=market_data_fetch provider=polygon symbol=%s interval=%s bars=%d", symbol, interval.label,
-                    len(bars))
+        logger.info("event=market_data_fetch provider=polygon symbol=%s interval=%s bars=%d excluded_overnight=%d",
+                    symbol, interval.label, len(bars), overnight)
         return bars
 
     def _results(self, payload, url):

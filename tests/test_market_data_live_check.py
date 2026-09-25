@@ -117,6 +117,7 @@ class LiveCheckTests(unittest.TestCase):
         self.assertEqual((code, summary["validation"], summary["checks"]["volume_valid"]), (0, "ok", True))
         self.assertEqual((summary["fractional_volumes"], summary["max_fractional_volume_part"]), (2, "0.5"))
         self.assertEqual(summary["min_request_interval_seconds"], 12.0)
+        self.assertEqual(summary["excluded_overnight_bars"], 0)
 
     def test_empty_response(self):
         code, lines, _ = run(["--symbols", "META", "--intervals", "5m", "--days", "1"],
