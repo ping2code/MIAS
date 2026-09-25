@@ -45,7 +45,7 @@ from persistence.geopolitical_disclosure import (
 from persistence.geopolitical_registry import AnchorRegistryRepository, KEY, backfill_geopolitical_anchor_registry
 
 # The migration head this tool expects (tests pin it to the Alembic head; bump with every new migration).
-EXPECTED_REVISION = "0004_technical_snapshots"
+EXPECTED_REVISION = "0005_technical_fractional_vol"
 EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_DATABASE, EXIT_SCHEMA = 0, 1, 2, 3, 4
 SWITCHES = ("GEOPOLITICAL_DURABLE_IDENTITY_LOOKUP_ENABLED", "GEOPOLITICAL_PERSISTENCE_SHADOW_ENABLED")
 

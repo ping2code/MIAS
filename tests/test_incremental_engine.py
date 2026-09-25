@@ -3,7 +3,7 @@
 Tolerance is zero: both engines perform the same floating-point operations in the
 same order, so every snapshot must compare equal with ``==``.
 """
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import date, timedelta
 import unittest
 
@@ -56,6 +56,13 @@ class EquivalenceTests(unittest.TestCase):
         reference = self.compare(bars, config, CAL, "long bounded")
         self.assertGreater(reference[-1].evidence["confirmed_pivots"], 12)  # The bound is actually exercised.
         self.assertIsNotNone(reference[-1].ema["ema200"])
+
+    def test_fractional_volume_sequence(self):
+        from decimal import Decimal
+        bars = [replace(b, volume=b.volume + Decimal(i % 7) / Decimal(8) + Decimal("0.0001"))
+                for i, b in enumerate(long_series(sessions=6))]
+        reference = self.compare(bars, calendar=CAL, label="fractional volume")
+        self.assertNotEqual(reference[-1].volume, int(reference[-1].volume))
 
     def test_daily_bars(self):
         from market_data.aggregation import aggregate

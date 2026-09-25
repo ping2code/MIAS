@@ -74,7 +74,12 @@ def calendar_bars(symbol, days, minutes, *, base=500.0, sessions=(Session.REGULA
 def to_results(bars):
     """Vendor-style aggregate results (UTC milliseconds, JSON numbers) for MarketBars."""
     return [dict(t=int(b.timestamp.astimezone(timezone.utc).timestamp() * 1000), o=float(b.open), h=float(b.high),
-                 l=float(b.low), c=float(b.close), v=b.volume, vw=float(b.close), n=10) for b in bars]
+                 l=float(b.low), c=float(b.close), v=_json_volume(b.volume), vw=float(b.close), n=10) for b in bars]
+
+
+def _json_volume(volume):
+    """Whole volumes as JSON integers, fractional ones as JSON numbers (the vendor sends both)."""
+    return int(volume) if volume == int(volume) else float(volume)
 
 
 def payload(results, *, status="OK", next_url=None):

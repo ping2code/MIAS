@@ -33,23 +33,56 @@ New and changed code:
 | `technical/runner.py` | session-anchored warm-up windows, optional shadow persistence |
 | `technical/levels.py` | faster clustering, bit-identical output |
 | `orchestrator/config.py`, `orchestrator/registry.py`, `orchestrator/job_runner.py` | `technical` job (disabled by default), child environment allowlist |
+| `migrations/versions/0005_technical_fractional_volume.py` | follow-up migration **`0005_technical_fractional_vol`**: snapshot volume becomes double precision |
+| `market_data/models.py`, `technical/indicators.py`, `technical/incremental.py`, `technical/engine.py` | follow-up: exact `Decimal` bar volume (fractional allowed), float in indicator math |
 
 ## 1. Provider validation result
 
-**LIVE VALIDATION NOT EXECUTED.** No credential was present in the process
-environment (`MARKET_DATA_PROVIDER` and `MARKET_DATA_API_KEY` unset), and `.env`
-is never read. `python -m market_data.live_check` reported `NOT EXECUTED` and
-exited 2.
+**First live check: EXECUTED on 2026-09-24 (20:21 America/New_York) — FAILED.**
+The operator ran `python -m market_data.live_check --symbols META,NVDA --intervals
+5m,1h,1d --days 5 --states` with a free-tier development key, in their own
+terminal. The key never reached MIAS logs or this repository. There were two
+findings.
 
-The Polygon.io/Massive contract is therefore **still unverified against the real
-API**. What *is* verified, against a fake HTTP layer:
+1. **Fractional volume (contract mismatch).** The first result of every response
+   that got through (META 5m, the META 30m source for 1h/1d, and NVDA 5m) failed
+   with `volume must be a whole number`. The vendor's aggregates include
+   fractional-share trades, so fractional volume is valid data. The adapter's
+   whole-number assumption was wrong. It correctly refused to round, but it
+   stopped at the first result, so nothing else could be observed.
+2. **Free-tier rate limit.** The first 5 requests succeeded, and every later
+   request got HTTP 429 **without** a `Retry-After` header. The 1/2/4 s backoff
+   exhausted 4 attempts each time, and the run used 17 requests in total. This
+   confirms the quota of about 5 requests/minute. Retries alone cannot absorb a
+   burst.
 
-- the adapter's handling of every documented case;
-- the live-check tool's own checks;
-- all error paths.
+**Fixes (follow-up to Phase 4C), each tested explicitly:**
 
-No provider behaviour is claimed as verified. `docs/phase4c-real-history-report.md`
-records the same status.
+- **Volume:** now an exact non-negative `Decimal` end to end. `MarketBar`
+  accepts int, `Decimal` or a numeric string (never float) and rejects negative
+  or non-finite values. The adapter accepts fractional JSON numbers exactly and
+  never rounds. Indicators use it as float, like prices. Whole-number volumes
+  give bit-identical results, since float sums of integers below 2^53 are exact,
+  and every Phase 4/4B test passes unchanged. Replay and incremental output stay
+  exactly equal on a fractional-volume series. Snapshot `volume` is double
+  precision (migration `0005_technical_fractional_vol`).
+- **Pacing:** `MARKET_DATA_MIN_REQUEST_INTERVAL_SECONDS` (default **12**, the free
+  tier's 5/minute; 0-120) spaces every request, retries included.
+  `MARKET_DATA_RATE_LIMIT_FALLBACK_WAIT_SECONDS` (default 15, 0-600) is the
+  minimum wait after a 429 without `Retry-After`.
+- **Diagnostics:** the live check reports `fractional_volumes` and
+  `max_fractional_volume_part`, and replaces the whole-number check with
+  `volume_valid` (non-negative and finite).
+
+**Still unverified until the check is rerun:**
+
+- field names beyond volume;
+- the `adjusted` echo, pagination (`pages`, and therefore the request budget,
+  section 4) and the delayed status;
+- the session grid and completed-bar behaviour on real data.
+
+No other provider behaviour is claimed as verified.
+`docs/phase4c-real-history-report.md` records the same status.
 
 ## 2. Live-check procedure
 
@@ -86,9 +119,9 @@ contains raw payloads or the key.
 | field names | every result had `t/o/h/l/c/v` of the expected JSON types (validation fails otherwise) |
 | timestamp units | `t` read as milliseconds must land inside the requested window. Seconds would land in 1970 and fail |
 | timezone normalization | bars are converted to America/New_York and must sit on the session grid |
-| volume integral | a fractional volume is rejected; `volume_json_types` shows whether whole numbers arrive as JSON integers or floats |
+| volume | non-negative and finite; fractional values are valid and kept exactly (`fractional_volumes`, `max_fractional_volume_part`); `volume_json_types` shows JSON integers vs numbers |
 | pagination | pages are counted, and `next_url` is followed only to the configured host |
-| rate limits | 429 responses and rate-limit headers are recorded; retries are bounded |
+| rate limits | 429 responses and rate-limit headers are recorded; requests are paced (`min_request_interval_seconds`); retries are bounded |
 | delayed data | `statuses` shows `DELAYED`; `latest_bar_age_seconds` is compared with `MARKET_DATA_DELAY_SECONDS` |
 | adjusted | the vendor's `adjusted` echo must equal the requested flag |
 | session grid | every bar maps to one session and sits on its grid |
@@ -128,7 +161,11 @@ Both readings are shown; the live check's `pages` field settles it.
 | A: limit counts returned bars | 1,920 bars → 1 page | 14,400 bars → 1 page | 2 | **4** |
 | B: limit counts minute bars (960/day incl. extended) | 9,600 → 1 page | 432,000 → 9 pages | 10 | **20** |
 
-The free tier allows about 5 requests/minute (a burst cap):
+The free tier allows about 5 requests/minute, **confirmed by the first live
+check**: the 6th request in a minute got 429 with no `Retry-After`. With the
+default 12 s pacing, a run's requests are spread out rather than retried:
+reading A takes about 36 s of pacing per run, and reading B about 4 minutes.
+Both are inside the 900 s job timeout.
 
 | Cadence | Runs/hour | A: requests/hour | B: requests/hour | Free tier (5/min) |
 |---|---|---|---|---|
@@ -137,13 +174,12 @@ The free tier allows about 5 requests/minute (a burst cap):
 | 30 min (default) | 2 | 8 | 40 | A: fits. B: only with paced retries (see below) |
 | 60 min | 1 | 4 | 20 | A: fits. B: only with paced retries |
 
-Under reading B, the default retry policy (3 retries, 1 s backoff doubling,
-honouring `Retry-After` up to 60 s) may exhaust its retries inside one run. To
-run on the free tier, one of the following would be needed:
-
-- `MARKET_DATA_MAX_RETRIES=5` with `MARKET_DATA_RETRY_BACKOFF_SECONDS=15`;
-- a paid tier;
-- the Phase 5 daily-bar cache (section 17).
+Before pacing existed, the default retry policy (3 retries, 1/2/4 s backoff)
+failed on the free tier. That was observed, not predicted. Pacing at 12 s keeps
+each run under the quota, and a 429 without `Retry-After` now waits at least
+15 s. Under reading B, the cadence must still leave room for about 4 minutes of
+paced requests per run. A paid tier (`MARKET_DATA_MIN_REQUEST_INTERVAL_SECONDS=0`)
+or the Phase 5 daily-bar cache (section 17) removes that constraint.
 
 Real-time and intraday freshness also depend on the plan. The free tier may
 provide end-of-day data only.
@@ -333,9 +369,9 @@ is read-only. It exits 0 when clean and 1 when it finds problems. It reports:
 | Failure | Behaviour |
 |---|---|
 | provider auth (401/403), permanent 4xx, malformed JSON, redirect | not retried; symbol fails; runner exits 1; live check reports `error_kind` |
-| rate limit (429), 5xx, timeout, connection error | bounded retries with backoff (`Retry-After` honoured, capped), then fail as above |
+| rate limit (429), 5xx, timeout, connection error | requests paced; bounded retries with backoff (`Retry-After` honoured and capped; at least the fallback wait for a 429 without it), then fail as above |
 | empty response | zero bars; timeframes reported `unavailable`; no crash |
-| duplicate or out-of-order bars, fractional or negative volume, bad timestamps, off-grid or holiday bars, missing fields | explicit `MarketDataError`; nothing is repaired |
+| duplicate or out-of-order bars, negative/non-finite/non-numeric volume, bad timestamps, off-grid or holiday bars, missing fields | explicit `MarketDataError`; nothing is repaired (fractional volume is **valid** and kept exactly) |
 | pagination to another host, or too many pages | refused (`payload`) |
 | request budget exceeded (live check) | `error_kind=budget` |
 | configuration error (provider or persistence) | exit 2 |
@@ -362,10 +398,27 @@ is read-only. It exits 0 when clean and 1 when it finds problems. It reports:
   staging harness (`HEAD`) pin the head string for the same reason and were
   updated. No geopolitical behaviour changed.
 
+**Follow-up ID: `0005_technical_fractional_vol`** (down revision `0004_technical_snapshots`).
+
+- Changes `technical_snapshots.volume` from BIGINT to DOUBLE PRECISION
+  (`USING volume::double precision`). Whole numbers convert exactly.
+- Downgrade converts back with `round(volume)::bigint`, which is **lossy** for
+  fractional values; export first. The audit then reports those rows as
+  content-hash mismatches.
+- On SQLite (tests/dev only), which cannot `ALTER` a column type, the same change
+  runs in Alembic batch mode (table recreate). All check constraints, indexes, the
+  unique identity and the conflict foreign key are preserved.
+- Tested on disposable PostgreSQL 16: fractional insert, an exact duplicate round
+  trip, downgrade to `0004` (rounded) and re-upgrade, plus the existing
+  up/down/re-up and `compare_metadata` checks.
+- The pinned head (`EXPECTED_REVISION`, three tests, the staging harness `HEAD`) is
+  now `0005_technical_fractional_vol`.
+
 ## 15. Real-history evaluation
 
-**NOT EXECUTED: no credential** (see `docs/phase4c-real-history-report.md`, which
-contains no substitute numbers). The tooling is ready:
+**NOT YET PRODUCED.** The first live check failed before any bars could be
+evaluated (section 1); see `docs/phase4c-real-history-report.md`, which contains
+no substitute numbers. The tooling is ready:
 
 - `market_data.live_check --states`;
 - `evaluation.technical_replay`, which reports state counts, durations,
@@ -398,9 +451,9 @@ bars):
 
 ## 17. Known limitations
 
-- **Live contract unverified.** Field names, volume JSON type, `adjusted` echo,
-  pagination semantics (section 4), rate-limit headers and plan freshness are
-  unconfirmed.
+- **Live contract partly verified.** Fractional volume and the 5/minute quota with
+  no `Retry-After` are confirmed and handled. Field names, the `adjusted` echo,
+  pagination semantics (section 4) and plan freshness await the rerun.
 - **Request budget reading B** would make free-tier cadences below 30 minutes
   impractical.
 - **Stateless runner:** each run re-warms from history. A per-day cache of the
@@ -419,7 +472,9 @@ bars):
 1. **Stop persisting:** set `TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED=false`.
    Technical output is unaffected.
 2. **Stop scheduling:** `TECHNICAL_SCHEDULE_ENABLED=false` (already the default).
-3. **Schema:** `alembic downgrade 0003_geo_anchor_registry` drops
+3. **Schema:** `alembic downgrade 0004_technical_snapshots` reverts only the
+   volume type change (lossy for fractional values). `alembic downgrade
+   0003_geo_anchor_registry` drops
    `technical_snapshot_conflicts` and `technical_snapshots`, **deleting their
    data**. Export first if the rows matter. Prior tables are untouched.
 4. **Code:** revert the Phase 4C commit. The technical engine outputs are

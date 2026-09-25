@@ -1,6 +1,9 @@
 """Normalized OHLCV (Open, High, Low, Close, Volume) bars and generic intervals.
 
-Prices are ``Decimal`` so bar data keeps exact exchange precision. Indicator math
+Prices and volume are ``Decimal`` so bar data keeps exact vendor precision. Volume
+may be fractional: vendor aggregates include fractional-share trades (observed in the
+Phase 4C live check), so a non-negative fractional volume is valid data, never
+rounded. Indicator math
 converts to ``float``: IEEE-754 double precision has ~15-16 significant digits,
 so rounding error for prices in the tens to thousands of dollars is around
 1e-12. That is ten orders of magnitude below a $0.01 tick, and indicator outputs
@@ -92,7 +95,7 @@ class MarketBar:
     high: Decimal
     low: Decimal
     close: Decimal
-    volume: int
+    volume: Decimal  # Non-negative; int, Decimal or numeric string accepted (never float), stored as Decimal.
     session: Session = None
 
     def __post_init__(self):
@@ -106,8 +109,10 @@ class MarketBar:
             if value <= 0:
                 raise MarketDataError(f"{name} must be positive")
             object.__setattr__(self, name, value)
-        if isinstance(self.volume, bool) or not isinstance(self.volume, int) or self.volume < 0:
-            raise MarketDataError("volume must be a non-negative integer")
+        volume = _decimal("volume", self.volume)
+        if volume < 0:
+            raise MarketDataError("volume must be non-negative")
+        object.__setattr__(self, "volume", volume)
         if self.high < max(self.open, self.close, self.low):
             raise MarketDataError("high must be >= open, close and low")
         if self.low > min(self.open, self.close, self.high):
@@ -131,4 +136,4 @@ class MarketBar:
     def to_dict(self):
         return dict(symbol=self.symbol, timestamp=self.timestamp.isoformat(), interval=self.interval.label,
                     open=str(self.open), high=str(self.high), low=str(self.low), close=str(self.close),
-                    volume=self.volume, session=self.session.value if self.session else None)
+                    volume=str(self.volume), session=self.session.value if self.session else None)

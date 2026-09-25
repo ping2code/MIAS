@@ -4,7 +4,12 @@
 - Retries (at most ``max_retries``) cover **transient** failures only: connection
   errors, timeouts, HTTP 500/502/503/504 and HTTP 429 (rate limit).
 - Backoff is ``backoff x 2^attempt``. For 429, a numeric ``Retry-After`` header is
-  honoured, capped at ``max_rate_limit_wait_seconds``.
+  honoured, capped at ``max_rate_limit_wait_seconds``. A 429 *without*
+  ``Retry-After`` (observed on the free tier in the Phase 4C live check) waits at
+  least ``rate_limit_fallback_seconds``.
+- **Pacing:** consecutive requests (retries included) are spaced at least
+  ``min_interval_seconds`` apart, so a burst stays under a per-minute quota
+  instead of relying on 429 retries.
 - Never retried: 401/403 (authentication/entitlement), other 4xx, malformed JSON and
   redirects.
 - Errors and logs name the host, path and status only. Query strings, headers and
@@ -39,12 +44,17 @@ def safe_target(url):
 
 class JsonHttpClient:
     def __init__(self, *, headers, timeout_seconds, max_retries, backoff_seconds, max_rate_limit_wait_seconds,
-                 session=None, sleep=time.sleep):
+                 session=None, sleep=time.sleep, min_interval_seconds=0.0, rate_limit_fallback_seconds=0.0,
+                 clock=time.monotonic):
         self._headers = dict(headers)
         self.timeout_seconds, self.max_retries = timeout_seconds, max_retries
         self.backoff_seconds, self.max_rate_limit_wait_seconds = backoff_seconds, max_rate_limit_wait_seconds
         self._session = session or requests.Session()
         self._sleep = sleep
+        self._clock = clock
+        self.min_interval_seconds, self.rate_limit_fallback_seconds = min_interval_seconds, rate_limit_fallback_seconds
+        self._last_request_at = None
+        self.paced_seconds = 0.0      # Total client-side pacing wait (diagnostics).
         self.requests_made = 0
         self.max_requests = None      # Optional hard cap (live checks); None means unlimited.
         self.status_counts = {}       # HTTP status -> count (diagnostics; no payloads).
@@ -56,6 +66,7 @@ class JsonHttpClient:
             last = attempt == self.max_retries
             if self.max_requests is not None and self.requests_made >= self.max_requests:
                 raise ProviderError("budget", f"request budget of {self.max_requests} exhausted before {target}")
+            self._pace()
             self.requests_made += 1
             try:
                 response = self._session.get(url, params=params, headers=self._headers, timeout=self.timeout_seconds,
@@ -86,18 +97,29 @@ class JsonHttpClient:
                 if last:
                     raise ProviderError(kind, f"HTTP {status} for {target} after {attempt + 1} attempts", status)
                 self._wait(attempt, response.headers.get("Retry-After") if status == 429 else None, f"HTTP {status}",
-                           target)
+                           target, rate_limited=status == 429)
                 continue
             raise ProviderError("http", f"HTTP {status} for {target}", status)
         raise AssertionError("unreachable")
 
-    def _wait(self, attempt, retry_after, reason, target):
+    def _pace(self):
+        if self.min_interval_seconds > 0 and self._last_request_at is not None:
+            wait = self._last_request_at + self.min_interval_seconds - self._clock()
+            if wait > 0:
+                self.paced_seconds += wait
+                self._sleep(wait)
+        self._last_request_at = self._clock()
+
+    def _wait(self, attempt, retry_after, reason, target, rate_limited=False):
         delay = self.backoff_seconds * (2 ** attempt)
+        honoured = False
         if retry_after is not None:
             try:
-                delay = max(delay, float(retry_after))
+                delay, honoured = max(delay, float(retry_after)), True
             except ValueError:
                 pass
+        if rate_limited and not honoured:
+            delay = max(delay, self.rate_limit_fallback_seconds)
         delay = min(delay, self.max_rate_limit_wait_seconds)
         logger.warning("event=market_data_retry target=%s reason=%s attempt=%d wait_seconds=%.1f", target,
                        reason.replace(" ", "_"), attempt + 1, delay)

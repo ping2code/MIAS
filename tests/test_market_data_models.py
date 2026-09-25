@@ -28,6 +28,16 @@ class MarketBarTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(MarketDataError):
                 bar(**kwargs)
 
+    def test_fractional_volume_is_exact(self):
+        b = bar(v=Decimal("1234.5678"))
+        self.assertEqual(b.volume, Decimal("1234.5678"))
+        self.assertEqual(bar(v="0.25").volume, Decimal("0.25"))
+        self.assertEqual(bar(v=7).volume, 7)
+        self.assertEqual(b.to_dict()["volume"], "1234.5678")
+        for bad in (Decimal("-0.1"), "NaN", "abc", 1.5):
+            with self.subTest(volume=bad), self.assertRaises(MarketDataError):
+                bar(v=bad)
+
     def test_float_prices_and_non_finite_rejected(self):
         with self.assertRaises(MarketDataError):
             MarketBar("META", T0, "5m", 100.0, Decimal(101), Decimal(99), Decimal(100), 1)

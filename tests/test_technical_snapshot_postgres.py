@@ -86,7 +86,27 @@ class TechnicalSnapshotPostgresTests(unittest.TestCase):
         with self.engine.connect() as connection:
             self.assertEqual(compare_metadata(MigrationContext.configure(connection), metadata), [])
             version = connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-        self.assertEqual(version, "0004_technical_snapshots")
+        self.assertEqual(version, "0005_technical_fractional_vol")
+
+    def test_fractional_volume_migration_0005(self):
+        from dataclasses import replace as dc_replace
+        fractional = dc_replace(self.snaps[-1], volume=12345.6789)
+        row = row_for(fractional, self.bars)
+        self.assertEqual(persist_technical_snapshot(self.engine, row)["outcome"], "inserted")
+        self.assertEqual(persist_technical_snapshot(self.engine, row)["outcome"], "duplicate")  # Exact round trip.
+        with self.engine.connect() as connection:
+            column = {c["name"]: c for c in sa.inspect(connection).get_columns("technical_snapshots")}["volume"]
+            self.assertIsInstance(column["type"], sa.Float)
+            self.assertEqual(connection.execute(sa.text("SELECT volume FROM technical_snapshots")).scalar_one(), 12345.6789)
+        self.migrate("downgrade", "0004_technical_snapshots")  # Explicitly lossy: rounds to BIGINT.
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(sa.text("SELECT volume FROM technical_snapshots")).scalar_one(), 12346)
+        self.migrate("upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(sa.text("SELECT volume FROM technical_snapshots")).scalar_one(), 12346.0)
+        out = io.StringIO()
+        tools_main(["audit"], engine=self.engine, calendar=CAL, now=datetime(2026, 9, 23, 20, tzinfo=timezone.utc), out=out)
+        self.assertEqual(len(json.loads(out.getvalue())["content_hash_mismatches"]), 1)  # The audit sees the rounding.
 
     def test_indexes_constraints_and_types(self):
         with self.engine.connect() as connection:
@@ -190,8 +210,10 @@ class TechnicalSnapshotPostgresTests(unittest.TestCase):
         self.assertEqual((stats["failed"], stats["persisted"]), (1, 0))
 
     def test_tools_on_postgres(self):
-        for snap in self.snaps[-10:]:
-            persist_technical_snapshot(self.engine, row_for(snap, self.bars))
+        from dataclasses import replace as dc_replace
+        for i, snap in enumerate(self.snaps[-10:]):
+            persist_technical_snapshot(self.engine, row_for(dc_replace(snap, volume=snap.volume + i / 8 + 0.0001),
+                                                            self.bars))
         now = datetime(2026, 9, 23, 20, tzinfo=timezone.utc)
         out = io.StringIO()
         self.assertEqual(tools_main(["audit"], engine=self.engine, calendar=CAL, now=now, out=out), 0)

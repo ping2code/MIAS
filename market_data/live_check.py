@@ -21,7 +21,8 @@ Contract checks per result (``checks``):
   (otherwise validation fails);
 - ``timestamps_in_requested_range``: ``t`` interpreted as milliseconds landed inside
   the requested window;
-- ``volume_integral``: every volume was a whole number;
+- ``volume_valid``: every volume was a non-negative finite number. Fractional
+  volume is valid and is counted in ``fractional_volumes``;
 - ``session_grid``: every bar mapped to one session and sat on its grid;
 - ``completed_only``: every returned bar ended at or before the data cut-off;
 - ``adjusted_echo_matches``: the vendor echoed the requested ``adjusted`` flag.
@@ -34,6 +35,7 @@ Exit codes: 0 all checks passed, 1 a provider/data failure or failed check, 2 co
 """
 import argparse
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import json
 import os
 import sys
@@ -76,7 +78,7 @@ def check_one(provider, symbol, interval, days):
     volume_types = sorted({t for d in diagnostics for t in d["volume_json_types"]})
     echo = sorted({a for d in diagnostics for a in d["adjusted_echo"]})
     checks = dict(
-        fields_and_types=True, volume_integral=True, session_grid=True,  # Otherwise get_bars would have raised.
+        fields_and_types=True, volume_valid=True, session_grid=True,  # Otherwise get_bars would have raised.
         timestamps_in_requested_range=all(start <= b.timestamp < end for b in bars) and (raw == 0 or bool(bars)),
         completed_only=all(e <= as_of for e in ends),
         adjusted_echo_matches=echo in ([], [str(provider.settings.adjusted)]))
@@ -86,9 +88,13 @@ def check_one(provider, symbol, interval, days):
         completed_bar_count=sum(e <= as_of for e in ends), source_bars_fetched=raw,
         first_timestamp=bars[0].timestamp.isoformat() if bars else None,
         last_timestamp=bars[-1].timestamp.isoformat() if bars else None, volume_json_types=volume_types,
+        fractional_volumes=sum(d["fractional_volumes"] for d in diagnostics),
+        max_fractional_volume_part=max((d["max_fractional_part"] for d in diagnostics if d["max_fractional_part"]),
+                                       key=Decimal, default=None),
         pages=sum(d["pages"] for d in diagnostics), pagination_observed=any(d["pages"] > 1 for d in diagnostics),
         statuses=sorted({s for d in diagnostics for s in d["statuses"]}), adjusted_echo=echo,
         rate_limited_responses=provider.http.status_counts.get(429, 0) - before_429,
+        min_request_interval_seconds=provider.settings.min_request_interval_seconds,
         rate_limit_headers=dict(provider.http.rate_limit_headers),
         latest_bar_age_seconds=latest_delay, requests=provider.http.requests_made - before_requests)
     return summary

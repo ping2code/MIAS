@@ -95,7 +95,7 @@ class LiveCheckTests(unittest.TestCase):
         cases = dict(
             auth=([FakeResponse(401)], "auth"), rate_limit=([FakeResponse(429)] * 4, "rate_limit"),
             server=([FakeResponse(503)] * 4, "http"), malformed=([FakeResponse(200, text="{oops")], "payload"),
-            fractional_volume=([FakeResponse(200, payload([dict(good[0], v=10.5)]))], "data"),
+            negative_volume=([FakeResponse(200, payload([dict(good[0], v=-10.5)]))], "data"),
             duplicate=([FakeResponse(200, payload([good[0], good[0]]))], "data"),
             seconds_timestamp=([FakeResponse(200, payload([dict(good[0], t=good[0]["t"] // 1000)]))], "data"),
             bad_pagination=([FakeResponse(200, payload(good[:5], next_url="https://evil.example/x"))], "payload"),
@@ -107,6 +107,16 @@ class LiveCheckTests(unittest.TestCase):
                 self.assertEqual((code, lines[0]["validation"], lines[0]["error_kind"]), (1, "failed", kind))
                 self.assertEqual(lines[-1]["result"], "failed")
                 self.assertNotIn(TEST_KEY, text)
+
+    def test_fractional_volume_is_reported_not_rejected(self):
+        good = to_results([b for b in DATA[5] if b.timestamp.date() == date(2026, 9, 23)])
+        good[0]["v"], good[5]["v"] = 1500.125, 99.5
+        code, lines, _ = run(["--symbols", "META", "--intervals", "5m", "--days", "1"],
+                             provider(FakeSession([FakeResponse(200, payload(good))])))
+        summary = lines[0]
+        self.assertEqual((code, summary["validation"], summary["checks"]["volume_valid"]), (0, "ok", True))
+        self.assertEqual((summary["fractional_volumes"], summary["max_fractional_volume_part"]), (2, "0.5"))
+        self.assertEqual(summary["min_request_interval_seconds"], 12.0)
 
     def test_empty_response(self):
         code, lines, _ = run(["--symbols", "META", "--intervals", "5m", "--days", "1"],

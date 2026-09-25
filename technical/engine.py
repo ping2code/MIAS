@@ -103,7 +103,7 @@ class TechnicalEngine:
             ema_values = {f"ema{p}": emas[p][i] for p in c.ema_periods}
             snapshot = TechnicalSnapshot(
                 symbol=bar.symbol, timestamp=bar.timestamp, interval=bar.interval.label, index=i, price=closes[i],
-                ema=ema_values, vwap=vwap[i], rsi=rsi[i], atr=atr[i], volume=bar.volume, average_volume=averages[i],
+                ema=ema_values, vwap=vwap[i], rsi=rsi[i], atr=atr[i], volume=float(bar.volume), average_volume=averages[i],
                 relative_volume=relatives[i], trend=structure["trend"], last_high_type=structure["last_high_type"],
                 last_low_type=structure["last_low_type"], significant_high=structure["last_significant_high"],
                 significant_low=structure["last_significant_low"],

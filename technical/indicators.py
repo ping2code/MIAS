@@ -24,6 +24,8 @@ market_data.models for why that is safe).
   bars get None. VWAP stays None until the session has traded volume;
   zero-volume bars add nothing. Daily bars get None (VWAP is an intraday
   measure).
+- **Volume** is converted to float like prices. It may be fractional; whole-number
+  volumes stay exact, since float sums of integers below 2^53 are exact.
 - **Relative volume:** current volume divided by the mean volume of the previous
   N bars (the current bar is excluded). It is None until N prior bars exist or
   when that mean is 0.
@@ -110,16 +112,17 @@ def atr(bars, period=14):
 
 
 def vwap(bars):
-    out, current, pv, volume = [], None, 0.0, 0
+    out, current, pv, volume = [], None, 0.0, 0.0
     for bar in bars:
         if not bar.interval.intraday or not bar.regular:
             out.append(None)
             continue
         key = session_date(bar.timestamp)
         if key != current:  # New regular session: reset.
-            current, pv, volume = key, 0.0, 0
-        pv += bar.typical_price * bar.volume
-        volume += bar.volume
+            current, pv, volume = key, 0.0, 0.0
+        shares = float(bar.volume)
+        pv += bar.typical_price * shares
+        volume += shares
         out.append(pv / volume if volume else None)
     return out
 
@@ -133,9 +136,9 @@ def relative_volume(bars, lookback=20):
             averages.append(None)
             relatives.append(None)
             continue
-        average = sum(b.volume for b in bars[i - lookback:i]) / lookback
+        average = sum([float(b.volume) for b in bars[i - lookback:i]]) / lookback
         averages.append(average)
-        relatives.append(bar.volume / average if average > 0 else None)
+        relatives.append(float(bar.volume) / average if average > 0 else None)
     return averages, relatives
 
 

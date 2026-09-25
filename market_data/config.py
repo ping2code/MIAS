@@ -9,6 +9,8 @@
 | ``MARKET_DATA_MAX_RETRIES`` | 3 | retries for transient failures only, 0-5 |
 | ``MARKET_DATA_RETRY_BACKOFF_SECONDS`` | 1.0 | first backoff; doubles per retry, 0-60 |
 | ``MARKET_DATA_MAX_RATE_LIMIT_WAIT_SECONDS`` | 60 | cap on a single rate-limit wait, 1-600 |
+| ``MARKET_DATA_MIN_REQUEST_INTERVAL_SECONDS`` | 12 | minimum spacing between requests, 0-120 (12 = the free tier's 5/minute; 0 for unlimited plans) |
+| ``MARKET_DATA_RATE_LIMIT_FALLBACK_WAIT_SECONDS`` | 15 | wait after a 429 without ``Retry-After``, 0-600 (capped by the max wait) |
 | ``MARKET_DATA_DELAY_SECONDS`` | 900 | data is treated as available only up to now minus this, 0-86400 |
 | ``MARKET_DATA_ADJUSTED`` | true | split-adjusted bars |
 | ``MARKET_DATA_INCLUDE_EXTENDED_HOURS`` | false | keep pre/post-market intraday bars |
@@ -58,6 +60,8 @@ class MarketDataSettings:
     delay_seconds: int
     adjusted: bool
     include_extended_hours: bool
+    min_request_interval_seconds: float = 12.0
+    rate_limit_fallback_wait_seconds: float = 15.0
     api_key: str = field(default=None, repr=False)
 
     def safe_view(self):
@@ -65,6 +69,8 @@ class MarketDataSettings:
         return dict(provider=self.provider, base_url=self.base_url, timeout_seconds=self.timeout_seconds,
                     max_retries=self.max_retries, backoff_seconds=self.backoff_seconds,
                     max_rate_limit_wait_seconds=self.max_rate_limit_wait_seconds, delay_seconds=self.delay_seconds,
+                    min_request_interval_seconds=self.min_request_interval_seconds,
+                    rate_limit_fallback_wait_seconds=self.rate_limit_fallback_wait_seconds,
                     adjusted=self.adjusted, include_extended_hours=self.include_extended_hours,
                     api_key="set" if self.api_key else "unset")
 
@@ -89,6 +95,8 @@ def load_market_data_settings(environ):
         backoff_seconds=_number(environ, "MARKET_DATA_RETRY_BACKOFF_SECONDS", 1.0, 0, 60),
         max_rate_limit_wait_seconds=_number(environ, "MARKET_DATA_MAX_RATE_LIMIT_WAIT_SECONDS", 60.0, 1, 600),
         delay_seconds=_number(environ, "MARKET_DATA_DELAY_SECONDS", 900, 0, 86_400, int),
+        min_request_interval_seconds=_number(environ, "MARKET_DATA_MIN_REQUEST_INTERVAL_SECONDS", 12.0, 0, 120),
+        rate_limit_fallback_wait_seconds=_number(environ, "MARKET_DATA_RATE_LIMIT_FALLBACK_WAIT_SECONDS", 15.0, 0, 600),
         adjusted=_bool(environ, "MARKET_DATA_ADJUSTED", True),
         include_extended_hours=_bool(environ, "MARKET_DATA_INCLUDE_EXTENDED_HOURS", False),
         api_key=api_key)

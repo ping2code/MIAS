@@ -22,7 +22,9 @@ Intervals:
 Validation never repairs data. It raises ``MarketDataError`` for:
 
 - a missing field or an unknown ``status``;
-- a non-integral or negative volume;
+- a negative, non-numeric or non-finite volume. Fractional volume is valid, because
+  aggregates include fractional-share trades (Phase 4C live check); it is kept
+  exactly as ``Decimal``, never rounded;
 - invalid OHLC;
 - duplicate or out-of-order timestamps;
 - a bar outside every session or off its session grid.
@@ -65,7 +67,8 @@ class PolygonProvider(MarketDataProvider):
                                    timeout_seconds=settings.timeout_seconds, max_retries=settings.max_retries,
                                    backoff_seconds=settings.backoff_seconds,
                                    max_rate_limit_wait_seconds=settings.max_rate_limit_wait_seconds, session=session,
-                                   **extra)
+                                   min_interval_seconds=settings.min_request_interval_seconds,
+                                   rate_limit_fallback_seconds=settings.rate_limit_fallback_wait_seconds, **extra)
         self._host = urlsplit(settings.base_url).hostname
         self.diagnostics = []  # One safe summary per fetch (no payloads); used by market_data.live_check.
 
@@ -118,6 +121,8 @@ class PolygonProvider(MarketDataProvider):
         else:
             raise ProviderError("payload", f"more than {MAX_PAGES} pages from {safe_target(url)}")
         volume_kinds = sorted({type(item.get("v")).__name__ for item in results if isinstance(item, dict)})
+        fractional = [v - int(v) for v in (item.get("v") for item in results if isinstance(item, dict))
+                      if isinstance(v, Decimal) and v.is_finite() and v != int(v)]
         bars = [self._bar(symbol, interval, item, i) for i, item in enumerate(results)]
         bars = list(validate_calendar_series(bars, self.calendar))
         raw_count = len(bars)
@@ -126,7 +131,9 @@ class PolygonProvider(MarketDataProvider):
         self.diagnostics.append(dict(symbol=symbol, source_interval=interval.label, pages=page + 1,
                                      statuses=sorted(str(s) for s in statuses), adjusted_requested=self.settings.adjusted,
                                      adjusted_echo=sorted(str(a) for a in adjusted_echo), raw_bars=raw_count,
-                                     kept_bars=len(bars), volume_json_types=volume_kinds))
+                                     kept_bars=len(bars), volume_json_types=volume_kinds,
+                                     fractional_volumes=len(fractional),
+                                     max_fractional_part=str(max(fractional)) if fractional else None))
         logger.info("event=market_data_fetch provider=polygon symbol=%s interval=%s bars=%d", symbol, interval.label,
                     len(bars))
         return bars
@@ -148,8 +155,9 @@ class PolygonProvider(MarketDataProvider):
         stamp, volume = item["t"], item["v"]
         if isinstance(stamp, bool) or not isinstance(stamp, int):
             raise MarketDataError(f"result {index}: timestamp must be integer milliseconds")
-        if isinstance(volume, bool) or not isinstance(volume, (int, Decimal)) or volume != int(volume):
-            raise MarketDataError(f"result {index}: volume must be a whole number")
+        if isinstance(volume, bool) or not isinstance(volume, (int, Decimal)) or \
+                (isinstance(volume, Decimal) and not volume.is_finite()) or volume < 0:
+            raise MarketDataError(f"result {index}: volume must be a non-negative number")
         prices = []
         for key in ("o", "h", "l", "c"):
             value = item[key]
@@ -158,7 +166,7 @@ class PolygonProvider(MarketDataProvider):
             prices.append(Decimal(value))
         timestamp = (EPOCH + timedelta(milliseconds=stamp)).astimezone(EXCHANGE_TZ)
         try:
-            return MarketBar(symbol, timestamp, interval, *prices, int(volume),
+            return MarketBar(symbol, timestamp, interval, *prices, Decimal(volume),
                              session=self.calendar.classify(timestamp))
         except MarketDataError as error:
             raise MarketDataError(f"result {index}: {error}") from None

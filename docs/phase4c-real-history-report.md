@@ -1,20 +1,23 @@
 # Phase 4C: Real-History Technical Evaluation Report
 
-## Status: LIVE VALIDATION NOT EXECUTED
+## Status: LIVE CHECK EXECUTED, FAILED; NO REAL-HISTORY RESULTS YET
 
-**Reason:** no market data credential was available to the Phase 4C process
-environment. `MARKET_DATA_PROVIDER` and `MARKET_DATA_API_KEY` were both unset,
-and `.env` is never read by design. The bounded live check was run and reported
-exactly that:
+**First attempt (2026-09-24, 20:21 America/New_York, free-tier development key, run
+by the operator in their own terminal):** the live check failed, so no evaluation
+could run.
 
-```
-$ python -m market_data.live_check
-{"live_validation": "NOT EXECUTED", "reason": "MARKET_DATA_PROVIDER is not configured in the process environment"}
-(exit code 2)
-```
+- **Fractional volume.** Every response that got through (META 5m, the META 30m
+  source for 1h/1d, and NVDA 5m) was rejected at its first result with
+  `volume must be a whole number`. The vendor reports fractional-share volume,
+  which the adapter wrongly treated as invalid. It is now fixed: volume is an
+  exact `Decimal` end to end, and migration `0005_technical_fractional_vol`
+  applies.
+- **Rate limit.** After 5 successful requests, every request got HTTP 429 with no
+  `Retry-After`. Retries were exhausted, and 17 requests were used in total. It is
+  now fixed with client-side pacing (12 s default) and a 15 s fallback wait on 429.
 
-As a result, this report contains **no real-market results**. Nothing below is
-estimated or simulated in place of real data:
+As a result, this report still contains **no real-market results**. Nothing below
+is estimated or simulated in place of real data:
 
 - no META or NVDA state counts;
 - no transition counts;
@@ -58,9 +61,9 @@ Do not commit raw vendor datasets.
 
 | Symbol | Interval | Provider | Date range | Bars | Result |
 |---|---|---|---|---|---|
-| META | 5m | — | — | — | NOT EXECUTED (no credential) |
-| META | 1h | — | — | — | NOT EXECUTED (no credential) |
-| META | 1d | — | — | — | NOT EXECUTED (no credential) |
-| NVDA | 5m | — | — | — | NOT EXECUTED (no credential) |
-| NVDA | 1h | — | — | — | NOT EXECUTED (no credential) |
-| NVDA | 1d | — | — | — | NOT EXECUTED (no credential) |
+| META | 5m | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
+| META | 1h | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
+| META | 1d | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
+| NVDA | 5m | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
+| NVDA | 1h | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
+| NVDA | 1d | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |

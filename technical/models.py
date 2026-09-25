@@ -65,7 +65,7 @@ class TechnicalSnapshot:
     vwap: float
     rsi: float
     atr: float
-    volume: int
+    volume: float        # Bar volume (may be fractional; see market_data.models).
     average_volume: float
     relative_volume: float
     trend: str

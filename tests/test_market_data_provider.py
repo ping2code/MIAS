@@ -52,6 +52,17 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn(TEST_KEY, str(settings.safe_view()))
         self.assertEqual(settings.safe_view()["api_key"], "set")
 
+    def test_pacing_settings(self):
+        settings = load_market_data_settings(dict(MARKET_DATA_PROVIDER="polygon", MARKET_DATA_API_KEY=TEST_KEY))
+        self.assertEqual((settings.min_request_interval_seconds, settings.rate_limit_fallback_wait_seconds), (12.0, 15.0))
+        custom = load_market_data_settings(dict(ENV, MARKET_DATA_MIN_REQUEST_INTERVAL_SECONDS="0",
+                                                MARKET_DATA_RATE_LIMIT_FALLBACK_WAIT_SECONDS="30"))
+        self.assertEqual((custom.min_request_interval_seconds, custom.rate_limit_fallback_wait_seconds), (0.0, 30.0))
+        for env in (dict(ENV, MARKET_DATA_MIN_REQUEST_INTERVAL_SECONDS="121"),
+                    dict(ENV, MARKET_DATA_RATE_LIMIT_FALLBACK_WAIT_SECONDS="-1")):
+            with self.assertRaises(MarketDataConfigError):
+                load_market_data_settings(env)
+
     def test_invalid_settings(self):
         bad = [dict(MARKET_DATA_PROVIDER="yahoo"), dict(MARKET_DATA_PROVIDER="polygon"),
                dict(ENV, MARKET_DATA_HTTP_TIMEOUT_SECONDS="0"), dict(ENV, MARKET_DATA_MAX_RETRIES="9"),
@@ -120,6 +131,33 @@ class HttpTests(unittest.TestCase):
             self.assertNotIn("apiKey", str(caught.exception))
             self.assertNotIn(TEST_KEY, str(caught.exception))
 
+    def test_pacing_spaces_requests_including_retries(self):
+        clock, sleeps = [100.0], []
+
+        def sleep(seconds):
+            sleeps.append(round(seconds, 6))
+            clock[0] += seconds
+        session = FakeSession([FakeResponse(200, {"status": "OK"}), FakeResponse(503), FakeResponse(200, {"status": "OK"})])
+        client = JsonHttpClient(headers={}, timeout_seconds=5, max_retries=2, backoff_seconds=0.5,
+                                max_rate_limit_wait_seconds=30, session=session, sleep=sleep, min_interval_seconds=12,
+                                clock=lambda: clock[0])
+        client.get_json("https://api.polygon.io/a")
+        clock[0] += 3  # 3 s of other work before the next request.
+        client.get_json("https://api.polygon.io/b")
+        # Pace 9 s before request 2; its 503 backs off 0.5 s; then pace the remaining 11.5 s before the retry.
+        self.assertEqual(sleeps, [9.0, 0.5, 11.5])
+        self.assertEqual(client.paced_seconds, 20.5)
+
+    def test_rate_limit_without_retry_after_uses_fallback_wait(self):
+        session, sleeps = FakeSession([FakeResponse(429), FakeResponse(429, headers={"Retry-After": "2"}),
+                                       FakeResponse(200, {"status": "OK"})]), []
+        client = JsonHttpClient(headers={}, timeout_seconds=5, max_retries=3, backoff_seconds=0.5,
+                                max_rate_limit_wait_seconds=30, session=session, sleep=sleeps.append,
+                                rate_limit_fallback_seconds=15)
+        with self.assertLogs("market_data.http", "WARNING"):
+            client.get_json("https://api.polygon.io/v2/x")
+        self.assertEqual(sleeps, [15, 2.0])  # No header: fallback wait. Header present: honoured.
+
     def test_retry_logs_are_credential_safe(self):
         session = FakeSession([FakeResponse(500), FakeResponse(200, {"status": "OK"})])
         with self.assertLogs("market_data.http", "WARNING") as logs:
@@ -187,7 +225,8 @@ class ProviderTests(unittest.TestCase):
         cases = dict(
             duplicate=[good[0], good[0], good[1]], out_of_order=[good[1], good[0]],
             invalid_ohlc=[dict(good[0], h=float(good[0]["l"]) - 1)], negative_volume=[dict(good[0], v=-5)],
-            fractional_volume=[dict(good[0], v=10.5)], missing_field=[{k: v for k, v in good[0].items() if k != "c"}],
+            negative_fractional_volume=[dict(good[0], v=-0.5)], string_volume=[dict(good[0], v="10")],
+            null_volume=[dict(good[0], v=None)], missing_field=[{k: v for k, v in good[0].items() if k != "c"}],
             string_price=[dict(good[0], o="740")], float_timestamp=[dict(good[0], t=good[0]["t"] + 0.5)],
             holiday=[dict(good[0], t=int(et(date(2026, 9, 7), 10).timestamp() * 1000))],
             misaligned=[dict(good[0], t=good[0]["t"] + 60_000)])
@@ -197,6 +236,23 @@ class ProviderTests(unittest.TestCase):
         for body in (dict(status="ERROR", error="bad"), dict(status="OK", results={}), []):
             with self.subTest(body=body), self.assertRaises(ProviderError):
                 provider(FakeSession([FakeResponse(200, body)])).get_bars("META", "5m", et(DAY, 0), et(DAY, 23))
+
+    def test_fractional_volume_is_kept_exactly(self):
+        """Live check (Phase 4C): vendor aggregates include fractional-share volume; it is valid and never rounded."""
+        results = to_results(calendar_bars("META", [DAY], 5)[:3])
+        results[0]["v"], results[1]["v"] = 12345.6789, 0.25
+        session = FakeSession([FakeResponse(200, text=__import__("json").dumps(payload(results)))])
+        p = provider(session)
+        bars = p.get_bars("META", "5m", et(DAY, 0), et(DAY, 23))
+        self.assertEqual([b.volume for b in bars[:2]], [Decimal("12345.6789"), Decimal("0.25")])
+        self.assertEqual(bars[2].volume, results[2]["v"])
+        diag = p.diagnostics[-1]
+        self.assertEqual((diag["fractional_volumes"], diag["max_fractional_part"]), (2, "0.6789"))
+        self.assertEqual(diag["volume_json_types"], ["Decimal", "int"])
+        nan = FakeSession([FakeResponse(200, text='{"status": "OK", "results": [{"t": %d, "o": 1, "h": 1, "l": 1, '
+                                              '"c": 1, "v": NaN}]}' % results[0]["t"])])
+        with self.assertRaises(MarketDataError):
+            provider(nan).get_bars("META", "5m", et(DAY, 0), et(DAY, 23))
 
     def test_timezone_normalization(self):
         bars = calendar_bars("META", [date(2026, 3, 6), date(2026, 3, 9)], 30)

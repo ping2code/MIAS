@@ -103,7 +103,7 @@ class _Series:
     atr: _Wilder = None
     vwap_session: object = None
     vwap_pv: float = 0.0
-    vwap_volume: int = 0
+    vwap_volume: float = 0.0
     volumes: deque = None
     window: deque = None
     level_pivots: deque = None
@@ -182,7 +182,7 @@ class IncrementalTechnicalEngine:
 
     def _step(self, s, bar):
         c, i = self.config, s.count
-        close, high, low = float(bar.close), float(bar.high), float(bar.low)
+        close, high, low, shares = float(bar.close), float(bar.high), float(bar.low), float(bar.volume)
         # Indicators (same operations, in the same order, as technical.indicators).
         emas = {p: s.emas[p].update(close) for p in c.ema_periods}
         rsi = None
@@ -199,14 +199,14 @@ class IncrementalTechnicalEngine:
         if bar.interval.intraday and bar.regular:
             day = session_date(bar.timestamp)
             if day != s.vwap_session:
-                s.vwap_session, s.vwap_pv, s.vwap_volume = day, 0.0, 0
-            s.vwap_pv += bar.typical_price * bar.volume
-            s.vwap_volume += bar.volume
+                s.vwap_session, s.vwap_pv, s.vwap_volume = day, 0.0, 0.0
+            s.vwap_pv += bar.typical_price * shares
+            s.vwap_volume += shares
             vwap = s.vwap_pv / s.vwap_volume if s.vwap_volume else None
         average = relative = None
         if len(s.volumes) == c.volume_lookback:
             average = sum(s.volumes) / c.volume_lookback
-            relative = bar.volume / average if average > 0 else None
+            relative = shares / average if average > 0 else None
         gap = self._gap(s, bar)
         # Pivots: the candidate pivot_window bars back is decided now that its right side exists.
         s.window.append((i, high, low, bar.timestamp))
@@ -235,7 +235,7 @@ class IncrementalTechnicalEngine:
             session_date(s.previous_timestamp) == session_date(bar.timestamp)
         snapshot = TechnicalSnapshot(
             symbol=bar.symbol, timestamp=bar.timestamp, interval=bar.interval.label, index=i, price=close,
-            ema={f"ema{p}": emas[p] for p in c.ema_periods}, vwap=vwap, rsi=rsi, atr=atr, volume=bar.volume,
+            ema={f"ema{p}": emas[p] for p in c.ema_periods}, vwap=vwap, rsi=rsi, atr=atr, volume=shares,
             average_volume=average, relative_volume=relative, trend=structure["trend"],
             last_high_type=structure["last_high_type"], last_low_type=structure["last_low_type"],
             significant_high=structure["last_significant_high"], significant_low=structure["last_significant_low"],
@@ -249,7 +249,7 @@ class IncrementalTechnicalEngine:
                           levels=len(levels), breakout_buffer=round(pad, 4)))
         snapshot = replace(snapshot, signal=classify(snapshot, c))
         # Advance per-bar history.
-        s.volumes.append(bar.volume)
+        s.volumes.append(shares)
         s.closes.append(close)
         s.prior_levels = levels
         s.previous_close, s.previous_timestamp, s.previous_emas, s.previous_vwap = close, bar.timestamp, emas, vwap

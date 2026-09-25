@@ -147,6 +147,26 @@ class VolumeTests(unittest.TestCase):
         self.assertEqual(indicators.relative_volume(bars, 2), ([None, None, 0.0], [None, None, None]))
 
 
+class FractionalVolumeTests(unittest.TestCase):
+    def test_vwap_and_relative_volume_with_fractional_volume(self):
+        rows = [(10, 11, 9, 10, "100.5"), (10, 12, 10, 11, "0.25"), (11, 13, 11, 12, "300.125")]
+        bars = [MarketBar("META", T0 + timedelta(minutes=5 * i), "5m", Decimal(o), Decimal(h), Decimal(l), Decimal(c),
+                          Decimal(v)) for i, (o, h, l, c, v) in enumerate(rows)]
+        tp = [(11 + 9 + 10) / 3, (12 + 10 + 11) / 3, (13 + 11 + 12) / 3]
+        vols = [100.5, 0.25, 300.125]
+        out = indicators.vwap(bars)
+        self.assertAlmostEqual(out[2], sum(t * v for t, v in zip(tp, vols)) / sum(vols), places=12)
+        averages, relatives = indicators.relative_volume(bars, 2)
+        self.assertEqual(averages[2], (100.5 + 0.25) / 2)
+        self.assertEqual(relatives[2], 300.125 / ((100.5 + 0.25) / 2))
+
+    def test_integer_volumes_unchanged(self):
+        """Whole-number volumes give exactly the Phase 4 results (float sums of integers are exact)."""
+        bars = make_bars([(10, 11, 9, 10, v) for v in (100, 200, 300, 600)])
+        self.assertEqual(indicators.relative_volume(bars, 3), ([None, None, None, 200.0], [None, None, None, 3.0]))
+        self.assertEqual(indicators.vwap(bars)[3], 10.0)
+
+
 class CausalityTests(unittest.TestCase):
     def test_outputs_do_not_change_when_future_data_is_appended(self):
         bars = make_bars([(10 + i % 5, 12 + i % 5, 8 + i % 3 * 0.5, 10 + i % 4 * 0.5, 100 + 10 * i) for i in range(40)])
