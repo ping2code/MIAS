@@ -1,4 +1,11 @@
-"""Replay technical states over historical bars and describe what followed (evaluation format ``phase4d-v1``).
+"""Replay technical states over historical bars and describe what followed (evaluation format ``phase5-v1``).
+
+Phase 5 adds, per state/horizon, a **circular-shift null** (``evaluation.nulls``) next
+to the Phase 4D all-bars baseline, independent random-entry baseline and bootstrap
+intervals. Per run, it adds **clustering** and **overlap** diagnostics, setup-lag
+``move_before_confirmation`` with bootstrap intervals, and the all-bars median
+|2-bar return|. Daily runs also carry their close-to-close returns by date, for
+cross-symbol correlation. These are derived statistics, not raw bars.
 
 This is **not** a profitability backtest: there are no orders, fills, transaction
 costs, position sizing or options P&L (profit and loss). The states come from the
@@ -36,14 +43,14 @@ import logging
 import os
 import sys
 
-from evaluation import metrics, setup_lag, statistics
+from evaluation import metrics, nulls, setup_lag, statistics
 from evaluation.research import ResearchConfigError, differing_fields, is_production, research_config
 from market_data.models import EXCHANGE_TZ
 from market_data.validation import validate_series
 from technical.engine import TechnicalEngine
 from technical.signals import DIRECTION
 
-FORMAT_VERSION = "phase4d-v1"
+FORMAT_VERSION = "phase5-v1"
 DEFAULT_HORIZONS = (1, 3, 5, 10)
 NOTE = "Descriptive research only: not a backtest of profitability; no orders, costs or P&L."
 WARNINGS = (
@@ -74,17 +81,23 @@ def evaluate(bars, *, config=None, calendar=None, horizons=DEFAULT_HORIZONS, ses
     labels = metrics.forward_labels(bars, horizons, session_bounded=bounded)
     metadata = dict(
         symbol=symbol, interval=interval, period=dict(label=period.get("label"), start=period.get("start"),
-                                                      end=period.get("end")),
+                                                      end=period.get("end"),
+                                                      pseudo_holdout=bool(period.get("pseudo_holdout", False))),
         first_bar=bars[0].timestamp.isoformat(), last_bar=bars[-1].timestamp.isoformat(), bar_count=len(bars),
         session_bound=bounded, horizons=list(horizons), pivot_window=config.pivot_window,
         research_config=not is_production(config), engine_version=DEFAULT_ENGINE_VERSION, provider=provider,
         seed=seed, bootstrap_iterations=iterations, random_iterations=iterations,
         min_sample=statistics.MIN_SAMPLE, confidence=statistics.CONFIDENCE)
     key = f"{symbol}:{interval}:{period.get('label')}:pw{config.pivot_window}:sb{int(bounded)}"
-    baseline, states_out = {}, {}
+    baseline, states_out, overlap = {}, {}, {}
     for h in horizons:
-        pool = [labels[t][h]["forward_return"] for t in range(len(bars)) if labels[t][h] is not None]
+        series = [None if labels[t][h] is None else labels[t][h]["forward_return"] for t in range(len(bars))]
+        pool = [r for r in series if r is not None]
         baseline[str(h)] = dict(statistics.basic(pool), sample_label=statistics.sample_label(len(pool)))
+        overlap[str(h)] = nulls.overlap(states, series, h)
+        null = (nulls.circular_shift_null(states, series, statistics.basic(pool)["mean"], seed=seed,
+                                          key=f"{key}:circular:{h}", horizon=h, iterations=iterations)
+                if pool else {})
         for state in sorted(set(states)):
             rows = [labels[t][h] for t, s in enumerate(states) if s == state and labels[t][h] is not None]
             direction = DIRECTION.get(state)
@@ -96,17 +109,27 @@ def evaluate(bars, *, config=None, calendar=None, horizons=DEFAULT_HORIZONS, ses
                 excursions = dict(max_up=[r["max_up"] for r in rows], max_down=[r["max_down"] for r in rows])
             entry = states_out.setdefault(state, dict(direction={1: "bullish", -1: "bearish"}.get(direction, "none"),
                                                       horizons={}))
-            entry["horizons"][str(h)] = statistics.state_horizon(
+            result = statistics.state_horizon(
                 [r["forward_return"] for r in rows], pool, baseline[str(h)], seed=seed, key=f"{key}:{state}:{h}",
                 iterations=iterations, excursions=excursions)
+            if result["status"] == "OK":
+                result["circular_shift"] = null.get(state, dict(status="NULL_UNAVAILABLE"))
+            entry["horizons"][str(h)] = result
     events = setup_lag.setup_events(bars, snapshots)
+    closes = [float(b.close) for b in bars]
+    two_bar = sorted(abs(closes[t + 2] / closes[t] - 1) for t in range(len(closes) - 2))
+    metadata["median_abs_2bar_return"] = round(two_bar[len(two_bar) // 2], 8) if two_bar else None
     report = dict(
         evaluation_format_version=FORMAT_VERSION, note=NOTE, warnings=list(WARNINGS), metadata=metadata,
         final_state=dict(state=snapshots[-1].signal.state, confidence=snapshots[-1].signal.confidence,
                          trend=snapshots[-1].trend),
         state_frequency=metrics.state_frequency(states), durations=metrics.durations(states),
         transitions=metrics.transitions(states), transition_probabilities=metrics.transition_probabilities(states),
-        baseline=baseline, states=states_out, setup_lag=setup_lag.summarize(events))
+        baseline=baseline, states=states_out, clustering=nulls.clustering(states), overlap=overlap,
+        setup_lag=setup_lag.summarize(events, seed=seed, key=f"{key}:lag"))
+    if not bars[0].interval.intraday:
+        report["daily_returns"] = [[bars[t].timestamp.date().isoformat(), round(closes[t] / closes[t - 1] - 1, 8)]
+                                   for t in range(1, len(bars))]
     if include_setup_events:
         report["setup_events"] = events
     return report

@@ -74,7 +74,7 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(set(report["states"]["breakout_watch"]["horizons"]), {"1", "3", "5", "10"})
         self.assertNotIn("forward", report)  # Phase 4D: the unsuppressed Phase 4C section is gone.
         json.dumps(report)
-        self.assertEqual(evaluate([]), dict(evaluation_format_version="phase4d-v1", bars=0, note=NOTE))
+        self.assertEqual(evaluate([]), dict(evaluation_format_version="phase5-v1", bars=0, note=NOTE))
 
     def test_states_use_only_past_data_and_labels_do_not_feed_back(self):
         bars = SCENARIOS["gap_up_failure"]("META")

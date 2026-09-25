@@ -16,6 +16,7 @@ confirmed of the snapshot's ``significant_high`` / ``significant_low``. From it:
 | ``setup_delay_bars`` | setup bar index - candidate index |
 | ``setup_after_confirmation_bars`` | setup bar index - confirmed index |
 | ``move_before_setup`` | close at the setup bar / pivot price - 1 (signed): how far price had already travelled from the pivot |
+| ``move_before_confirmation`` | close at the pivot-confirmation bar / pivot price - 1 (signed; Phase 5, H2/H3) |
 
 All values come from snapshots computed causally; nothing here feeds back into
 state generation. The minimum-sample rule applies: fewer than 30 occurrences
@@ -49,11 +50,14 @@ def setup_events(bars, snapshots):
             pivot_confirmed_timestamp=bars[confirmed].timestamp.isoformat(),
             confirmation_lag_bars=confirmed - candidate, setup_delay_bars=i - candidate,
             setup_after_confirmation_bars=i - confirmed,
-            move_before_setup=round(float(bars[i].close) / pivot["price"] - 1.0, 8)))
+            move_before_setup=round(float(bars[i].close) / pivot["price"] - 1.0, 8),
+            move_before_confirmation=round(float(bars[confirmed].close) / pivot["price"] - 1.0, 8)))
     return events
 
 
-def summarize(events):
+def summarize(events, *, seed=None, key="setup_lag"):
+    """Per setup state; with ``seed``, also a 95% bootstrap CI of the mean move before confirmation (Phase 5)."""
+    from evaluation.statistics import bootstrap
     out = {}
     for state in SETUPS:
         rows = [e for e in events if e["state"] == state]
@@ -69,5 +73,13 @@ def summarize(events):
                 mean_setup_after_confirmation_bars=round(mean(e["setup_after_confirmation_bars"] for e in rows), 4),
                 mean_move_before_setup=round(mean(e["move_before_setup"] for e in rows), 8),
                 median_move_before_setup=round(median(e["move_before_setup"] for e in rows), 8))
+            if "move_before_confirmation" in rows[0]:
+                moves = [e["move_before_confirmation"] for e in rows]
+                summary.update(mean_move_before_confirmation=round(mean(moves), 8),
+                               median_move_before_confirmation=round(median(moves), 8),
+                               mean_abs_move_before_confirmation=round(mean(abs(x) for x in moves), 8))
+                if seed is not None:
+                    summary["ci95_mean_move_before_confirmation"] = bootstrap(moves, seed=seed,
+                                                                              key=f"{key}:{state}:mbc")["mean"]
         out[state] = summary
     return out

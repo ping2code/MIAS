@@ -265,7 +265,8 @@ def matrix_provider(session_log=None):
 
 class MatrixTests(unittest.TestCase):
     ARGS = ["--symbols", "META,NVDA,MSFT,SPY", "--intervals", "1h,1d", "--pivot-windows", "1,2,3",
-            "--periods", "A=2026-07-15:2026-08-29,B=2026-06-01:2026-07-15", "--iterations", "100", "--seed", "99"]
+            "--periods", "A=2026-07-15:2026-08-29,B=2026-06-01:2026-07-15", "--iterations", "100", "--seed", "99",
+            "--pseudo-split", ""]
 
     def run_matrix(self, out_dir, log=None):
         stdout = io.StringIO()
@@ -291,8 +292,8 @@ class MatrixTests(unittest.TestCase):
         for name in files:  # Same data + config + seed: byte-identical output.
             with open(os.path.join(first, name)) as a, open(os.path.join(second, name)) as b:
                 self.assertEqual(a.read(), b.read(), name)
-        # 4 symbols x 2 periods x (1h sb + 1h xs + 1d pw1/2/3) = 40 reports; one 30m fetch per symbol-period.
-        self.assertEqual(len([f for f in files if f.endswith(".json") and f not in ("summary.json", "plan.json")]), 40)
+        # 4 symbols x 2 periods x (1h sb + 1h xs for pivot windows 1/2/3, + 1d) = 56 reports; one 30m fetch each.
+        self.assertEqual(len([f for f in files if f.endswith(".json") and f not in ("summary.json", "plan.json")]), 56)
         self.assertEqual(len(log), 8)
         report = json.load(open(os.path.join(first, "SPY_1h_A_xs_pw2.json")))
         meta = report["metadata"]
@@ -300,7 +301,7 @@ class MatrixTests(unittest.TestCase):
                           meta["session_bound"], meta["horizons"], meta["pivot_window"], meta["seed"], meta["provider"]),
                          (FORMAT_VERSION, "SPY", "A", False, [1, 3, 5, 10], 2, 99, "polygon"))
         self.assertGreaterEqual(meta["first_bar"], "2026-07-15")
-        period_b = json.load(open(os.path.join(first, "MSFT_1d_B_d_pw3.json")))["metadata"]
+        period_b = json.load(open(os.path.join(first, "MSFT_1h_B_sb_pw3.json")))["metadata"]
         self.assertLess(period_b["last_bar"], "2026-07-15")
         self.assertTrue(period_b["research_config"])
         summary = json.load(open(os.path.join(first, "summary.json")))
@@ -327,7 +328,8 @@ class MatrixTests(unittest.TestCase):
         provider.http._session = FakeSession(route=route)
         out_dir = tempfile.mkdtemp()
         code = matrix_main(["--out", out_dir, "--symbols", "SPY", "--intervals", "1d", "--pivot-windows", "2",
-                            "--periods", "B=2026-06-01:2026-07-15", "--iterations", "100"], provider=provider,
+                            "--periods", "B=2026-06-01:2026-07-15", "--iterations", "100", "--pseudo-split", ""],
+                           provider=provider,
                            out=io.StringIO())
         plan = json.load(open(os.path.join(out_dir, "plan.json")))
         self.assertEqual((code, plan["excluded_overnight_bars"], plan["failures"]), (0, 1, []))
