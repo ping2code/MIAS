@@ -1,22 +1,28 @@
 # Phase 4C: Real-History Technical Evaluation Report
 
-## Status: LIVE CHECK EXECUTED, FAILED; NO REAL-HISTORY RESULTS YET
+## Status: LIVE CONTRACT VERIFIED; REAL-HISTORY EVALUATION NOT YET RUN
 
-**First attempt (2026-09-24, 20:21 America/New_York, free-tier development key, run
-by the operator in their own terminal):** the live check failed, so no evaluation
-could run.
+**First live check (2026-09-24, 20:21 America/New_York): FAILED.** It found
+fractional volume, which the adapter wrongly rejected, and HTTP 429 without
+`Retry-After` once the free tier's 5/minute quota was exceeded. Both are fixed:
 
-- **Fractional volume.** Every response that got through (META 5m, the META 30m
-  source for 1h/1d, and NVDA 5m) was rejected at its first result with
-  `volume must be a whole number`. The vendor reports fractional-share volume,
-  which the adapter wrongly treated as invalid. It is now fixed: volume is an
-  exact `Decimal` end to end, and migration `0005_technical_fractional_vol`
-  applies.
-- **Rate limit.** After 5 successful requests, every request got HTTP 429 with no
-  `Retry-After`. Retries were exhausted, and 17 requests were used in total. It is
-  now fixed with client-side pacing (12 s default) and a 15 s fallback wait on 429.
+- exact `Decimal` volume, with migrations `0005` and `0006` (NUMERIC);
+- request pacing at 12 s, and a 15 s fallback wait on a bare 429.
 
-As a result, this report still contains **no real-market results**. Nothing below
+**Second live check (2026-09-24, 22:12-22:32): PASSED.** It used 24 requests with
+no 429s, and every contract check passed for META and NVDA on 5m, 1h and 1d. The
+data runs only through the previous trading day (status `DELAYED`). Final states on
+the 23 September bar:
+
+| Symbol | 1d | 1h | 5m |
+|---|---|---|---|
+| META | breakout_watch (HIGH), trend range, 449 bars | range (LOW), 623 bars | bearish_momentum (MEDIUM), trend mixed, 702 bars |
+| NVDA | bullish_momentum (MEDIUM), trend mixed, 449 bars | mixed (LOW), trend bearish, 623 bars | breakout_watch (LOW), trend mixed, 702 bars |
+
+These are single-bar observations, not evaluation results.
+
+The evaluation runs (`evaluation.technical_replay`) have **not** been executed yet, so this report contains
+**no real-history statistics**. Nothing below
 is estimated or simulated in place of real data:
 
 - no META or NVDA state counts;
@@ -61,9 +67,9 @@ Do not commit raw vendor datasets.
 
 | Symbol | Interval | Provider | Date range | Bars | Result |
 |---|---|---|---|---|---|
-| META | 5m | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
-| META | 1h | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
-| META | 1d | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
-| NVDA | 5m | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
-| NVDA | 1h | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
-| NVDA | 1d | — | — | — | NOT PRODUCED (first live check failed; rerun after fix) |
+| META | 5m | — | — | — | NOT YET RUN (contract verified; run `evaluation.technical_replay`) |
+| META | 1h | — | — | — | NOT YET RUN (contract verified; run `evaluation.technical_replay`) |
+| META | 1d | — | — | — | NOT YET RUN (contract verified; run `evaluation.technical_replay`) |
+| NVDA | 5m | — | — | — | NOT YET RUN (contract verified; run `evaluation.technical_replay`) |
+| NVDA | 1h | — | — | — | NOT YET RUN (contract verified; run `evaluation.technical_replay`) |
+| NVDA | 1d | — | — | — | NOT YET RUN (contract verified; run `evaluation.technical_replay`) |

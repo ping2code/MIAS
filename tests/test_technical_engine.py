@@ -122,6 +122,14 @@ class EngineBehaviourTests(unittest.TestCase):
         with self.assertRaises(MarketDataError):
             ENGINE.replay([bars[1], bars[0]])
 
+    def test_snapshot_volume_is_exact_decimal(self):
+        from dataclasses import replace
+        from decimal import Decimal
+        bars = [replace(b, volume=b.volume + Decimal("0.123456789123")) for b in SCENARIOS["range"]("META")]
+        snap = ENGINE.analyze(bars)
+        self.assertEqual((type(snap.volume), snap.volume), (Decimal, bars[-1].volume))
+        self.assertEqual(snap.to_dict()["volume"], str(bars[-1].volume.normalize()))
+
     def test_snapshot_is_json_serializable(self):
         data = ENGINE.analyze(SCENARIOS["gap_up_continuation"]("META")).to_dict()
         text = json.dumps(data)

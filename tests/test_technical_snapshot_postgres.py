@@ -86,27 +86,71 @@ class TechnicalSnapshotPostgresTests(unittest.TestCase):
         with self.engine.connect() as connection:
             self.assertEqual(compare_metadata(MigrationContext.configure(connection), metadata), [])
             version = connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-        self.assertEqual(version, "0005_technical_fractional_vol")
+        self.assertEqual(version, "0006_technical_numeric_volume")
 
-    def test_fractional_volume_migration_0005(self):
+    def test_numeric_volume_migration_0006_preserves_rows_and_exact_values(self):
+        from decimal import Decimal
         from dataclasses import replace as dc_replace
-        fractional = dc_replace(self.snaps[-1], volume=12345.6789)
-        row = row_for(fractional, self.bars)
-        self.assertEqual(persist_technical_snapshot(self.engine, row)["outcome"], "inserted")
-        self.assertEqual(persist_technical_snapshot(self.engine, row)["outcome"], "duplicate")  # Exact round trip.
-        with self.engine.connect() as connection:
-            column = {c["name"]: c for c in sa.inspect(connection).get_columns("technical_snapshots")}["volume"]
-            self.assertIsInstance(column["type"], sa.Float)
-            self.assertEqual(connection.execute(sa.text("SELECT volume FROM technical_snapshots")).scalar_one(), 12345.6789)
-        self.migrate("downgrade", "0004_technical_snapshots")  # Explicitly lossy: rounds to BIGINT.
-        with self.engine.connect() as connection:
-            self.assertEqual(connection.execute(sa.text("SELECT volume FROM technical_snapshots")).scalar_one(), 12346)
+        from persistence.technical_snapshot_repository import MATERIAL_FIELDS, canonical_json, content_hash
+        # 1. At 0005 (FLOAT columns), store pre-0006 phase4c-v1 rows the way that code hashed them (volume = JSON float).
+        self.migrate("downgrade", "0005_technical_fractional_vol")
+        legacy_values = {}
+        for i, (volume, average, relative) in enumerate([(12345.678901234567, 98765.43210987654, 0.12499999999999999),
+                                                          (150000.0, 1e-7, 3.0000000000000004)]):
+            row = row_for(self.snaps[-1 - i], self.bars, engine_version="phase4c-v1")
+            legacy = dict(row, volume=volume, average_volume=average, relative_volume=relative)
+            legacy["content_hash"] = content_hash(json.loads(canonical_json({k: legacy[k] for k in MATERIAL_FIELDS})))
+            with transaction(self.engine) as session:
+                session.execute(sa.insert(technical_snapshots).values(**dict(
+                    legacy, id=str(uuid4()), created_at=datetime(2026, 9, 23, 20, tzinfo=timezone.utc),
+                    snapshot_timestamp=datetime.fromisoformat(row["snapshot_timestamp"]),
+                    warmup_start=datetime.fromisoformat(row["warmup_start"]))))
+            legacy_values[row["snapshot_timestamp"]] = (volume, average, relative)
+        # 2. Upgrade to 0006: NUMERIC columns, every stored float preserved exactly (cast via text).
         self.migrate("upgrade", "head")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.execute(sa.text("SELECT volume FROM technical_snapshots")).scalar_one(), 12346.0)
+            types = {c["name"]: c["type"] for c in sa.inspect(connection).get_columns("technical_snapshots")}
+            rows = connection.execute(sa.text("SELECT snapshot_timestamp, volume, average_volume, relative_volume "
+                                              "FROM technical_snapshots")).all()
+        for name in ("volume", "average_volume", "relative_volume"):
+            self.assertIsInstance(types[name], sa.Numeric)
+            self.assertNotIsInstance(types[name], sa.Float)
+        for stamp, volume, average, relative in rows:
+            self.assertEqual((float(volume), float(average), float(relative)),
+                             legacy_values[stamp.astimezone(timezone.utc).isoformat()])
+        # 3. The audit verifies those rows against their legacy hash form: intact, not mismatches.
+        now = datetime(2026, 9, 23, 20, tzinfo=timezone.utc)
         out = io.StringIO()
-        tools_main(["audit"], engine=self.engine, calendar=CAL, now=datetime(2026, 9, 23, 20, tzinfo=timezone.utc), out=out)
-        self.assertEqual(len(json.loads(out.getvalue())["content_hash_mismatches"]), 1)  # The audit sees the rounding.
+        self.assertEqual(tools_main(["audit"], engine=self.engine, calendar=CAL, now=now, out=out), 0)
+        report = json.loads(out.getvalue())
+        self.assertEqual((report["legacy_v1_hash_rows"], report["content_hash_mismatches"]), (2, []))
+        # 4. New phase4c-v2 row: an exact 24-significant-digit fractional volume round-trips exactly (NUMERIC, not FLOAT).
+        exact = Decimal("123456789.123456789123456")
+        row = row_for(dc_replace(self.snaps[-1], volume=exact), self.bars)
+        self.assertEqual(row["volume"], "123456789.123456789123456")
+        self.assertEqual(persist_technical_snapshot(self.engine, row)["outcome"], "inserted")
+        self.assertEqual(persist_technical_snapshot(self.engine, row)["outcome"], "duplicate")
+        with transaction(self.engine) as session:
+            stored = [r for r in TechnicalSnapshotRepository(session).snapshots("META", "5m")
+                      if r["engine_version"] == "phase4c-v2"][0]
+        self.assertEqual((stored["volume"], float(stored["relative_volume"]), float(stored["average_volume"])),
+                         (exact, row["relative_volume"], row["average_volume"]))
+        out = io.StringIO()
+        self.assertEqual(tools_main(["audit"], engine=self.engine, calendar=CAL, now=now, out=out), 0)
+        self.assertEqual(json.loads(out.getvalue())["content_hash_mismatches"], [])
+        # 5. Downgrade -> re-upgrade across the whole chain: 0006 -> 0005 -> 0004 -> 0003 and back to head.
+        self.migrate("downgrade", "0005_technical_fractional_vol")
+        with self.engine.connect() as connection:
+            self.assertIsInstance(sa.inspect(connection).get_columns("technical_snapshots")[0]["type"], sa.Uuid)
+            volume_type = {c["name"]: c["type"] for c in sa.inspect(connection).get_columns("technical_snapshots")}["volume"]
+        self.assertIsInstance(volume_type, sa.Float)
+        self.migrate("upgrade", "head")
+        for target in ("0004_technical_snapshots", "0003_geo_anchor_registry"):
+            self.migrate("downgrade", target)
+        self.assertFalse(TABLES & self.tables())
+        self.migrate("upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(compare_metadata(MigrationContext.configure(connection), metadata), [])
 
     def test_indexes_constraints_and_types(self):
         with self.engine.connect() as connection:
@@ -156,6 +200,7 @@ class TechnicalSnapshotPostgresTests(unittest.TestCase):
         self.assertEqual(stored["content_hash"], row["content_hash"])
         self.assertEqual((stored["rsi14"], stored["ema200"], stored["support_levels"]),
                          (row["rsi14"], row["ema200"], row["support_levels"]))
+        self.assertEqual(str(stored["volume"].normalize()), row["volume"])
 
     def race(self, first_row, second_row):
         """Hold writer one's transaction until PostgreSQL shows writer two blocked on the same identity."""
@@ -211,9 +256,10 @@ class TechnicalSnapshotPostgresTests(unittest.TestCase):
 
     def test_tools_on_postgres(self):
         from dataclasses import replace as dc_replace
+        from decimal import Decimal
         for i, snap in enumerate(self.snaps[-10:]):
-            persist_technical_snapshot(self.engine, row_for(dc_replace(snap, volume=snap.volume + i / 8 + 0.0001),
-                                                            self.bars))
+            volume = snap.volume + Decimal(i) / Decimal(8) + Decimal("0.0001")
+            persist_technical_snapshot(self.engine, row_for(dc_replace(snap, volume=volume), self.bars))
         now = datetime(2026, 9, 23, 20, tzinfo=timezone.utc)
         out = io.StringIO()
         self.assertEqual(tools_main(["audit"], engine=self.engine, calendar=CAL, now=now, out=out), 0)

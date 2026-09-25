@@ -51,7 +51,7 @@ class DeterminismTests(unittest.TestCase):
     def rows(self, now):
         p = provider(now)
         multi, context = run_symbol(p, "META", [Interval.D1, Interval.H1, Interval.M5])
-        return {label: snapshot_row(s, provider="polygon", engine_version="phase4c-v1", provider_delay_seconds=0,
+        return {label: snapshot_row(s, provider="polygon", engine_version="phase4c-v2", provider_delay_seconds=0,
                                     warmup_start=context[label]["warmup_start"], warmup_bars=context[label]["bars"])
                 for label, s in multi.timeframes.items()}
 

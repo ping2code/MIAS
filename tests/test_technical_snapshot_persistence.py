@@ -49,7 +49,7 @@ def snapshots(name="breakout_high_volume", symbol="META"):
 
 
 def row_for(snapshot, bars, **overrides):
-    values = dict(provider="polygon", engine_version="phase4c-v1", provider_delay_seconds=900,
+    values = dict(provider="polygon", engine_version="phase4c-v2", provider_delay_seconds=900,
                   warmup_start=bars[0].timestamp, warmup_bars=len(bars), session_type="regular")
     values.update(overrides)
     return snapshot_row(snapshot, **values)
@@ -99,6 +99,17 @@ class RowMappingTests(unittest.TestCase):
         with self.assertRaises(SnapshotRowError):
             row_for(snap, bars)
 
+    def test_volume_is_exact_canonical_text(self):
+        bars, snaps = snapshots()
+        snap = replace(snaps[-1], volume=__import__("decimal").Decimal("1234567.1234567891230"))
+        row = row_for(snap, bars)
+        self.assertEqual(row["volume"], "1234567.123456789123")  # Exact; canonical (no exponent, no trailing zeros).
+        self.assertEqual(row_for(replace(snaps[-1], volume=__import__("decimal").Decimal("1E+3")), bars)["volume"], "1000")
+        self.assertIsInstance(row["average_volume"], float)
+        for bad in ("1E+3", "1000.0", "-1", "NaN", 1000, 1000.5):
+            with self.subTest(volume=bad), self.assertRaises(SnapshotRowError):
+                validate_row(dict(row, volume=bad))
+
     def test_validate_row(self):
         bars, snaps = snapshots()
         row = row_for(snaps[-1], bars)
@@ -143,7 +154,7 @@ class IdempotencyTests(unittest.TestCase):
         base = row_for(self.snaps[-1], self.bars)
         nvda_bars, nvda = snapshots(symbol="NVDA")
         rows = [base, row_for(self.snaps[-2], self.bars), row_for(nvda[-1], nvda_bars),
-                row_for(self.snaps[-1], self.bars, engine_version="phase4c-v2")]
+                row_for(self.snaps[-1], self.bars, engine_version="phase4c-v3")]
         daily = replace(self.snaps[-1], interval="1d",
                         timestamp=datetime.combine(date(2026, 9, 21), time(0), tzinfo=EXCHANGE_TZ))
         rows.append(row_for(daily, self.bars, session_type=None))
@@ -153,7 +164,7 @@ class IdempotencyTests(unittest.TestCase):
         with transaction(self.engine) as session:
             repo = TechnicalSnapshotRepository(session)
             self.assertEqual(len(repo.snapshots("META", "5m")), 3)
-            self.assertEqual(len(repo.snapshots("META", "5m", engine_version="phase4c-v1")), 2)
+            self.assertEqual(len(repo.snapshots("META", "5m", engine_version="phase4c-v2")), 2)
             window = repo.snapshots("META", "5m", start=self.snaps[-1].timestamp,
                                     end=self.snaps[-1].timestamp + timedelta(minutes=5))
             self.assertEqual(len(window), 2)  # Both engine versions of the last bar.
@@ -163,17 +174,31 @@ class IdempotencyTests(unittest.TestCase):
         persist_technical_snapshot(self.engine, row)
         with transaction(self.engine) as session:
             stored = TechnicalSnapshotRepository(session).snapshots("META", "5m")[0]
+        from persistence.technical_snapshot_repository import row_from_db
+        self.assertEqual(content_hash(row_from_db(stored)), row["content_hash"])  # Recomputable from storage.
+        self.assertEqual(float(stored["relative_volume"]), row["relative_volume"])
         self.assertEqual(stored["snapshot_timestamp"], self.snaps[57].timestamp)
         self.assertEqual(stored["support_levels"], row["support_levels"])
         self.assertEqual(stored["reasons"], row["reasons"])
         self.assertEqual(stored["evidence"], row["evidence"])
 
 
+class MigrationChainTests(unittest.TestCase):
+    def test_chain_is_linear_through_0006(self):
+        from alembic.script import ScriptDirectory
+        from tests.test_persistence import migration_config
+        script = ScriptDirectory.from_config(migration_config())
+        chain = [r.revision for r in reversed(list(script.walk_revisions()))]
+        self.assertEqual(chain[2:], ["0003_geo_anchor_registry", "0004_technical_snapshots",
+                                     "0005_technical_fractional_vol", "0006_technical_numeric_volume"])
+        self.assertEqual(script.get_heads(), ["0006_technical_numeric_volume"])
+
+
 class SettingsTests(unittest.TestCase):
     def test_defaults_and_bounds(self):
         settings = load_technical_persistence_settings({})
         self.assertEqual((settings.enabled, settings.queue_size, settings.engine_version, settings.drain_timeout_seconds),
-                         (False, 256, "phase4c-v1", 10.0))
+                         (False, 256, "phase4c-v2", 10.0))
         custom = load_technical_persistence_settings(dict(TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED="TRUE",
                                                           TECHNICAL_SNAPSHOT_QUEUE_SIZE="16",
                                                           TECHNICAL_SNAPSHOT_ENGINE_VERSION="phase4c-v2.1"))
@@ -332,7 +357,7 @@ class ToolsTests(unittest.TestCase):
         tools_main(["status"], engine=engine, calendar=CAL, now=self.NOW, out=out)
         status = json.loads(out.getvalue())
         self.assertEqual(status["conflicts"], 1)
-        self.assertEqual(sorted(g["engine_version"] for g in status["groups"]), ["phase4c-v1", "phase9"])
+        self.assertEqual(sorted(g["engine_version"] for g in status["groups"]), ["phase4c-v2", "phase9"])
 
     def test_audit_rows_detects_invalid_values_and_hash_mismatch(self):
         engine = sqlite_engine()
@@ -342,7 +367,7 @@ class ToolsTests(unittest.TestCase):
             rows = [dict(r._mapping) for r in session.execute(sa.select(technical_snapshots))]
         rows[0] = dict(rows[0], momentum="euphoric", ema20=None, rsi14=None, price=rows[0]["price"] + 1,
                        snapshot_timestamp=rows[0]["snapshot_timestamp"] + timedelta(minutes=2))
-        report, problems = audit_rows(rows + [dict(rows[0])], [], CAL, engine_versions=["phase4c-v1"],
+        report, problems = audit_rows(rows + [dict(rows[0])], [], CAL, engine_versions=["phase4c-v2"],
                                       providers=["tiingo"])
         self.assertEqual(len(report["duplicate_identity_groups"]), 1)
         self.assertEqual(report["invalid_enum_values"][0]["fields"], ["momentum"])
@@ -351,6 +376,26 @@ class ToolsTests(unittest.TestCase):
         self.assertEqual(len(report["content_hash_mismatches"]), 2)
         self.assertEqual(report["unexpected_providers"], ["polygon"])
         self.assertGreater(problems, 0)
+
+    def test_legacy_v1_rows_verified_not_flagged(self):
+        from persistence.technical_snapshot_repository import MATERIAL_FIELDS, canonical_json
+        engine = sqlite_engine()
+        bars, snaps = snapshots("range")
+        row = row_for(snaps[-1], bars, engine_version="phase4c-v1")
+        legacy = dict(row, volume=float(row["volume"]))  # How 0005-era rows were hashed (volume as a JSON float).
+        legacy["content_hash"] = content_hash(json.loads(canonical_json({k: legacy[k] for k in MATERIAL_FIELDS})))
+        values = dict(legacy, id="00000000-0000-0000-0000-000000000001", created_at=self.NOW,
+                      snapshot_timestamp=datetime.fromisoformat(row["snapshot_timestamp"]),
+                      warmup_start=datetime.fromisoformat(row["warmup_start"]),
+                      volume=__import__("decimal").Decimal(row["volume"]),
+                      average_volume=__import__("decimal").Decimal(repr(row["average_volume"])),
+                      relative_volume=__import__("decimal").Decimal(repr(row["relative_volume"])))
+        with transaction(engine) as session:
+            session.execute(sa.insert(technical_snapshots).values(**values))
+        out = io.StringIO()
+        self.assertEqual(tools_main(["audit"], engine=engine, calendar=CAL, now=self.NOW, out=out), 0)
+        report = json.loads(out.getvalue())
+        self.assertEqual((report["legacy_v1_hash_rows"], report["content_hash_mismatches"]), (1, []))
 
     def test_reconcile_rows_pure(self):
         a, b = datetime(2026, 9, 21, 13, 30, tzinfo=timezone.utc), datetime(2026, 9, 21, 13, 35, tzinfo=timezone.utc)

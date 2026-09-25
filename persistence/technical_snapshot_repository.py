@@ -8,6 +8,15 @@ so it gets its own rows and never rewrites old ones.
 field (all technical values and the warm-up context). It excludes the row id,
 ``created_at`` and the run-time setting ``provider_delay_seconds``.
 
+**Volume (0006, engine version ``phase4c-v2``):**
+
+- ``volume`` is the bar's exact Decimal volume. In the row and hash it is canonical
+  fixed-point text (``format_decimal``: no exponent, no trailing zeros), and in the
+  database it is NUMERIC.
+- ``average_volume`` and ``relative_volume`` stay the engine's floats in the row and
+  hash. In the database they are the NUMERIC of their shortest round-trip text, so
+  they read back as the identical float.
+
 **Writes** (``store``) are immutable:
 
 - ``inserted``: new identity;
@@ -20,6 +29,7 @@ Rows are never updated or deleted by this module. Recomputing history under new
 rules means a new ``engine_version``, done by explicit tooling.
 """
 from datetime import datetime, timezone
+from decimal import Decimal
 import hashlib
 import json
 from uuid import uuid4
@@ -27,6 +37,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
+from market_data.models import format_decimal
 from persistence.models import (BREAKOUT_STATES, TECHNICAL_INTERVALS, TECHNICAL_STATES, TECHNICAL_TRENDS,
                                 technical_snapshot_conflicts, technical_snapshots)
 
@@ -71,7 +82,8 @@ def snapshot_row(snapshot, *, provider, engine_version, provider_delay_seconds, 
         engine_version=engine_version, source_provider=provider, provider_delay_seconds=int(provider_delay_seconds),
         is_completed_bar=True, session_type=session_type, price=snapshot.price,
         **{key: snapshot.ema[key] for key in EMA_KEYS}, vwap=snapshot.vwap, rsi14=snapshot.rsi, atr14=snapshot.atr,
-        volume=snapshot.volume, average_volume=snapshot.average_volume, relative_volume=snapshot.relative_volume,
+        volume=format_decimal(snapshot.volume), average_volume=snapshot.average_volume,
+        relative_volume=snapshot.relative_volume,
         trend=snapshot.trend, last_high_type=snapshot.last_high_type, last_low_type=snapshot.last_low_type,
         significant_high=snapshot.significant_high, significant_low=snapshot.significant_low,
         gap_type=snapshot.gap_type, gap_percent=snapshot.gap_percent, gap_absolute=snapshot.gap_absolute,
@@ -96,6 +108,12 @@ def validate_row(row):
     for key, allowed in checks:
         if row[key] not in allowed:
             raise SnapshotRowError(f"snapshot row has an invalid {key}")
+    try:
+        volume = Decimal(row["volume"]) if isinstance(row["volume"], str) else None
+    except ArithmeticError:
+        volume = None
+    if volume is None or not volume.is_finite() or volume < 0 or format_decimal(volume) != row["volume"]:
+        raise SnapshotRowError("snapshot row volume must be canonical non-negative decimal text")
     if row["content_hash"] != content_hash(row):
         raise SnapshotRowError("snapshot row content_hash does not match its content")
 
@@ -104,7 +122,33 @@ def _db_values(row):
     values = {k: row[k] for k in ROW_FIELDS}
     for key in TIMESTAMP_FIELDS:
         values[key] = datetime.fromisoformat(row[key])
+    values["volume"] = Decimal(row["volume"])
+    for key in ("average_volume", "relative_volume"):
+        if values[key] is not None:
+            values[key] = Decimal(repr(float(values[key])))  # Shortest round-trip text: reads back as the same float.
     return values
+
+
+def row_from_db(stored):
+    """The JSON-safe material view of a stored row, as it was hashed (for audit/reconciliation)."""
+    values = {k: stored[k] for k in MATERIAL_FIELDS}
+    for key in TIMESTAMP_FIELDS:
+        values[key] = stored[key].astimezone(timezone.utc).isoformat()
+    values["volume"] = format_decimal(Decimal(stored["volume"]))
+    for key in ("average_volume", "relative_volume"):
+        if values[key] is not None:
+            values[key] = float(values[key])
+    return json.loads(canonical_json(values))
+
+
+def legacy_v1_hashes(stored):
+    """Hashes a pre-0006 (phase4c-v1) row may carry: volume hashed as a JSON integer (0004) or float (0005)."""
+    values = row_from_db(stored)
+    volume = Decimal(values["volume"])
+    candidates = [dict(values, volume=float(volume))]
+    if volume == volume.to_integral_value():
+        candidates.append(dict(values, volume=int(volume)))
+    return {content_hash(c) for c in candidates}
 
 
 class TechnicalSnapshotRepository:

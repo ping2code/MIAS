@@ -74,6 +74,16 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(len(hours), 7)
         self.assertEqual(hours[0].volume, sum(b.volume for b in source[:11]))
 
+    def test_fractional_volume_is_summed_exactly(self):
+        from dataclasses import replace
+        from decimal import Decimal
+        source = [replace(b, volume=Decimal("0.1") + Decimal(i) / Decimal(1000)) for i, b in
+                  enumerate(calendar_bars("META", [DAY], 5)[:12])]
+        (hour,) = [b for b in aggregate(source, "1h", CAL) if b.timestamp == et(DAY, 9, 30)]
+        expected = sum((Decimal("0.1") + Decimal(i) / Decimal(1000) for i in range(12)), Decimal(0))
+        self.assertEqual((type(hour.volume), hour.volume), (Decimal, expected))
+        self.assertEqual(hour.volume, Decimal("1.266"))  # 12 x 0.1 + (0+..+11)/1000: exact, no float drift.
+
     def test_invalid_targets(self):
         source = calendar_bars("META", [DAY], 30)
         for target in ("5m", "30m", "45m"):

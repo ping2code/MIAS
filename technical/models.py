@@ -1,6 +1,8 @@
 """Technical engine configuration, snapshot and signal models (plain data; every threshold documented)."""
 from dataclasses import asdict, dataclass, field
 
+from market_data.models import format_decimal
+
 
 @dataclass(frozen=True)
 class TechnicalConfig:
@@ -65,7 +67,7 @@ class TechnicalSnapshot:
     vwap: float
     rsi: float
     atr: float
-    volume: float        # Bar volume (may be fractional; see market_data.models).
+    volume: object       # The bar's exact Decimal volume (may be fractional); indicator math uses float(volume).
     average_volume: float
     relative_volume: float
     trend: str
@@ -89,6 +91,7 @@ class TechnicalSnapshot:
     def to_dict(self):
         data = asdict(self)
         data["timestamp"] = self.timestamp.isoformat()
+        data["volume"] = format_decimal(self.volume)  # Exact, exponent-free text (JSON has no Decimal type).
         data["signal"] = self.signal.to_dict() if self.signal else None
         data["support_levels"], data["resistance_levels"] = list(self.support_levels), list(self.resistance_levels)
         return data

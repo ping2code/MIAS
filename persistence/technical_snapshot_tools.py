@@ -2,8 +2,8 @@
 
     python -m persistence.technical_snapshot_tools status [--symbol META] [--interval 5m]
     python -m persistence.technical_snapshot_tools reconcile --symbol META --interval 5m --start 2026-09-21 \
-        --end 2026-09-24 [--engine-version phase4c-v1]
-    python -m persistence.technical_snapshot_tools audit [--engine-version phase4c-v1 ...] [--provider polygon ...]
+        --end 2026-09-24 [--engine-version phase4c-v2]
+    python -m persistence.technical_snapshot_tools audit [--engine-version phase4c-v2 ...] [--provider polygon ...]
 
 - Uses ``DATABASE_URL`` from the process environment (never ``.env``). Only SELECT
   statements run; there is no repair or delete mode.
@@ -14,6 +14,9 @@
 - **audit** reports duplicate identity groups, recorded conflicts, missing required
   metrics, invalid enum values, timestamps off the grid or persisted before the bar
   completed, unexpected providers or engine versions, and content-hash mismatches.
+  Pre-0006 ``phase4c-v1`` rows, hashed with volume as a JSON number, are verified
+  against that legacy form and counted separately (``legacy_v1_hash_rows``), not as
+  mismatches. By default, both known engine versions are expected.
 
 Output is JSON. Exit codes: 0 clean, 1 problems found (audit) or database error, 2 configuration or usage error.
 """
@@ -28,7 +31,7 @@ import sqlalchemy as sa
 from market_data.models import EXCHANGE_TZ, Interval, Session
 from persistence.models import (BREAKOUT_STATES, TECHNICAL_INTERVALS, TECHNICAL_STATES, TECHNICAL_TRENDS,
                                 technical_snapshot_conflicts, technical_snapshots)
-from persistence.technical_snapshot_repository import MATERIAL_FIELDS, content_hash
+from persistence.technical_snapshot_repository import content_hash, legacy_v1_hashes, row_from_db
 
 MOMENTUM = (None, "overbought_like", "strong", "neutral", "weak", "oversold_like")
 ALIGNMENT = (None, "bullish_alignment", "bearish_alignment", "mixed")
@@ -78,13 +81,6 @@ def bar_end(calendar, interval, stamp):
     return min(stamp + interval.delta, seg_end)
 
 
-def _row_for_hash(row):
-    values = {k: row[k] for k in MATERIAL_FIELDS}
-    for key in ("snapshot_timestamp", "warmup_start"):
-        values[key] = row[key].astimezone(timezone.utc).isoformat()
-    return values
-
-
 def audit_rows(rows, conflicts, calendar, *, engine_versions, providers):
     """Pure audit over row dicts; returns (report, problem_count)."""
     identities = {}
@@ -93,7 +89,7 @@ def audit_rows(rows, conflicts, calendar, *, engine_versions, providers):
         identities[key] = identities.get(key, 0) + 1
     duplicates = [dict(symbol=k[0], interval=k[1], snapshot_timestamp=k[2].isoformat(), engine_version=k[3], rows=n)
                   for k, n in identities.items() if n > 1]
-    missing_metrics, invalid_enums, bad_times, early, hash_mismatch = [], [], [], [], []
+    missing_metrics, invalid_enums, bad_times, early, hash_mismatch, legacy = [], [], [], [], [], []
     for row in rows:
         ident = f"{row['symbol']} {row['interval']} {row['snapshot_timestamp'].isoformat()} {row['engine_version']}"
         if row["technical_state"] != "insufficient_data" and None in (row["ema20"], row["rsi14"], row["atr14"]):
@@ -106,9 +102,11 @@ def audit_rows(rows, conflicts, calendar, *, engine_versions, providers):
             bad_times.append(ident)
         elif end > row["created_at"]:
             early.append(ident)
-        values = _row_for_hash(row)
-        if content_hash(json.loads(json.dumps(values, allow_nan=False))) != row["content_hash"]:
-            hash_mismatch.append(ident)
+        if content_hash(row_from_db(row)) != row["content_hash"]:
+            if row["engine_version"] == "phase4c-v1" and row["content_hash"] in legacy_v1_hashes(row):
+                legacy.append(ident)  # Pre-0006 row: hashed with volume as a JSON number; intact.
+            else:
+                hash_mismatch.append(ident)
     report = dict(
         rows=len(rows), duplicate_identity_groups=duplicates, conflicts=len(conflicts),
         conflict_identities=sorted({f"{c['symbol']} {c['interval']} {c['snapshot_timestamp'].isoformat()} "
@@ -117,7 +115,7 @@ def audit_rows(rows, conflicts, calendar, *, engine_versions, providers):
         timestamps_off_grid=bad_times, persisted_before_bar_completed=early,
         unexpected_providers=sorted({r["source_provider"] for r in rows} - set(providers)),
         unexpected_engine_versions=sorted({r["engine_version"] for r in rows} - set(engine_versions)),
-        content_hash_mismatches=hash_mismatch)
+        content_hash_mismatches=hash_mismatch, legacy_v1_hash_rows=len(legacy))
     problems = (len(duplicates) + len(conflicts) + len(missing_metrics) + len(invalid_enums) + len(bad_times)
                 + len(early) + len(report["unexpected_providers"]) + len(report["unexpected_engine_versions"])
                 + len(hash_mismatch))
@@ -162,7 +160,7 @@ def _day(value):
 def main(argv=None, environ=None, *, engine=None, calendar=None, now=None, out=None):
     from persistence.config import ConfigurationError, DatabaseSettings
     from persistence.database import PersistenceError, make_engine, transaction
-    from persistence.technical_settings import DEFAULT_ENGINE_VERSION
+    from persistence.technical_settings import DEFAULT_ENGINE_VERSION, KNOWN_ENGINE_VERSIONS
     out = out or sys.stdout
     parser = argparse.ArgumentParser(prog="python -m persistence.technical_snapshot_tools")
     parser.add_argument("command", choices=("status", "reconcile", "audit"))
@@ -214,7 +212,7 @@ def main(argv=None, environ=None, *, engine=None, calendar=None, now=None, out=N
                 rows = _load(session, technical_snapshots, sa.true())
                 conflicts = _load(session, technical_snapshot_conflicts, sa.true())
                 result, problems = audit_rows(rows, conflicts, calendar,
-                                              engine_versions=args.engine_version or [DEFAULT_ENGINE_VERSION],
+                                              engine_versions=args.engine_version or list(KNOWN_ENGINE_VERSIONS),
                                               providers=args.provider or ["polygon"])
                 code = 1 if problems else 0
     except PersistenceError:

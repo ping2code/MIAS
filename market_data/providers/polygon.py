@@ -41,7 +41,7 @@ from market_data.aggregation import derive_completed
 from market_data.calendar import default_calendar
 from market_data.completion import completed_bars
 from market_data.http import JsonHttpClient, ProviderError, safe_target
-from market_data.models import EXCHANGE_TZ, Interval, MarketBar, MarketDataError, Session
+from market_data.models import EXCHANGE_TZ, Interval, MarketBar, MarketDataError, Session, format_decimal
 from market_data.provider import MarketDataProvider
 from market_data.validation import validate_calendar_series
 
@@ -133,7 +133,7 @@ class PolygonProvider(MarketDataProvider):
                                      adjusted_echo=sorted(str(a) for a in adjusted_echo), raw_bars=raw_count,
                                      kept_bars=len(bars), volume_json_types=volume_kinds,
                                      fractional_volumes=len(fractional),
-                                     max_fractional_part=str(max(fractional)) if fractional else None))
+                                     max_fractional_part=format_decimal(max(fractional)) if fractional else None))
         logger.info("event=market_data_fetch provider=polygon symbol=%s interval=%s bars=%d", symbol, interval.label,
                     len(bars))
         return bars

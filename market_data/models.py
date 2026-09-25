@@ -73,6 +73,16 @@ def session_date(timestamp):
     return timestamp.astimezone(EXCHANGE_TZ).date()
 
 
+def format_decimal(value):
+    """Canonical fixed-point text for a Decimal: no exponent, no trailing zeros ("1E+3" -> "1000", "0.2500" -> "0.25").
+
+    Used wherever a Decimal is serialized or hashed, so the text never depends on the
+    value's internal scale and never uses scientific notation.
+    """
+    text = format(value.normalize(), "f")
+    return "0" if text in ("-0", "0") else text
+
+
 def _decimal(name, value):
     if isinstance(value, bool) or not isinstance(value, (Decimal, int, str)):
         raise MarketDataError(f"{name} must be a Decimal, int or numeric string (not float)")
@@ -112,7 +122,7 @@ class MarketBar:
         volume = _decimal("volume", self.volume)
         if volume < 0:
             raise MarketDataError("volume must be non-negative")
-        object.__setattr__(self, "volume", volume)
+        object.__setattr__(self, "volume", abs(volume) if volume == 0 else volume)  # "-0" becomes 0.
         if self.high < max(self.open, self.close, self.low):
             raise MarketDataError("high must be >= open, close and low")
         if self.low > min(self.open, self.close, self.high):
@@ -135,5 +145,6 @@ class MarketBar:
 
     def to_dict(self):
         return dict(symbol=self.symbol, timestamp=self.timestamp.isoformat(), interval=self.interval.label,
-                    open=str(self.open), high=str(self.high), low=str(self.low), close=str(self.close),
-                    volume=str(self.volume), session=self.session.value if self.session else None)
+                    open=format_decimal(self.open), high=format_decimal(self.high), low=format_decimal(self.low),
+                    close=format_decimal(self.close), volume=format_decimal(self.volume),
+                    session=self.session.value if self.session else None)

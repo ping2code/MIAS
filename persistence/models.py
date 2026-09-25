@@ -1,6 +1,7 @@
 """Core metadata only. No engine creation, connections, or automatic DDL."""
 
 from datetime import timezone
+from decimal import Decimal
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
@@ -23,6 +24,30 @@ class UTCDateTime(TypeDecorator):
         if value is None:
             return None
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+class ExactDecimal(TypeDecorator):
+    """Exact Decimal storage: PostgreSQL NUMERIC; SQLite (tests/dev only) canonical decimal TEXT.
+
+    SQLite has no decimal type, and its NUMERIC affinity would turn values into
+    64-bit floats. Storing canonical text keeps SQLite round trips exact too.
+    """
+    impl = sa.Numeric
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        return dialect.type_descriptor(sa.Text() if dialect.name == "sqlite" else sa.Numeric(asdecimal=True))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        value = Decimal(value)
+        if not value.is_finite():
+            raise ValueError("Finite decimal required")
+        return format(value, "f") if dialect.name == "sqlite" else value
+
+    def process_result_value(self, value, dialect):
+        return None if value is None else Decimal(value)
 
 
 metadata = sa.MetaData(naming_convention={
@@ -186,9 +211,10 @@ technical_snapshots = sa.Table(
     sa.Column("vwap", sa.Float, nullable=True),
     sa.Column("rsi14", sa.Float, nullable=True),
     sa.Column("atr14", sa.Float, nullable=True),
-    sa.Column("volume", sa.Float, nullable=False),  # Double precision since 0005: vendor volume can be fractional.
-    sa.Column("average_volume", sa.Float, nullable=True),
-    sa.Column("relative_volume", sa.Float, nullable=True),
+    # NUMERIC since 0006: exact vendor volume (fractional shares) and deterministic derived volume values.
+    sa.Column("volume", ExactDecimal(), nullable=False),
+    sa.Column("average_volume", ExactDecimal(), nullable=True),
+    sa.Column("relative_volume", ExactDecimal(), nullable=True),
     sa.Column("trend", sa.String(24), nullable=False),
     sa.Column("last_high_type", sa.String(4), nullable=True),
     sa.Column("last_low_type", sa.String(4), nullable=True),

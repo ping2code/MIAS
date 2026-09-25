@@ -35,6 +35,7 @@ New and changed code:
 | `orchestrator/config.py`, `orchestrator/registry.py`, `orchestrator/job_runner.py` | `technical` job (disabled by default), child environment allowlist |
 | `migrations/versions/0005_technical_fractional_volume.py` | follow-up migration **`0005_technical_fractional_vol`**: snapshot volume becomes double precision |
 | `market_data/models.py`, `technical/indicators.py`, `technical/incremental.py`, `technical/engine.py` | follow-up: exact `Decimal` bar volume (fractional allowed), float in indicator math |
+| `migrations/versions/0006_technical_numeric_volume.py` | follow-up migration **`0006_technical_numeric_volume`**: the three volume columns become NUMERIC |
 
 ## 1. Provider validation result
 
@@ -74,15 +75,33 @@ findings.
   `max_fractional_volume_part`, and replaces the whole-number check with
   `volume_valid` (non-negative and finite).
 
-**Still unverified until the check is rerun:**
+**Second live check: EXECUTED on 2026-09-24 (22:12-22:32 America/New_York) — PASSED.**
+Same command and key, after the fixes above. It used 24 requests, got zero 429
+responses, and returned `result: ok`. For META and NVDA on 5m, 1h and 1d, every
+contract check passed:
 
-- field names beyond volume;
-- the `adjusted` echo, pagination (`pages`, and therefore the request budget,
-  section 4) and the delayed status;
-- the session grid and completed-bar behaviour on real data.
+- field names and types;
+- timestamps in range;
+- `volume_valid`;
+- session grid;
+- completed bars only;
+- `adjusted` echo (`True`, matching the request).
 
-No other provider behaviour is claimed as verified.
-`docs/phase4c-real-history-report.md` records the same status.
+Observed provider behaviour:
+
+- **Fractional volume is the norm.** 761 of 767 fetched META 5m bars were
+  fractional (NVDA was similar), and volumes arrive mostly as JSON floats.
+- **The free tier serves data only through the previous trading day.** Status is
+  `DELAYED`, and at 22:12 on 24 September the newest bar was 23 September 15:55
+  (`latest_bar_age_seconds` of about 109,700). No same-day bars are served.
+- **Pagination:** each 5-day window took 1 page. Request counts imply the 450-session
+  30m warm-up takes about 8 pages (9 requests per symbol for `--states`). That is
+  consistent with reading B in section 4, where the limit counts base minute bars.
+- **Final states** on the 23 September bar (observational only):
+  - META: 1d `breakout_watch`/HIGH, 1h `range`/LOW, 5m `bearish_momentum`/MEDIUM;
+  - NVDA: 1d `bullish_momentum`/MEDIUM, 1h `mixed`/LOW, 5m `breakout_watch`/LOW.
+
+`docs/phase4c-real-history-report.md` records these runs.
 
 ## 2. Live-check procedure
 
@@ -156,6 +175,11 @@ The vendor's `limit=50000` applies to **base aggregates**, and the documentation
 does not make clear whether that means returned bars or underlying minute bars.
 Both readings are shown; the live check's `pages` field settles it.
 
+**Observed (second live check): reading B.** Expect about 20 requests per run for
+META+NVDA, about 4 minutes at 12 s pacing. That is inside the 900 s job timeout.
+On the free tier, which serves only data through the previous trading day, a
+**daily** cadence after the data becomes available is the only meaningful schedule.
+
 | Reading | 5m request (10 sessions) | 30m request (450 sessions) | Requests per symbol | Requests per run (META+NVDA) |
 |---|---|---|---|---|
 | A: limit counts returned bars | 1,920 bars → 1 page | 14,400 bars → 1 page | 2 | **4** |
@@ -211,8 +235,12 @@ version.
     (Coordinated Universal Time));
   - `engine_version`, `source_provider`, `provider_delay_seconds`,
     `is_completed_bar` (always true, check-constrained), `session_type`;
-  - price, `ema9/ema20/ema50/ema200`, `vwap`, `rsi14`, `atr14`, volume,
-    `average_volume`, `relative_volume`;
+  - price, `ema9/ema20/ema50/ema200`, `vwap`, `rsi14`, `atr14`;
+  - `volume`, `average_volume`, `relative_volume` as **NUMERIC** (since `0006`):
+    `volume` is the vendor's exact Decimal volume (fractional shares).
+    `average_volume` and `relative_volume` are the engine's float values, stored as
+    the exact decimal of their shortest round-trip text, so they read back as the
+    identical float;
   - trend, `last_high_type`, `last_low_type`, `gap_type`, `gap_percent`,
     `gap_absolute`, `breakout_state`, `breakout_level`, momentum,
     `ema_alignment`, `vwap_position`;
@@ -278,8 +306,15 @@ runner now anchors each timeframe's window to trading sessions:
 
 ## 8. engine_version
 
-- `TECHNICAL_SNAPSHOT_ENGINE_VERSION` defaults to `phase4c-v1` and must be 1-32
-  characters of `[a-z0-9.-]`.
+- `TECHNICAL_SNAPSHOT_ENGINE_VERSION` defaults to **`phase4c-v2`** and must be 1-32
+  characters of `[a-z0-9.-]`. The versions are:
+  - `phase4c-v1`: rows written before `0006`, with volume hashed as a JSON number;
+  - `phase4c-v2`: exact volume, hashed as canonical decimal text.
+
+  The technical rules are identical. The bump keeps the same bar re-persisted after
+  `0006` from colliding with its v1 row as a spurious conflict. The audit expects
+  both known versions by default, and verifies v1 rows against their legacy hash
+  form (`legacy_v1_hash_rows`).
 - A rule change means a new engine version. Its rows sit beside the old ones and
   never rewrite them.
 - Recomputing history is explicit tooling, not normal write behaviour. The audit
@@ -411,8 +446,32 @@ is read-only. It exits 0 when clean and 1 when it finds problems. It reports:
 - Tested on disposable PostgreSQL 16: fractional insert, an exact duplicate round
   trip, downgrade to `0004` (rounded) and re-upgrade, plus the existing
   up/down/re-up and `compare_metadata` checks.
+- The pinned head moved again with `0006` (below).
+
+**Follow-up ID: `0006_technical_numeric_volume`** (down revision `0005_technical_fractional_vol`).
+`0004` and `0005` are unchanged, and the chain is
+**0003 → 0004 → 0005 → 0006** (asserted by a test).
+
+- Changes `volume`, `average_volume` and `relative_volume` from DOUBLE PRECISION to
+  unconstrained NUMERIC.
+- **Existing rows are preserved exactly:** the cast is `col::text::numeric`.
+  PostgreSQL 16's direct `double precision → numeric` cast keeps only 15
+  significant digits. Verified on the test container: `12345.678901234567` became
+  `12345.6789012346`, and `0.12499999999999999` became `0.125`. Float text output
+  is shortest-exact, so the text cast round-trips every stored float.
+- Downgrade casts back to DOUBLE PRECISION, which is lossy beyond about 17
+  significant digits.
+- **Tested on PostgreSQL 16:**
+  - legacy v1 FLOAT rows inserted at `0005` survive the upgrade bit-exactly, and the
+    audit verifies their legacy hashes;
+  - a 24-significant-digit fractional volume (`123456789.123456789123456`)
+    round-trips exactly and is idempotent;
+  - downgrade to `0005`, `0004` and `0003`, then re-upgrade, with an empty
+    `compare_metadata`.
+- **SQLite** (tests/dev only) has no decimal type. The `ExactDecimal` column type
+  stores canonical decimal TEXT there, so SQLite round trips are exact too.
 - The pinned head (`EXPECTED_REVISION`, three tests, the staging harness `HEAD`) is
-  now `0005_technical_fractional_vol`.
+  now `0006_technical_numeric_volume`.
 
 ## 15. Real-history evaluation
 
@@ -451,9 +510,12 @@ bars):
 
 ## 17. Known limitations
 
-- **Live contract partly verified.** Fractional volume and the 5/minute quota with
-  no `Retry-After` are confirmed and handled. Field names, the `adjusted` echo,
-  pagination semantics (section 4) and plan freshness await the rerun.
+- **Live contract verified** by the second live check (section 1). The free tier
+  lags by about one trading day and needs about 20 paced requests per run.
+- **Serialization:** Decimals are serialized as canonical fixed-point text
+  (`format_decimal`: no exponent, no trailing zeros). `MarketBar.to_dict` and the
+  snapshot's `to_dict` use it, as do the persisted row and hash. A negative-zero
+  volume is normalized to 0.
 - **Request budget reading B** would make free-tier cadences below 30 minutes
   impractical.
 - **Stateless runner:** each run re-warms from history. A per-day cache of the
@@ -472,8 +534,10 @@ bars):
 1. **Stop persisting:** set `TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED=false`.
    Technical output is unaffected.
 2. **Stop scheduling:** `TECHNICAL_SCHEDULE_ENABLED=false` (already the default).
-3. **Schema:** `alembic downgrade 0004_technical_snapshots` reverts only the
-   volume type change (lossy for fractional values). `alembic downgrade
+3. **Schema:** `alembic downgrade 0005_technical_fractional_vol` reverts NUMERIC to
+   DOUBLE PRECISION (lossy beyond about 17 significant digits).
+   `alembic downgrade 0004_technical_snapshots` also reverts volume to BIGINT
+   (lossy for fractional values). `alembic downgrade
    0003_geo_anchor_registry` drops
    `technical_snapshot_conflicts` and `technical_snapshots`, **deleting their
    data**. Export first if the rows matter. Prior tables are untouched.

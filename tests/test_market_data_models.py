@@ -34,7 +34,12 @@ class MarketBarTests(unittest.TestCase):
         self.assertEqual(bar(v="0.25").volume, Decimal("0.25"))
         self.assertEqual(bar(v=7).volume, 7)
         self.assertEqual(b.to_dict()["volume"], "1234.5678")
-        for bad in (Decimal("-0.1"), "NaN", "abc", 1.5):
+        self.assertEqual((bar(v="-0").volume, str(bar(v="-0").volume)), (0, "0"))  # Negative zero normalized.
+        self.assertEqual(bar(v=0).volume, 0)
+        self.assertEqual(bar(v=Decimal("1E+3")).to_dict()["volume"], "1000")      # No exponent in serialization.
+        self.assertEqual(bar(v=Decimal("0.0000001")).to_dict()["volume"], "0.0000001")
+        for bad in (Decimal("-0.1"), "NaN", "sNaN", "Infinity", "-Infinity", Decimal("Infinity"), "abc", "", None, 1.5,
+                    True):
             with self.subTest(volume=bad), self.assertRaises(MarketDataError):
                 bar(v=bad)
 

@@ -235,7 +235,7 @@ class IncrementalTechnicalEngine:
             session_date(s.previous_timestamp) == session_date(bar.timestamp)
         snapshot = TechnicalSnapshot(
             symbol=bar.symbol, timestamp=bar.timestamp, interval=bar.interval.label, index=i, price=close,
-            ema={f"ema{p}": emas[p] for p in c.ema_periods}, vwap=vwap, rsi=rsi, atr=atr, volume=shares,
+            ema={f"ema{p}": emas[p] for p in c.ema_periods}, vwap=vwap, rsi=rsi, atr=atr, volume=bar.volume,
             average_volume=average, relative_volume=relative, trend=structure["trend"],
             last_high_type=structure["last_high_type"], last_low_type=structure["last_low_type"],
             significant_high=structure["last_significant_high"], significant_low=structure["last_significant_low"],

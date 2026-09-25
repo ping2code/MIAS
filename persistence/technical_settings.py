@@ -4,7 +4,7 @@
 |---|---|---|
 | ``TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED`` | false | true/false |
 | ``TECHNICAL_SNAPSHOT_QUEUE_SIZE`` | 256 | 16-4096 |
-| ``TECHNICAL_SNAPSHOT_ENGINE_VERSION`` | ``phase4c-v1`` | 1-32 of ``[a-z0-9.-]``, starting alphanumeric |
+| ``TECHNICAL_SNAPSHOT_ENGINE_VERSION`` | ``phase4c-v2`` | 1-32 of ``[a-z0-9.-]``, starting alphanumeric |
 | ``TECHNICAL_SNAPSHOT_DRAIN_TIMEOUT_SECONDS`` | 10 | 0-30 |
 
 Persistence is never alert- or output-critical. There is deliberately no setting
@@ -13,7 +13,10 @@ that makes a database failure fail the runner.
 from dataclasses import dataclass
 import re
 
-DEFAULT_ENGINE_VERSION = "phase4c-v1"
+# phase4c-v1: volume persisted as a JSON number (int, then float after 0005).
+# phase4c-v2: volume persisted exactly (canonical Decimal text / NUMERIC, 0006). Same technical rules.
+DEFAULT_ENGINE_VERSION = "phase4c-v2"
+KNOWN_ENGINE_VERSIONS = ("phase4c-v1", "phase4c-v2")
 ENGINE_VERSION = re.compile(r"[a-z0-9][a-z0-9.\-]{0,31}")
 
 
