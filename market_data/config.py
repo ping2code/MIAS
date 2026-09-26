@@ -2,9 +2,9 @@
 
 | Variable | Default | Meaning |
 |---|---|---|
-| ``MARKET_DATA_PROVIDER`` | ``none`` | ``none`` or ``polygon`` (alias ``massive``) |
-| ``MARKET_DATA_API_KEY`` | unset | required for ``polygon``; sent only as an HTTP Authorization header |
-| ``MARKET_DATA_BASE_URL`` | provider default | HTTPS origin, e.g. ``https://api.polygon.io`` |
+| ``MARKET_DATA_PROVIDER`` | ``none`` | ``none``, ``polygon`` (alias ``massive``) or ``massive_stocks`` (Phase 7A) |
+| ``MARKET_DATA_API_KEY`` | unset | required for any provider; sent only as an HTTP Authorization header |
+| ``MARKET_DATA_BASE_URL`` | provider default | HTTPS origin (``https://api.polygon.io`` for polygon, ``https://api.massive.com`` for massive_stocks) |
 | ``MARKET_DATA_HTTP_TIMEOUT_SECONDS`` | 10 | per-request timeout, 1-120 |
 | ``MARKET_DATA_MAX_RETRIES`` | 3 | retries for transient failures only, 0-5 |
 | ``MARKET_DATA_RETRY_BACKOFF_SECONDS`` | 1.0 | first backoff; doubles per retry, 0-60 |
@@ -14,13 +14,17 @@
 | ``MARKET_DATA_DELAY_SECONDS`` | 900 | data is treated as available only up to now minus this, 0-86400 |
 | ``MARKET_DATA_ADJUSTED`` | true | split-adjusted bars |
 | ``MARKET_DATA_INCLUDE_EXTENDED_HOURS`` | false | keep pre/post-market intraday bars |
+
+``massive`` remains an alias of ``polygon`` (the Phase 6 frozen provider identity).
+``massive_stocks`` is a separate, explicitly named provider (Phase 7A) and is never
+selected implicitly.
 """
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-PROVIDERS = ("none", "polygon")
+PROVIDERS = ("none", "polygon", "massive_stocks")
 ALIASES = dict(massive="polygon")
-DEFAULT_BASE_URL = dict(polygon="https://api.polygon.io")
+DEFAULT_BASE_URL = dict(polygon="https://api.polygon.io", massive_stocks="https://api.massive.com")
 
 
 class MarketDataConfigError(ValueError):

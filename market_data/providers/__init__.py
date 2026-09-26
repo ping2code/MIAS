@@ -7,4 +7,7 @@ def build_provider(settings, *, calendar=None, session=None, sleep=None, clock=N
     if settings.provider == "polygon":
         from market_data.providers.polygon import PolygonProvider
         return PolygonProvider(settings, calendar=calendar, session=session, sleep=sleep, clock=clock)
-    raise MarketDataConfigError("MARKET_DATA_PROVIDER is not configured (set it to polygon)")
+    if settings.provider == "massive_stocks":
+        from market_data.providers.massive import MassiveStocksProvider
+        return MassiveStocksProvider(settings, calendar=calendar, session=session, sleep=sleep, clock=clock)
+    raise MarketDataConfigError("MARKET_DATA_PROVIDER is not configured (set it to polygon or massive_stocks)")
