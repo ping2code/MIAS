@@ -1,0 +1,11 @@
+{
+  "pin_format_version": "phase6-v1",
+  "registry_version": "phase6-v1",
+  "registry_hash": "b1080c2e9347285bd3a56cad55b44e46649ea049bfaaedcc7e15488a45d87acd",
+  "prospective_freeze_commit": "f5d9e6b54bf9fb8712d877f08501e3688d307786",
+  "freeze_commit_time": "2026-09-25T20:26:42-05:00",
+  "prospective_start_session": "2026-09-28",
+  "earliest_evaluation_session": "2027-03-29",
+  "min_complete_sessions": 120,
+  "rule": "first XNYS session whose regular-market open occurs strictly after the committer timestamp of the Phase 6 freeze commit (pinned in evidence/prospective_start.json)"
+}

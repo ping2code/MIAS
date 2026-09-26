@@ -95,6 +95,14 @@ class PinTests(unittest.TestCase):
         self.addCleanup(os.unlink, handle.name)
         self.assertEqual(pin_module.load_pin(handle.name, CAL)["registry_hash"], REGISTRY_HASH)
 
+    def test_committed_pin(self):
+        """The repository pin: freeze commit f5d9e6b (2026-09-25 21:26:42 ET) -> start 2026-09-28, gate 2027-03-29."""
+        pin = pin_module.load_pin(calendar=CAL)
+        self.assertEqual(pin["prospective_freeze_commit"], "f5d9e6b54bf9fb8712d877f08501e3688d307786")
+        self.assertEqual((pin["prospective_start_session"], pin["earliest_evaluation_session"]),
+                         (date(2026, 9, 28), date(2027, 3, 29)))
+        self.assertEqual(pin["registry_hash"], FROZEN["registry"])
+
     def test_add_months_clamps(self):
         self.assertEqual(pin_module.add_months(date(2026, 8, 31), 6), date(2027, 2, 28))
         self.assertEqual(pin_module.add_months(date(2026, 12, 15), 6), date(2027, 6, 15))
