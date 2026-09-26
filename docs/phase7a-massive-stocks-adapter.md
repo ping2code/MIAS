@@ -140,3 +140,25 @@ Exit codes:
 - 0: PASSED;
 - 1: FAILED (provider or data error, or a failed check);
 - 2: NOT EXECUTED (configuration or usage error).
+
+## Live contract validation (user-run, 2026-09-26, market closed)
+
+`python -m market_data.massive_check --symbol META --days 2` returned **PASSED**, using 4 requests, all HTTP 200.
+
+- **Authentication:** the key was accepted as a Bearer header on the RANGE endpoint.
+- **Status:** `DELAYED` on every page, which is accepted.
+- **Pagination:** a 5m probe at `limit=500` returned 191 results over 2 pages, so the vendor `limit` counts base
+  minute aggregates. `next_url` stayed on `api.massive.com`, so pagination passes the same-host rule.
+- **Bar counts:**
+  - 5m: 78 regular bars per session;
+  - 30m: 13 per session;
+  - extended-hours bars were dropped by default, and 0 overnight bars were excluded.
+- **Timestamps:** 09:30–15:55 ET, all on grid.
+- **Adjusted echo:** matched the request.
+- **`vw` / `n`:** present on 100% of results. They remain unexposed.
+- **Rate-limit headers:** none were returned. Pacing is unchanged at 12 s.
+
+Massive Starter market-hours delay: operational verification pending 2026-09-28 during regular trading hours.
+
+The weekend freshness figure measures the time since Friday's close, not the vendor delay.
+`MARKET_DATA_DELAY_SECONDS` is deliberately left unchanged.
