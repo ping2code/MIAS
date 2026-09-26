@@ -157,7 +157,7 @@ def main(argv=None, environ=None, *, provider=None, out=None):
         return 2
     try:
         persistence = load_technical_persistence_settings(environ)
-        ledger = _prepare_evidence(environ, persistence, symbols, check=args.evidence_check)
+        ledger = _prepare_evidence(environ, persistence, symbols, check=args.evidence_check, provider=provider)
         if provider is None:
             provider = build_provider(load_market_data_settings(environ))
     except (MarketDataConfigError, MarketDataError, TechnicalPersistenceConfigError) as error:
@@ -205,7 +205,7 @@ def _frozen_symbols():
     return PROTOCOL.collection_symbols
 
 
-def _prepare_evidence(environ, persistence, symbols, *, check):
+def _prepare_evidence(environ, persistence, symbols, *, check, provider=None):
     """None when the ledger is off; otherwise a validated EvidenceRun (no network, no ledger write yet)."""
     from evidence.collector import EvidenceConfigError, load_evidence_settings
     try:
@@ -225,6 +225,10 @@ def _prepare_evidence(environ, persistence, symbols, *, check):
         except PinError:
             pin = None  # Operational validation only: pre-cutoff data is never evidence.
         return EvidenceRun(pin=pin, commit=current_commit() or "0000000", engine=None, check=True)
+    # Fail closed: evidence is collected only from the frozen Phase 6 provider identity (polygon; the massive alias
+    # resolves to it). Checked before any provider is built or used, so no request is made.
+    if _provider_identity(environ, provider) != PROTOCOL.provider:
+        raise EvidenceSetupError("MARKET_DATA_PROVIDER differs from the frozen Phase 6 provider")
     if not persistence.enabled:
         raise EvidenceSetupError("TECHNICAL_EVIDENCE_LEDGER_ENABLED requires TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED")
     if persistence.engine_version != ENGINE_VERSION:
@@ -243,6 +247,13 @@ def _prepare_evidence(environ, persistence, symbols, *, check):
     except ConfigurationError as error:
         raise EvidenceSetupError(str(error)) from None
     return EvidenceRun(pin=pin, commit=commit, engine=engine, check=False)
+
+
+def _provider_identity(environ, provider):
+    if provider is not None:
+        return getattr(getattr(provider, "settings", None), "provider", None)
+    from market_data.config import load_market_data_settings
+    return load_market_data_settings(environ).provider
 
 
 class EvidenceRun:
