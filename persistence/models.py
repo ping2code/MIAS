@@ -277,3 +277,68 @@ technical_snapshot_conflicts = sa.Table(
     sa.CheckConstraint("existing_hash <> rejected_hash AND length(rejected_hash) = 64", name="distinct_hash"),
     sa.Index("ix_technical_snapshot_conflicts_identity", "symbol", "interval", "snapshot_timestamp"),
 )
+
+# Phase 6 (migration 0007): append-only prospective evidence ledger. Collection, provenance and integrity only:
+# no returns, states, prices, raw bars or vendor payloads. Snapshots stay in technical_snapshots (soft reference).
+LEDGER_STATUSES = ("collected", "failed", "conflict")
+LEDGER_INTERVALS = ("5m", "1h", "1d")
+LEDGER_ERROR_KINDS = ("provider_auth", "rate_limit", "transport", "provider_payload", "contract_violation",
+                      "incomplete_session", "registry_hash_mismatch", "engine_version_mismatch", "snapshot_unavailable",
+                      "internal")
+LEDGER_CHECKS = dict(
+    record_status=_in("record_status", LEDGER_STATUSES),
+    interval=_in("interval", LEDGER_INTERVALS),
+    error_kind=_in("error_kind", LEDGER_ERROR_KINDS, nullable=True),
+    hash_shape=("length(registry_hash) = 64 AND (bar_content_hash IS NULL OR length(bar_content_hash) = 64) AND "
+                "(evidence_hash IS NULL OR length(evidence_hash) = 64) AND "
+                "(snapshot_content_hash IS NULL OR length(snapshot_content_hash) = 64)"),
+    provenance_shape=("length(code_commit) BETWEEN 7 AND 40 AND data_delay_seconds >= 0 AND length(symbol) > 0 "
+                      "AND length(engine_version) > 0"),
+    collected_invariants=("record_status <> 'collected' OR (bar_count > 0 AND bar_content_hash IS NOT NULL AND "
+                          "evidence_hash IS NOT NULL AND error_kind IS NULL AND conflicts_with IS NULL)"),
+    failed_invariants=("record_status <> 'failed' OR (error_kind IS NOT NULL AND bar_content_hash IS NULL AND "
+                       "evidence_hash IS NULL AND conflicts_with IS NULL)"),
+    conflict_invariants=("record_status <> 'conflict' OR (conflicts_with IS NOT NULL AND evidence_hash IS NOT NULL "
+                         "AND error_kind IS NULL)"),
+)
+
+technical_evidence_ledger = sa.Table(
+    "technical_evidence_ledger", metadata,
+    sa.Column("id", ID, primary_key=True),
+    sa.Column("ledger_format_version", sa.String(16), nullable=False),
+    sa.Column("record_status", sa.String(16), nullable=False),
+    sa.Column("market_session_date", sa.Date, nullable=False),
+    sa.Column("symbol", sa.String(16), nullable=False),
+    sa.Column("interval", sa.String(8), nullable=False),
+    sa.Column("engine_version", sa.String(32), nullable=False),
+    sa.Column("registry_version", sa.String(16), nullable=False),
+    sa.Column("registry_hash", sa.String(64), nullable=False),
+    sa.Column("hypothesis_hashes", JSON, nullable=False),
+    sa.Column("provider", sa.String(32), nullable=False),
+    sa.Column("adjusted", sa.Boolean, nullable=False),
+    sa.Column("data_delay_seconds", sa.Integer, nullable=False),
+    sa.Column("include_extended_hours", sa.Boolean, nullable=False),
+    sa.Column("code_commit", sa.String(40), nullable=False),
+    sa.Column("collected_at", UTCDateTime(), nullable=False),
+    sa.Column("expected_collection_date", sa.Date, nullable=False),
+    sa.Column("backfilled", sa.Boolean, nullable=False),
+    sa.Column("bar_count", sa.Integer, nullable=True),
+    sa.Column("bar_content_hash", sa.String(64), nullable=True),
+    sa.Column("snapshot_timestamp", UTCDateTime(), nullable=True),
+    sa.Column("snapshot_content_hash", sa.String(64), nullable=True),
+    sa.Column("evidence_hash", sa.String(64), nullable=True),
+    sa.Column("error_kind", sa.String(32), nullable=True),
+    sa.Column("error_detail", sa.String(200), nullable=True),
+    sa.Column("conflicts_with", ID, sa.ForeignKey("technical_evidence_ledger.id", ondelete="RESTRICT"), nullable=True),
+    sa.Column("recorded_at", UTCDateTime(), nullable=False),
+    *(sa.CheckConstraint(text, name=name) for name, text in LEDGER_CHECKS.items()),
+    sa.Index("uq_technical_evidence_ledger_accepted", "market_session_date", "symbol", "interval", "engine_version",
+             "registry_hash", unique=True, postgresql_where=sa.text("record_status = 'collected'"),
+             sqlite_where=sa.text("record_status = 'collected'")),
+    sa.Index("uq_technical_evidence_ledger_conflict", "conflicts_with", "evidence_hash", unique=True,
+             postgresql_where=sa.text("record_status = 'conflict'"), sqlite_where=sa.text("record_status = 'conflict'")),
+    sa.Index("ix_technical_evidence_ledger_session", "symbol", "interval", "market_session_date"),
+    sa.Index("ix_technical_evidence_ledger_status", "record_status", "market_session_date"),
+    sa.Index("ix_technical_evidence_ledger_collected_at", "collected_at"),
+    sa.Index("ix_technical_evidence_ledger_conflicts_with", "conflicts_with"),
+)

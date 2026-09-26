@@ -190,8 +190,9 @@ class MigrationChainTests(unittest.TestCase):
         script = ScriptDirectory.from_config(migration_config())
         chain = [r.revision for r in reversed(list(script.walk_revisions()))]
         self.assertEqual(chain[2:], ["0003_geo_anchor_registry", "0004_technical_snapshots",
-                                     "0005_technical_fractional_vol", "0006_technical_numeric_volume"])
-        self.assertEqual(script.get_heads(), ["0006_technical_numeric_volume"])
+                                     "0005_technical_fractional_vol", "0006_technical_numeric_volume",
+                                     "0007_technical_evidence_ledger"])
+        self.assertEqual(script.get_heads(), ["0007_technical_evidence_ledger"])
 
 
 class SettingsTests(unittest.TestCase):

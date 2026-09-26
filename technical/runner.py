@@ -85,7 +85,7 @@ def run_symbol(provider, symbol, timeframes):
     for interval in timeframes:
         source_bars = [b for b in fetched[SOURCE[interval]] if b.timestamp >= starts[interval]]
         bars = source_bars if SOURCE[interval] == interval else derive_completed(source_bars, interval, calendar, as_of)
-        context[interval.label] = dict(bars=len(bars), warmup_start=starts[interval])
+        context[interval.label] = dict(bars=len(bars), warmup_start=starts[interval], series=bars)
         engine.warmup(bars)
     return from_engine(engine, symbol, [t.label for t in timeframes]), context
 
@@ -102,23 +102,30 @@ def _log_snapshot(symbol, label, snapshot, context):
                 "n/a" if snapshot.rsi is None else f"{snapshot.rsi:.1f}", snapshot.vwap_state["position"])
 
 
-def _submit_snapshots(multi, context, provider, persistence):
-    """Build immutable rows and submit them (non-blocking); returns the number of rows that could not be built."""
-    from persistence import technical_shadow
+def _snapshot_rows(multi, context, provider, engine_version):
+    """({label: immutable snapshot row}, number of rows that could not be built)."""
     from persistence.technical_snapshot_repository import SnapshotRowError, snapshot_row
-    invalid = 0
+    rows, invalid = {}, 0
     for label, snapshot in multi.timeframes.items():
         if snapshot is None:
             continue
         intraday = Interval.parse(label).intraday
         try:
-            row = snapshot_row(snapshot, provider=provider.settings.provider, engine_version=persistence.engine_version,
-                               provider_delay_seconds=provider.settings.delay_seconds,
-                               warmup_start=context[label]["warmup_start"], warmup_bars=context[label]["bars"],
-                               session_type=provider.calendar.classify(snapshot.timestamp).value if intraday else None)
+            rows[label] = snapshot_row(snapshot, provider=provider.settings.provider, engine_version=engine_version,
+                                       provider_delay_seconds=provider.settings.delay_seconds,
+                                       warmup_start=context[label]["warmup_start"], warmup_bars=context[label]["bars"],
+                                       session_type=provider.calendar.classify(snapshot.timestamp).value
+                                       if intraday else None)
         except SnapshotRowError:
             invalid += 1
-            continue
+    return rows, invalid
+
+
+def _submit_snapshots(multi, context, provider, persistence):
+    """Build immutable rows and submit them (non-blocking); returns the number of rows that could not be built."""
+    from persistence import technical_shadow
+    rows, invalid = _snapshot_rows(multi, context, provider, persistence.engine_version)
+    for row in rows.values():
         technical_shadow.submit_snapshot(row)
     return invalid
 
@@ -131,12 +138,17 @@ def main(argv=None, environ=None, *, provider=None, out=None):
     environ = os.environ if environ is None else environ
     out = out or sys.stdout
     parser = argparse.ArgumentParser(prog="python -m technical.runner")
-    parser.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS))
+    parser.add_argument("--symbols", default=None, help="default META,NVDA; the frozen Phase 6 universe when the "
+                        "evidence ledger or --evidence-check is active")
     parser.add_argument("--timeframes", default=",".join(DEFAULT_TIMEFRAMES))
     parser.add_argument("--text", action="store_true", help="also print the human-readable multi-timeframe view")
+    parser.add_argument("--evidence-check", action="store_true",
+                        help="Phase 6 operational validation: plan ledger evidence and print completeness; write nothing")
     try:
         args = parser.parse_args(argv)
-        symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+        evidence_active = args.evidence_check or _evidence_requested(environ)
+        default_symbols = _frozen_symbols() if evidence_active else DEFAULT_SYMBOLS
+        symbols = [s.strip().upper() for s in (args.symbols or ",".join(default_symbols)).split(",") if s.strip()]
         timeframes = [Interval.parse(t.strip()) for t in args.timeframes.split(",") if t.strip()]
         if not symbols or not timeframes:
             raise ValueError
@@ -145,10 +157,14 @@ def main(argv=None, environ=None, *, provider=None, out=None):
         return 2
     try:
         persistence = load_technical_persistence_settings(environ)
+        ledger = _prepare_evidence(environ, persistence, symbols, check=args.evidence_check)
         if provider is None:
             provider = build_provider(load_market_data_settings(environ))
     except (MarketDataConfigError, MarketDataError, TechnicalPersistenceConfigError) as error:
         logger.error("event=technical_run_failed reason=config detail=%s", str(error).replace(" ", "_"))
+        return 2
+    except EvidenceSetupError as error:
+        logger.error("event=technical_run_failed reason=evidence_config detail=%s", str(error).replace(" ", "_"))
         return 2
     failures = invalid = 0
     for symbol in symbols:
@@ -158,6 +174,8 @@ def main(argv=None, environ=None, *, provider=None, out=None):
             failures += 1
             logger.error("event=technical_symbol_failed symbol=%s kind=%s detail=%s", symbol,
                          getattr(error, "kind", "data"), str(error).replace(" ", "_"))
+            if ledger is not None:
+                ledger.symbol_failed(provider, symbol, timeframes, error)
             continue
         for label, snapshot in multi.timeframes.items():
             _log_snapshot(symbol, label, snapshot, context[label])
@@ -165,10 +183,136 @@ def main(argv=None, environ=None, *, provider=None, out=None):
             print(format_multi_timeframe(multi), file=out)
         if persistence.enabled:
             invalid += _submit_snapshots(multi, context, provider, persistence)
+        if ledger is not None:
+            ledger.symbol_done(provider, symbol, multi, context)
     if persistence.enabled:
         _finish_persistence(persistence, invalid)
+    ledger_ok = True if ledger is None else ledger.finish(provider, out)
     logger.info("event=technical_run_finished symbols=%d failed=%d", len(symbols), failures)
-    return 1 if failures else 0
+    return 1 if failures or not ledger_ok else 0
+
+
+class EvidenceSetupError(ValueError):
+    """The Phase 6 evidence ledger cannot run safely (fail closed before any fetch)."""
+
+
+def _evidence_requested(environ):
+    return (environ.get("TECHNICAL_EVIDENCE_LEDGER_ENABLED") or "").strip().lower() == "true"
+
+
+def _frozen_symbols():
+    from evidence.registry import PROTOCOL
+    return PROTOCOL.collection_symbols
+
+
+def _prepare_evidence(environ, persistence, symbols, *, check):
+    """None when the ledger is off; otherwise a validated EvidenceRun (no network, no ledger write yet)."""
+    from evidence.collector import EvidenceConfigError, load_evidence_settings
+    try:
+        settings = load_evidence_settings(environ)
+    except EvidenceConfigError as error:
+        raise EvidenceSetupError(str(error)) from None
+    if not (settings.enabled or check):
+        return None
+    from evidence.pin import PinError, current_commit, load_pin
+    from evidence.registry import ENGINE_VERSION, PROTOCOL
+    outside = [s for s in symbols if s not in PROTOCOL.collection_symbols]
+    if outside:
+        raise EvidenceSetupError("evidence symbols must be in the frozen Phase 6 universe")
+    if check:
+        try:
+            pin = load_pin()
+        except PinError:
+            pin = None  # Operational validation only: pre-cutoff data is never evidence.
+        return EvidenceRun(pin=pin, commit=current_commit() or "0000000", engine=None, check=True)
+    if not persistence.enabled:
+        raise EvidenceSetupError("TECHNICAL_EVIDENCE_LEDGER_ENABLED requires TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED")
+    if persistence.engine_version != ENGINE_VERSION:
+        raise EvidenceSetupError("TECHNICAL_SNAPSHOT_ENGINE_VERSION differs from the frozen Phase 6 engine version")
+    try:
+        pin = load_pin()
+    except PinError as error:
+        raise EvidenceSetupError(str(error)) from None
+    commit = current_commit()
+    if not commit:
+        raise EvidenceSetupError("code commit unavailable (git rev-parse HEAD failed)")
+    from persistence.config import ConfigurationError, DatabaseSettings
+    from persistence.database import make_engine
+    try:
+        engine = make_engine(DatabaseSettings.from_env(environ))
+    except ConfigurationError as error:
+        raise EvidenceSetupError(str(error)) from None
+    return EvidenceRun(pin=pin, commit=commit, engine=engine, check=False)
+
+
+class EvidenceRun:
+    """Collects planned ledger identities during the run; writes (or, in check mode, prints) them at the end."""
+
+    def __init__(self, *, pin, commit, engine, check):
+        from datetime import timezone
+        self.pin, self.commit, self.engine, self.check = pin, commit, engine, check
+        self.items, self.failures, self.collected_at = [], [], datetime.now(timezone.utc)
+
+    def _start(self, context_or_starts):
+        if self.pin is not None:
+            return self.pin["prospective_start_session"]
+        return min(v["warmup_start"] if isinstance(v, dict) else v for v in context_or_starts.values()).date()
+
+    def symbol_done(self, provider, symbol, multi, context):
+        from evidence.collector import session_items
+        rows, _ = _snapshot_rows(multi, context, provider, _engine_version())
+        latest = {label: (datetime.fromisoformat(row["snapshot_timestamp"]), row["content_hash"])
+                  for label, row in rows.items()}
+        self.items += session_items(symbol, context, provider.calendar, provider.as_of(), start=self._start(context),
+                                    latest_snapshots=latest)
+
+    def symbol_failed(self, provider, symbol, timeframes, error):
+        from evidence.collector import PROVIDER_ERROR_KINDS, missing_items
+        from persistence.technical_evidence_ledger import sanitize_detail
+        as_of = provider.as_of()
+        starts = {t.label: warmup_start(provider.calendar, as_of, t) for t in timeframes}
+        kind = PROVIDER_ERROR_KINDS.get(getattr(error, "kind", None), "contract_violation")
+        detail = sanitize_detail(f"{getattr(error, 'kind', 'data')}: {error}")
+        for item in missing_items(symbol, starts, starts, provider.calendar, as_of, start=self._start(starts)):
+            self.failures.append((item, kind, detail))
+
+    def finish(self, provider, out):
+        """True when the ledger step succeeded (check mode always prints and writes nothing)."""
+        import json
+        from evidence.collector import accepted_keys, build_rows, check_summary, write_rows
+        from persistence.database import PersistenceError, transaction
+        from persistence.technical_evidence_ledger import LedgerError
+        if self.check:
+            print(json.dumps(dict(mode="operational_validation", pinned=self.pin is not None,
+                                  note="nothing written; pre-cutoff sessions are operational validation, not evidence",
+                                  planned_identities=len(self.items), terminal_failures=len(self.failures),
+                                  per_symbol_interval=check_summary(self.items)), indent=2, sort_keys=True), file=out)
+            return True
+        try:
+            with transaction(self.engine) as session:
+                accepted = accepted_keys(session)
+                items = [i for i in self.items if (i["session"], i["symbol"], i["interval"]) not in accepted]
+                failures = [f for f in self.failures
+                            if (f[0]["session"], f[0]["symbol"], f[0]["interval"]) not in accepted]
+                rows = build_rows(items, failures=failures, provider_settings=provider.settings,
+                                  code_commit=self.commit, collected_at=self.collected_at, calendar=provider.calendar)
+                counts = write_rows(session, rows)
+        except (PersistenceError, LedgerError) as error:
+            logger.error("event=evidence_ledger status=failed reason=%s", type(error).__name__)
+            return False
+        finally:
+            self.engine.dispose()
+        logger.info("event=evidence_ledger status=ok registry_hash=%s start=%s skipped_accepted=%d inserted=%d "
+                    "duplicate=%d conflict=%d failed=%d", self.pin["registry_hash"][:12],
+                    self.pin["prospective_start_session"].isoformat(), len(self.items) + len(self.failures)
+                    - len(items) - len(failures), counts["inserted"], counts["duplicate"], counts["conflict"],
+                    counts["failed"])
+        return counts["conflict"] == 0 and counts["failed"] == 0
+
+
+def _engine_version():
+    from evidence.registry import ENGINE_VERSION
+    return ENGINE_VERSION
 
 
 def _finish_persistence(persistence, invalid):

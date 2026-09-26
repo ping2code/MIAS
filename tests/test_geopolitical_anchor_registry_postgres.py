@@ -97,7 +97,7 @@ class PostgreSQLDurableIdentityLiveTests(unittest.TestCase):
                               "ck_geopolitical_anchor_registry_identity_shape",
                               "ck_geopolitical_anchor_registry_observation_order"})
             self.assertEqual(connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one(),
-                             "0006_technical_numeric_volume")  # Migration head (0006: NUMERIC volume follow-up).
+                             "0007_technical_evidence_ledger")  # Migration head (0007: Phase 6 evidence ledger).
         self.persist_corpus()
         with transaction(self.engine) as session:
             session.execute(registry.delete())

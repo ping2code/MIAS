@@ -86,7 +86,7 @@ class TechnicalSnapshotPostgresTests(unittest.TestCase):
         with self.engine.connect() as connection:
             self.assertEqual(compare_metadata(MigrationContext.configure(connection), metadata), [])
             version = connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-        self.assertEqual(version, "0006_technical_numeric_volume")
+        self.assertEqual(version, "0007_technical_evidence_ledger")
 
     def test_numeric_volume_migration_0006_preserves_rows_and_exact_values(self):
         from decimal import Decimal
