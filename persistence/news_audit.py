@@ -177,7 +177,7 @@ def main(argv=None, *, engine=None, out=None, err=None):
     else:
         key = "variant_group_count" if args.command == "url-variants" else "repeated_events"
         print(f"[{args.command}] {key}: {result[key]}", file=out)
-        for item in result.get("groups") or result.get("events"):
+        for item in result["groups"] if args.command == "url-variants" else result["events"]:  # Empty lists print nothing.
             print(json.dumps(item, sort_keys=True, default=str), file=out)
     return 0
 
