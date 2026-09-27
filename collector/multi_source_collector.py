@@ -1,3 +1,5 @@
+import argparse
+
 from collector.rss_reader import read_feed
 from shared.sources import RSS_SOURCES
 from shared.logger import get_logger
@@ -6,7 +8,8 @@ from shared.logger import get_logger
 logger = get_logger("multi_source_collector")
 
 
-def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alerts=False,
+def collect_all_sources(include_fed=False, *, news_enable_ai=True, news_send_alerts=True,
+                        fed_enable_ai=True, fed_send_alerts=False,
                         include_macro=False, macro_enable_ai=True, macro_send_alerts=False,
                         include_treasury=False, treasury_enable_ai=True, treasury_send_alerts=False,
                         include_geopolitical=False, geopolitical_enable_ai=True, geopolitical_send_alerts=False):
@@ -28,7 +31,9 @@ def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alert
 
         events, stats = read_feed(
             source["url"],
-            source_label=source["name"]
+            source_label=source["name"],
+            enable_ai=news_enable_ai,
+            send_alerts=news_send_alerts,
         )
 
         all_events.extend(events)
@@ -71,9 +76,24 @@ def collect_all_sources(include_fed=False, *, fed_enable_ai=True, fed_send_alert
     return all_events, total_stats
 
 
+def parse_args(argv=None):
+    """News CLI. No flags keeps today's behavior (AI enrichment and Telegram delivery for ALERT items)."""
+    parser = argparse.ArgumentParser(prog="python -m collector.multi_source_collector")
+    parser.add_argument("--no-ai", action="store_true", help="skip OpenAI enrichment for news ALERT items")
+    parser.add_argument("--no-send-alerts", action="store_true", help="skip Telegram delivery for news ALERT items")
+    # Stray positional arguments are ignored, as this entry point always did. Unknown options fail closed, so a
+    # mistyped safety flag can never silently fall back to live AI or delivery.
+    args, extra = parser.parse_known_args(argv)
+    unknown = [arg for arg in extra if arg.startswith("-")]
+    if unknown:
+        parser.error("unrecognized option(s): " + " ".join(unknown))
+    return args
+
+
 if __name__ == "__main__":
 
-    events, stats = collect_all_sources()
+    args = parse_args()
+    events, stats = collect_all_sources(news_enable_ai=not args.no_ai, news_send_alerts=not args.no_send_alerts)
 
     print("\nMIAS MULTI-SOURCE STATS")
     print("=" * 80)

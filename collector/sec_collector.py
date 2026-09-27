@@ -1,3 +1,4 @@
+import argparse
 from time import monotonic
 
 import requests
@@ -108,7 +109,14 @@ def _shadow(event):
             logger.warning("SEC shadow submission failed")
 
 
-def process_sec_filings(filings):
+def process_sec_filings(filings, *, send_alerts=True):
+    """Normalize, dedupe, score, decide, optionally deliver, then persist each filing.
+
+    The default keeps production behavior (Telegram delivery for ALERT filings).
+    ``send_alerts=False`` skips formatting, printing and Telegram delivery before any
+    call. The stored record is identical either way, because persistence never
+    depends on delivery. SEC has no AI step.
+    """
     events = []
 
     for filing in filings:
@@ -135,7 +143,7 @@ def process_sec_filings(filings):
             event["alert_decision"]
         )
 
-        if event["alert_decision"] == "ALERT":
+        if send_alerts and event["alert_decision"] == "ALERT":
             message = format_alert(event)
 
             print(message)
@@ -159,10 +167,24 @@ def process_sec_filings(filings):
     return events
 
 
+def parse_args(argv=None):
+    """SEC CLI. No flags keeps today's behavior (Telegram delivery for ALERT filings)."""
+    parser = argparse.ArgumentParser(prog="python -m collector.sec_collector")
+    parser.add_argument("--no-send-alerts", action="store_true", help="skip Telegram delivery for SEC ALERT filings")
+    # Stray positional arguments are ignored, as this entry point always did. Unknown options fail closed, so a
+    # mistyped safety flag can never silently fall back to live AI or delivery.
+    args, extra = parser.parse_known_args(argv)
+    unknown = [arg for arg in extra if arg.startswith("-")]
+    if unknown:
+        parser.error("unrecognized option(s): " + " ".join(unknown))
+    return args
+
+
 if __name__ == "__main__":
+    args = parse_args()
     filings = collect_sec_filings()
 
-    events = process_sec_filings(filings)
+    events = process_sec_filings(filings, send_alerts=not args.no_send_alerts)
 
     print("\nPROCESSED SEC EVENTS")
     print("=" * 80)

@@ -42,7 +42,15 @@ def _shadow(event, outcome):
             logger.warning("News shadow submission failed")
 
 
-def read_feed(feed_url, source_label=None):
+def read_feed(feed_url, source_label=None, *, enable_ai=True, send_alerts=True):
+    """One RSS feed pass. Defaults keep production behavior: AI enrichment and Telegram delivery for ALERT items.
+
+    ``enable_ai=False`` skips OpenAI enrichment and the AI quality adjustment before
+    either is called, so the event keeps its deterministic pre-AI score and decision.
+    That's the same state production keeps when enrichment fails. ``send_alerts=False``
+    skips formatting, printing and Telegram delivery before any call. Scoring,
+    dedupe and persistence (location and order) are unchanged either way.
+    """
 
     stats = {
         "fetched": 0,
@@ -130,7 +138,7 @@ def read_feed(feed_url, source_label=None):
                 event.get("alert_decision")
             )
 
-            if event["alert_decision"] == "ALERT":
+            if enable_ai and event["alert_decision"] == "ALERT":
 
                 try:
                     event = analyze_market_event(event)
@@ -159,7 +167,7 @@ def read_feed(feed_url, source_label=None):
                     )
 
 
-            if event["alert_decision"] == "ALERT":
+            if send_alerts and event["alert_decision"] == "ALERT":
                 message = format_alert(event)
 
                 print(message)
