@@ -26,9 +26,15 @@ list) or a single ``MarketContext.to_dict()``.
 
 **News and SEC (read-only SELECTs over the existing table metadata):**
 
-- Candidates are versions of ``news``/``sec`` events with ``observed_at`` in
-  ``(as_of - lookback, as_of]``. An item is only ever observed after it is
-  published, so this bounded superset contains every in-window item.
+- **Publication defines the lookback window:** ``(as_of - lookback, as_of]``.
+  ``observed_at`` is only an upper-bound availability check (``observed_at <=
+  as_of``), so future-observed versions are never loaded.
+- Candidate events have at least one version available by ``as_of`` whose
+  publication is inside the window (timestamp after the window start, or a filing
+  date on or after the window start's New York date).
+- Items with an unknown publication time cannot be placed by publication, so only
+  those fall back to ``observed_at`` inside the window. That keeps them bounded,
+  and Phase 7C counts them as ``unknown_publication_time``.
 - Per event, the **latest version with ``observed_at <= as_of``** is used, never
   ``current_version_id``.
 - Score and decision history uses the latest row with ``recorded_at <= as_of``.
@@ -37,8 +43,9 @@ list) or a single ``MarketContext.to_dict()``.
 - The collector event is rebuilt from those rows and must reproduce the durable
   identity: ``news-url-v1`` / ``news-fingerprint-v1`` via ``article_identity``;
   ``sec-v1`` via the stored fingerprint key.
-- Items whose known publication lies at or before the lookback start are left out
-  and counted as ``outside_lookback`` (runner diagnostics only).
+- If that latest version's publication lies outside the window (an earlier version
+  was inside it), the event is left out and counted as ``outside_lookback``
+  (runner diagnostics only).
 """
 from dataclasses import dataclass, fields
 from datetime import date, datetime, timedelta
@@ -234,11 +241,12 @@ def _latest(rows, key):
 
 
 def _outside_lookback(version, window_start):
+    """Publication defines the window; only an unknown publication time falls back to observed_at."""
     if version["published_at"] is not None:
         return version["published_at"] <= window_start
     if version["publication_date"] is not None:
         return version["publication_date"] < window_start.astimezone(EXCHANGE_TZ).date()
-    return False  # Unknown publication time: passed on; Phase 7C counts it as unknown_publication_time.
+    return version["observed_at"] <= window_start  # Unknown: Phase 7C counts it as unknown_publication_time.
 
 
 def _news_event(version, prov, score, decision):
@@ -277,10 +285,17 @@ def _sec_event(version, prov, score, decision, event_key):
 def load_events(session, *, as_of, lookback):
     from persistence.models import event_history, event_provenance, event_versions, events
     window_start = as_of - lookback
+    start_date = window_start.astimezone(EXCHANGE_TZ).date()
     v, e = event_versions, events
+    available = sa.and_(e.c.source_family.in_(FAMILIES), v.c.observed_at <= as_of)
+    in_window = sa.or_(v.c.published_at > window_start,
+                       sa.and_(v.c.published_at.is_(None), v.c.publication_date >= start_date),
+                       sa.and_(v.c.published_at.is_(None), v.c.publication_date.is_(None),
+                               v.c.observed_at > window_start))
+    event_ids = sa.select(v.c.event_id).join(e, e.c.id == v.c.event_id).where(available, in_window)
     query = (sa.select(v, e.c.source_family, e.c.identity_version, e.c.event_key)
              .join(e, e.c.id == v.c.event_id)
-             .where(e.c.source_family.in_(FAMILIES), v.c.observed_at <= as_of, v.c.observed_at > window_start))
+             .where(available, v.c.event_id.in_(event_ids)))
     candidates = [dict(r._mapping) for r in session.execute(query)]
     by_event = {}
     for row in candidates:

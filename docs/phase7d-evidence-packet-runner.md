@@ -93,9 +93,16 @@ For `1d`, `1h` and `5m` (in that order), with `engine_version = phase4c-v2`:
 
 ## 7. News and SEC reconstruction
 
-**Candidates:** versions of `news`/`sec` events with `observed_at ∈ (as_of − lookback, as_of]`. An item is only ever
-observed after it's published, so this bounded superset contains every in-window item. Per event, the latest candidate
-version is used.
+**Publication defines the lookback window**, `(as_of − lookback, as_of]`. `observed_at` is **only an upper-bound
+availability check** (`observed_at ≤ as_of`), so a version observed after the cutoff is never loaded.
+
+- **Candidate events** have at least one version available by `as_of` whose publication is inside the window: a
+  publication timestamp after the window start, or a date-only filing on or after the window start's New York date.
+- **An item published inside the window but observed before it started is included.**
+- **Unknown publication time:** only these items fall back to `observed_at` inside the window, which keeps them
+  bounded. Phase 7C then counts them as `unknown_publication_time`.
+- **Version choice:** per candidate event, the latest version with `observed_at ≤ as_of` is used, never
+  `current_version_id`.
 
 **The collector event** that Phase 7C adapts is rebuilt only from rows available by the cutoff:
 
@@ -111,8 +118,11 @@ version is used.
 - SEC: `sec-v1` = the stored fingerprint key. Accession and URL validation stay in the Phase 7C adapter.
 
 **Excluded before assembly** and counted in diagnostics only (the packet contract is unchanged):
-- items whose known publication is at or before the window start (`outside_lookback`);
+- candidate events whose chosen (latest available) version is published outside the window, because an earlier
+  version was inside it (`outside_lookback`);
 - versions without provenance by the cutoff (`no_provenance`).
+
+Events never published inside the window aren't loaded at all.
 
 Everything else is passed to Phase 7C, which applies and counts its own exclusions: `symbol_mismatch`,
 `after_as_of`, `observed_after_as_of`, `unknown_publication_time`, `near_duplicate_suppressed`, `invalid_event`,
@@ -121,8 +131,11 @@ Everything else is passed to Phase 7C, which applies and counts its own exclusio
 ## 8. Lookback
 
 - `--news-lookback-hours`: default **72**, allowed range 1–720.
-- The window is `(as_of − lookback, as_of]`, computed only from `as_of`.
-- A date-only SEC filing is in the window if its date is on or after the window start's New York date.
+- The window is `(as_of − lookback, as_of]` over **publication time**, computed only from `as_of`.
+- `observed_at` is only the upper-bound availability check.
+- A date-only SEC filing is in the window if its date is on or after the window start's New York date. The
+  Phase 7C rule then still requires the date to be strictly before the `as_of` New York date.
+- Only items with an unknown publication time are placed by `observed_at`.
 
 ## 9. Deterministic ordering
 
@@ -208,8 +221,6 @@ Data recorded later can't change an earlier packet (tested byte-for-byte).
   `source incomplete` in strict mode.
 - RSS relevance covers the collector watchlist (currently META/NVDA). SEC covers the configured symbols.
 - Upstream news scores may depend on scoring time or an AI adjustment. They're transported as recorded (see Phase 7C).
-- Candidate selection relies on `observed_at ≥ published_at`. An item published inside the window but observed before
-  it would not be seen.
 
 ## 18. Deferred
 

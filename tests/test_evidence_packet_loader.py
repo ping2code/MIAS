@@ -221,17 +221,43 @@ class EventLoadTests(Base):
         self.assertIsNone(early["alert_decision"])
         self.assertEqual((late["impact_score"], late["alert_decision"]), (75, "ALERT"))
 
-    def test_observation_and_lookback_windows(self):
-        self.db.news(rss_event(url="https://example.com/future"), datetime(2026, 9, 23, 20, 30, tzinfo=UTC))
+    def test_publication_defines_window_observed_at_is_upper_bound_only(self):
+        # Published inside the window (2026-09-20 20:05Z, 2026-09-23 20:05Z], observed BEFORE the window start:
+        # previously missed by an observed_at window; now included because publication defines the window.
+        self.db.news(rss_event(url="https://example.com/early-seen", headline="Meta early seen",
+                               published_at="2026-09-23T10:00:00+00:00"), datetime(2026, 9, 19, 9, tzinfo=UTC))
+        # Published before the window (observed inside it): not a candidate.
         self.db.news(rss_event(url="https://example.com/old", published_at="2026-09-19T10:00:00+00:00"),
-                     datetime(2026, 9, 21, 10, tzinfo=UTC))  # Observed in window, published before it.
-        self.db.news(rss_event(url="https://example.com/ancient", published_at="2026-09-01T10:00:00+00:00"),
-                     datetime(2026, 9, 1, 10, 5, tzinfo=UTC))  # Observed long before the window.
+                     datetime(2026, 9, 21, 10, tzinfo=UTC))
+        # Observed after as_of: never loaded (observed_at is the availability upper bound).
+        self.db.news(rss_event(url="https://example.com/future"), datetime(2026, 9, 23, 20, 30, tzinfo=UTC))
+        # Date-only SEC filing on the window-start date: inside by publication date.
+        self.db.sec(sec_event(published_at="2026-09-20"), datetime(2026, 9, 20, 22, tzinfo=UTC))
+        _, _, events = self.load()
+        self.assertEqual(sorted(i.event["headline"] for i in events.inputs),
+                         ["META filed SEC Form 8-K", "Meta early seen"])
+        self.assertEqual(events.diagnostics["news"], dict(loaded=1, outside_lookback=0, no_provenance=0, passed=1))
+        self.assertEqual(events.diagnostics["sec"], dict(loaded=1, outside_lookback=0, no_provenance=0, passed=1))
+        wide = self.load(hours=720)[2]
+        self.assertEqual(sorted(i.event["url"] for i in wide.inputs if i.family == "news"),
+                         ["https://example.com/early-seen", "https://example.com/old"])
+
+    def test_latest_version_outside_window_is_counted(self):
+        self.db.news(rss_event(published_at="2026-09-23T10:00:00+00:00"), datetime(2026, 9, 23, 10, 5, tzinfo=UTC))
+        # A later version of the same URL (available by as_of) carries an older publication time.
+        self.db.news(rss_event(headline="Meta corrected", published_at="2026-09-10T10:00:00+00:00"),
+                     datetime(2026, 9, 23, 11, tzinfo=UTC))
         _, _, events = self.load()
         self.assertEqual(events.inputs, ())
         self.assertEqual(events.diagnostics["news"], dict(loaded=1, outside_lookback=1, no_provenance=0, passed=0))
-        wide = self.load(hours=720)[2]
-        self.assertEqual([i.event["url"] for i in wide.inputs], ["https://example.com/ancient", "https://example.com/old"])
+
+    def test_unknown_publication_is_bounded_by_observation(self):
+        self.db.news(rss_event(url="https://example.com/raw-recent", published_at="garbled"),
+                     datetime(2026, 9, 23, 12, tzinfo=UTC))
+        self.db.news(rss_event(url="https://example.com/raw-ancient", published_at="garbled"),
+                     datetime(2026, 9, 1, 12, tzinfo=UTC))
+        _, _, events = self.load()
+        self.assertEqual([i.event["url"] for i in events.inputs], ["https://example.com/raw-recent"])
 
     def test_near_duplicate_outcome_is_carried_for_phase7c_accounting(self):
         event = {k: v for k, v in rss_event().items() if k not in ("impact_score", "impact_level", "score_reasons",
