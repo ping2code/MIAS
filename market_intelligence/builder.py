@@ -75,7 +75,10 @@ def _structure(data, frames, relations):
         synthesis_pointers=("timeframe_alignment.pattern",
                             *(f"timeframes[{i}].state_direction" for i in r.INTERVALS),
                             *(f"timeframe_relations[{a}:{b}].relation" for a, b in r.PAIRS)),
-        packet_pointers=_uniq(p for rel in relations.values() for p in rel["sources"]))
+        # Each timeframe's own resolving pointer (state, or missing_reason). Relation sources are not used: for a
+        # missing timeframe they name an absent row (Phase 7H §12).
+        packet_pointers=_uniq(p for i in r.INTERVALS for p in frames[i]["sources"]
+                              if p.endswith((".row.technical_state", ".missing_reason"))))
 
 
 def _alignment(market, references):
