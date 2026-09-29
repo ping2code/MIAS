@@ -45,6 +45,16 @@ def _optional_str(value, name):
     _require(value is None or isinstance(value, str), f"{name} must be a string or null")
 
 
+def _decimal(value, name):
+    """A canonical decimal string or null (strict: floats and non-finite values are malformed)."""
+    if value is None:
+        return
+    try:
+        rules.sign(value)
+    except ValueError:
+        raise PacketValidationError(f"{name} must be a canonical decimal string") from None
+
+
 def parse_instant(value, name):
     _require(isinstance(value, str), f"{name} must be an ISO 8601 string")
     try:
@@ -127,7 +137,7 @@ def _market_context(section, symbol, as_of):
     _require(isinstance(series, dict), "market_context.symbol_context must be an object")
     for key in ("return_since_prev_close", "return_since_open"):
         _require(key in series, f"market_context.symbol_context lacks {key}")
-        rules.sign(series[key]) if series[key] is not None else None
+        _decimal(series[key], f"market_context.symbol_context.{key}")
     freshness = series.get("freshness")
     _require(freshness is None or (isinstance(freshness, dict) and isinstance(freshness.get("status"), str)),
              "market_context freshness is malformed")
@@ -140,9 +150,7 @@ def _market_context(section, symbol, as_of):
         _require(isinstance(key[0], str) and key[1] in rules.BASES, "market_context comparison identity is malformed")
         _require(key not in seen, "duplicate market_context comparison")
         seen.add(key)
-        _optional_str(comparison.get("relative_return"), "comparison.relative_return")
-        if comparison.get("relative_return") is not None:
-            rules.sign(comparison["relative_return"])
+        _decimal(comparison.get("relative_return"), "comparison.relative_return")
         _require(comparison.get("aligned") in (True, False, None), "comparison.aligned is malformed")
         unavailable = comparison.get("unavailable")
         _require(isinstance(unavailable, list) and all(isinstance(r, str) for r in unavailable),
