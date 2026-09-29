@@ -49,9 +49,14 @@ Out of scope, and not done:
 
 **Runtime imports:** the production package loads none of these: `technical`, `persistence`, `evidence`,
 `evaluation`, `analyzer`, `collector`, `sqlalchemy`, `redis`, `openai`, `telegram`, `requests`, `dotenv` or
-`shared.config`. The only project packages it loads are `evidence_packet`, `evidence_synthesis` and
-`market_data` (for `EXCHANGE_TZ` and `SYMBOL`). The only import of `technical.signals.DIRECTION` is in the
-Phase 7G contract-equality test.
+`shared.config`.
+
+**Package boundary:** production `evidence_synthesis` code imports only `evidence_packet`, itself and the
+standard library (§14.1). `market_data` is loaded at runtime only because `evidence_packet.serialization`
+itself imports it; importing `evidence_synthesis` adds no project package beyond `evidence_synthesis`.
+
+**Test-only imports:** `technical.signals.DIRECTION` in the Phase 7G contract-equality test, and
+`market_data.models.EXCHANGE_TZ` / `SYMBOL` in the tests that pin the frozen local copies.
 
 ## 3. Replay corpus (Task B)
 
@@ -265,8 +270,8 @@ synthesize.
 AST scans (docstrings excluded) show:
 
 - `builder`, `rules`, `validation`, `canonical` and `model` import only the standard library (`datetime`, `re`,
-  `decimal`, `collections`, `dataclasses`, `hashlib`, `json`) plus `evidence_packet`, `evidence_synthesis` and
-  `market_data`;
+  `decimal`, `zoneinfo`, `collections`, `dataclasses`, `hashlib`, `json`) plus `evidence_packet` and
+  `evidence_synthesis`;
 - none of them uses any I/O, clock, environment or process name;
 - `replay.py` imports only `argparse`, `hashlib`, `json`, `pathlib`, `sys` and `evidence_synthesis`, and never
   writes files.
@@ -303,14 +308,14 @@ are characterization only: no code changed and no semantics depend on them.
 ## 14. Failures found: a Phase 7G validation defect, fixed
 
 **Phase 7G validation defect found during Phase 7H and fixed without changing valid-packet synthesis
-semantics** (commit `b65d76a`, `evidence_synthesis/validation.py` only).
+semantics** (commit `b65d76a`, `evidence_synthesis/validation.py` only; package boundary corrected in §14.1).
 
 Phase 7G accepted resealed packets that the Phase 7C assembler can never produce:
 
 | # | Accepted input | Effect | Phase 7C guarantee |
 |---|---|---|---|
 | P1 | Duplicate exclusion reasons | Output depended on list order | Unique reasons (sorted `Counter`) |
-| P2 | Benchmark named `"self"` | Two references both named `self` | Benchmarks are tickers |
+| P2 | Benchmark named `"self"` | Two references both named `self` | Benchmarks are market symbols, never `self` |
 | P3 | Technical `bar_end` after `as_of` | Negative `age_seconds` | Timeframe marked missing, `after_as_of` |
 | P4 | `published_at` or `observed_at` after `as_of`; date-only publication not before `as_of`'s New York date | Negative ages | Item excluded (`after_as_of` / `observed_after_as_of`) |
 | P7 | Exclusion count ≤ 0 | Copied into the output | Counts ≥ 1 |
@@ -320,12 +325,34 @@ Phase 7G accepted resealed packets that the Phase 7C assembler can never produce
 - **P1, P7:** exclusion reasons must be unique, and each count must be an integer ≥ 1.
 - **P3:** `bar_end` must be at or before `as_of`.
 - **P4 (timestamps):** `published_at` and `observed_at` must be at or before `as_of`.
-- **P4 (date-only):** `publication_date` must be strictly before `as_of`'s America/New_York date. This mirrors
-  the assembler's own `after_as_of` rule, which is stricter than "not after".
-- **P2:** benchmark names must match `market_data.models.SYMBOL`. That is the existing canonical ticker
-  validator the Phase 7B runner applies to `--benchmarks`, and the regex `validation.py` already used for the
-  packet symbol, now imported instead of duplicated. It rejects the reserved lowercase `"self"`; no new regex
-  was invented.
+- **P4 (date-only):** `publication_date` must be strictly before `as_of`'s America/New_York date. This is the
+  assembler's own rule, not a new Phase 7H semantic: `_time_reason` excludes a date-precision item when
+  `not publication_date < as_of.astimezone(America/New_York).date()`. A date-only filing on the same day
+  carries no time, so it cannot be shown to precede an intraday `as_of`, and the assembler never includes it.
+  The two rules agree on every assembler-produced packet: `published_at` is set only for `second` precision (RSS)
+  and `publication_date` only for `date` precision (SEC).
+- **P2:** a benchmark must not be one of synthesis's reserved reference names,
+  `rules.RESERVED_BENCHMARK_NAMES = frozenset({"self"})`. This is the only name synthesis itself defines in the
+  reference namespace. No ticker grammar is imposed; for example, `"SELF"` stays valid.
+
+### 14.1 Package-boundary correction
+
+The first version of this fix (`b65d76a`) imported `EXCHANGE_TZ` and `SYMBOL` from `market_data.models`. That
+violated the locked boundary: production `evidence_synthesis` depends only on `evidence_packet` and the
+standard library. Review also found that `builder.py` had imported `EXCHANGE_TZ` from `market_data.models` since
+Phase 7G.
+
+Corrected in two commits:
+
+- **`e9aa7f6`:** validation uses the reserved-name set above. The packet-symbol regex is the local Phase 7G copy
+  again, and the New York zone is a frozen local `rules.EXCHANGE_TZ`.
+- **`caf5bd1`:** `builder.py` uses `rules.EXCHANGE_TZ`, and package-boundary tests were added.
+
+Tests pin the local copies to `market_data.models.EXCHANGE_TZ` and `SYMBOL`, importing `market_data` in tests
+only. Output for every valid packet is byte-identical.
+
+At `e9aa7f6` alone, one Phase 7H test fails: `test_pure_module_code`, because its list of allowed standard-library
+imports lacked `zoneinfo`. `caf5bd1` adds it, and every commit after that is green.
 
 **Why valid output is unchanged:**
 
@@ -410,7 +437,9 @@ python -m evidence_synthesis.replay --corpus /tmp/replay --repeat 100
 |---|---|
 | `evidence_synthesis/validation.py` | The §14 fix (rejects more; valid-packet output unchanged) |
 | `evidence_synthesis/replay.py` | New, read-only tool (addition) |
-| builder, rules, model, canonical, runner | Unchanged |
+| `evidence_synthesis/rules.py` | Adds frozen `RESERVED_BENCHMARK_NAMES` and `EXCHANGE_TZ` (§14.1) |
+| `evidence_synthesis/builder.py` | Uses `rules.EXCHANGE_TZ` instead of importing `market_data` (§14.1); output unchanged |
+| model, canonical, runner | Unchanged |
 | EvidencePacket, Phase 6 | Unchanged |
 
 ## 19. GO / NO-GO for Phase 8
