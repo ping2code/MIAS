@@ -1,7 +1,9 @@
 # Phase 7E — Durable data readiness and first complete evidence packets
 
-**STATUS: IN PROGRESS.** Acceptance criteria 1–9 are met on real data. Pending: the 2026-09-28 Massive Starter delay
-measurement, and the Phase 6 ledger and scheduler decisions.
+**STATUS: COMPLETE (2026-09-29).** All ten acceptance criteria are met on real data.
+- The 2026-09-28 Massive Starter delay measurement confirmed current-session data and the frozen 900 s delay.
+- The first Phase 6 prospective ledger collection (session 2026-09-28) succeeded: 24/24 identities, clean audit.
+- Collection runs manually each day; the general scheduler stays disabled.
 
 This is an operational report. Phase 7E adds no synthesis, scoring, schema change, migration or packet-format
 change.
@@ -24,7 +26,7 @@ change.
 | 7 | No future leakage | ✅ |
 | 8 | No packet-schema change | ✅ `phase7c-v1` unchanged |
 | 9 | No production-semantic change | ✅ only the approved side-effect gates (defaults unchanged) and an output fix |
-| 10 | Data-readiness report complete | ⏳ this report stays in progress until the pending items below close |
+| 10 | Data-readiness report complete | ✅ delay measured (§11), scheduler decided (§12), first ledger collection recorded (§13) |
 
 ## 1. Environment readiness (2026-09-27, operator shell)
 
@@ -73,8 +75,8 @@ change.
 | `SEC_PERSISTENCE_SHADOW_ENABLED=true` | SEC collector, per command |
 | News collector | `python -m collector.multi_source_collector --no-ai --no-send-alerts` |
 | SEC collector | `python -m collector.sec_collector --no-send-alerts` |
-| Phase 6 `TECHNICAL_EVIDENCE_LEDGER_ENABLED` | **disabled** (§13) |
-| Technical scheduler | **disabled** (§12) |
+| Phase 6 `TECHNICAL_EVIDENCE_LEDGER_ENABLED=true` | per command, in the manual daily collection run (§13) |
+| General MIAS scheduler (`MIAS_SCHEDULER_ENABLED`) | **disabled**: manual daily collection instead (§12) |
 
 - **Guarantee:** `--no-ai` and `--no-send-alerts` are explicit `if` gates, checked before any OpenAI or Telegram
   call. The run doesn't rely on missing credentials.
@@ -188,24 +190,77 @@ were filed earlier, so they're not candidates and never loaded.
 
 No pass/fail freshness thresholds are applied, because no existing contract defines them.
 
-## 11. Massive Starter delay
+## 11. Massive Starter delay (measured 2026-09-28, regular hours)
 
-**Pending:** scheduled for 2026-09-28 during regular market hours. It has not been run early or simulated.
+Technical runner, persistence disabled, META and NVDA:
 
-## 12. Scheduler
+| Wall clock (ET) | 5m last completed bar | 1h last completed bar |
+|---|---|---|
+| ~10:06 | 09:45 (both symbols) | 2026-09-25 15:30 (the first 09:30–10:30 bucket hadn't completed yet) |
+| ~10:52 | 10:30 (both symbols) | 09:30 (both symbols) |
 
-**Disabled.** The recommendation (a manual daily run, or a once-daily scheduler using the existing configuration)
-follows the delay measurement.
+- **Current-session data:** 5m and 1h bars for the current session are available. The feed is not previous-session
+  only, and META and NVDA agree. `technical_run_finished symbols=2 failed=0`.
+- **The frozen 900 s delay is adequate.** The runner itself applies `as_of = now − MARKET_DATA_DELAY_SECONDS`, so
+  the observed ~15–22 min lag is mostly MIAS's own delay plus bar completion.
+  - At ~10:06 (`as_of` ≈ 09:51), the 09:45 bar (ending 09:50) was present.
+  - At ~10:52 (`as_of` ≈ 10:37), the 10:30 bar (ending 10:35) was present.
+  - So the vendor delivered each requested bar within about 16–17 minutes of completion, and every bar MIAS asked
+    for had arrived.
+- **`MARKET_DATA_DELAY_SECONDS=900` is unchanged.** It's part of each ledger row's `evidence_hash`, and must stay
+  constant for the whole prospective experiment.
 
-## 13. Phase 6 evidence ledger
+## 12. Scheduler decision: manual daily run
 
-**Disabled**, because:
-- the delay measurement is still pending;
-- collection timing hasn't been confirmed against it;
-- the first prospective session is 2026-09-28, collected around 2026-09-29 08:00 ET.
+The general MIAS scheduler stays **disabled**. Phase 6 collection runs **manually each trading day** (§13). Reasons:
+- **Side effects:** `MIAS_SCHEDULER_ENABLED=true` would also start the news, fed, SEC, macro, treasury and
+  geopolitical families; only `technical` is disabled by default. Through the scheduler, news and SEC run without
+  `--no-ai`/`--no-send-alerts`, which means live OpenAI and Telegram. Manual runs avoid accidental side effects.
+- **Timing:** the existing scheduler is relative to process start, not wall-clock. Each job runs at start + offset,
+  then every interval, so the time of day depends on when a long-lived process was started.
+- **Timeout:** the technical job for the frozen 8-symbol universe (about 80 requests at 12 s pacing, around 16 min)
+  can exceed the default technical timeout of 900 s.
 
-Natural backfill (5m: 10 sessions) allows enabling shortly after the measurement without losing sessions. An exact
-proposal will follow, for approval.
+The scheduler can be revisited later with every other family explicitly disabled. That isn't part of Phase 7E.
+
+## 13. Phase 6 evidence ledger: first prospective collection (2026-09-29 morning)
+
+**Settings,** set explicitly per command so they can't drift. No `--symbols` override: the frozen 8-symbol universe.
+
+```
+MARKET_DATA_PROVIDER=polygon MARKET_DATA_DELAY_SECONDS=900 MARKET_DATA_ADJUSTED=true \
+MARKET_DATA_INCLUDE_EXTENDED_HOURS=false TECHNICAL_SNAPSHOT_ENGINE_VERSION=phase4c-v2 \
+TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED=true TECHNICAL_EVIDENCE_LEDGER_ENABLED=true python -m technical.runner
+```
+
+**Collection result:**
+
+| Output | Values |
+|---|---|
+| `technical_persistence` | `queued=24 persisted=24 duplicate=0 conflict=0 failed=0` |
+| `evidence_ledger` | `status=ok skipped_accepted=0 inserted=24 duplicate=0 conflict=0 failed=0` |
+| `technical_run_finished` | `symbols=8 failed=0` |
+| process exit | 0 |
+
+**`python -m persistence.technical_evidence_tools reconcile --through 2026-09-28`:**
+- `expected_identities=24`, `accepted_identities=24`, `expected_sessions=1`, `complete_sessions=1`;
+- `complete_session_dates=["2026-09-28"]`;
+- nothing missing: `missing_identities=[]`, `missing_sessions=[]`;
+- `backfilled_rows=0`, `conflicted_identities=0`, `failures_without_success=0`, `non_trading_rows=0`,
+  `pre_start_rows=0`.
+
+**`python -m persistence.technical_evidence_tools audit`:** `rows=24`, `problems=0`, every mismatch and problem list
+empty, `triggers_present=true`.
+
+**`python -m evaluation.prospective_status`:**
+- `accepted_identities=24`, `complete_sessions=1`, `eligible_sessions=1`, `required_sessions=120`,
+  `missing_identities=0`, `through_session=2026-09-28`;
+- gate **LOCKED** (`open=false`), earliest evaluation session `2027-03-29`;
+- no hypothesis statistics were computed.
+
+The frozen Phase 6 artifacts are unchanged: registry `b1080c2e…`, protocol `15587aed…`, H1′ `d89efb30…`, H2′
+`78e82413…`, pin `f5d9e6b` (start 2026-09-28, earliest evaluation 2027-03-29), migration head
+`0007_technical_evidence_ledger`.
 
 ## 14. Remaining risks
 
@@ -213,14 +268,16 @@ proposal will follow, for approval.
   no-AI mode carry pre-AI scores.
 - MarketContext is only as replayable as the supplied file.
 - The news and SEC collectors were run once. Repeat observations, and re-versioning across runs, have not yet been
-  exercised on real data.
+  exercised on real data. This is a **residual operational risk to observe later**, not a Phase 7E blocker.
 - The known timing-sensitive geopolitical identity test (50 ms lookup) can flake under load; it's tracked
   separately.
 
 ## 15. Readiness for a synthesis architecture assessment
 
-**Data readiness is demonstrated:** real durable technical, news and SEC evidence, plus explicit MarketContext,
-produce strict, reproducible, cutoff-safe `phase7c-v1` packets for META and NVDA.
+**Ready.** Phase 7E is complete:
+- real durable technical, news and SEC evidence, plus explicit MarketContext, produce strict, reproducible,
+  cutoff-safe `phase7c-v1` packets for META and NVDA;
+- the delay is measured;
+- the Phase 6 prospective ledger is collecting (manually each day).
 
-A synthesis architecture assessment should still wait until the Massive delay measurement and the ledger and
-scheduler decisions close Phase 7E. This report contains no synthesis design.
+A Phase 7F synthesis architecture assessment may begin. This report contains no synthesis design.
