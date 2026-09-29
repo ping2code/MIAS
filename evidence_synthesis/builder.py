@@ -25,7 +25,6 @@ from evidence_synthesis import model as m
 from evidence_synthesis import rules as r
 from evidence_synthesis.canonical import content_id
 from evidence_synthesis.validation import parse_day, parse_instant, validated_packet
-from market_data.models import EXCHANGE_TZ
 
 
 def _seconds(later, earlier):
@@ -111,7 +110,7 @@ def _news(packet, as_of):
     stamps = sorted((parse_instant(i["facts"]["published_at"], "published_at"), i["facts"]["published_at"])
                     for i in items if i["facts"].get("published_at") is not None)
     days = sorted(i["facts"]["publication_date"] for i in items if i["facts"].get("publication_date") is not None)
-    as_of_day = as_of.astimezone(EXCHANGE_TZ).date()
+    as_of_day = as_of.astimezone(r.EXCHANGE_TZ).date()
     return m.NewsFacts(
         availability=section["availability"]["status"], item_count=len(items),
         counts_by_family=_counts(i["facts"]["family"] for i in items),
@@ -155,7 +154,7 @@ def _contradictions(packet, frames, relations, market):
         latest = max((f for f in frames if f.bar_end is not None),
                      key=lambda f: (parse_instant(f.bar_end, "bar_end"), -r.INTERVALS.index(f.interval)), default=None)
         if market.session_date is not None and latest is not None:
-            latest_day = parse_instant(latest.bar_end, "bar_end").astimezone(EXCHANGE_TZ).date().isoformat()
+            latest_day = parse_instant(latest.bar_end, "bar_end").astimezone(r.EXCHANGE_TZ).date().isoformat()
             if latest_day != market.session_date:
                 found.append(m.Contradiction(r.CONTEXT_SESSION_MISMATCH, ("market_context", latest.interval),
                                              ("market_context.context.session_date",

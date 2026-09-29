@@ -272,12 +272,34 @@ class IsolationTests(unittest.TestCase):
 
     def test_pure_module_code(self):
         """AST scan (docstrings are not code): only pure imports, and no I/O, clock or environment names."""
-        allowed = {"datetime", "re", "decimal", "collections", "dataclasses", "hashlib", "json", "evidence_packet",
-                   "evidence_synthesis", "market_data"}
+        allowed = {"datetime", "re", "decimal", "zoneinfo", "collections", "dataclasses", "hashlib", "json",
+                   "evidence_packet", "evidence_synthesis"}
         for module in PURE_MODULES:
             imported, used = code_names(module)
             self.assertLessEqual(imported, allowed, module.__name__)
             self.assertFalse(used & self.SIDE_EFFECT_NAMES, (module.__name__, used & self.SIDE_EFFECT_NAMES))
+
+    def test_package_boundary(self):
+        """Production code imports only evidence_packet, itself and the standard library, and at runtime adds no
+        project package beyond what evidence_packet already loads."""
+        stdlib = set(sys.stdlib_module_names)
+        for module in (*PURE_MODULES, replay, runner):
+            imported, _ = code_names(module)
+            self.assertLessEqual(imported - stdlib, {"evidence_packet", "evidence_synthesis"}, module.__name__)
+        project = "{'evidence_synthesis', 'market_data', 'market_context', 'technical', 'persistence', 'evidence', " \
+                  "'evaluation', 'analyzer', 'collector', 'shared', 'sqlalchemy'}"
+        code = ("import sys, evidence_packet.models, evidence_packet.serialization\n"
+                "base = {n.split('.')[0] for n in sys.modules}\n"
+                "import evidence_synthesis.builder, evidence_synthesis.runner, evidence_synthesis.replay\n"
+                f"print(sorted(({{n.split('.')[0] for n in sys.modules}} - base) & {project}))")
+        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.stdout.strip(), "['evidence_synthesis']", result.stderr[-300:])
+
+    def test_frozen_local_copies_match_their_sources(self):
+        from market_data.models import EXCHANGE_TZ, SYMBOL  # Test-only: production never imports market_data.
+        self.assertEqual(rules.EXCHANGE_TZ.key, EXCHANGE_TZ.key)
+        self.assertEqual(validation.SYMBOL.pattern, SYMBOL.pattern)
+        self.assertEqual(rules.RESERVED_BENCHMARK_NAMES, frozenset({rules.SELF_REFERENCE}))
 
     def test_replay_tool_only_reads(self):
         imported, used = code_names(replay)
