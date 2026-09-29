@@ -7,7 +7,14 @@ canonical JSON/dict representation. Both go through the same checks:
 - exactly the 8 top-level keys;
 - ``packet_id`` recomputes: ``"sha256:" + SHA-256(canonical body without packet_id)``. A tampered body is
   rejected;
-- structure and vocabularies of every domain, and cross-field consistency (availability status against content).
+- structure and vocabularies of every domain, and cross-field consistency (availability status against content);
+- the Phase 7C assembler invariants that synthesis relies on (hardened in Phase 7H):
+  - no evidence after ``as_of``: technical ``bar_end``, news ``published_at`` and ``observed_at`` must be at or
+    before ``as_of``; a date-only ``publication_date`` must be strictly before ``as_of``'s America/New_York date
+    (the assembler's ``after_as_of`` rule);
+  - exclusion reasons are unique and each count is an integer >= 1 (the assembler emits a sorted ``Counter``);
+  - benchmark names are tickers (``market_data.models.SYMBOL``, the same validator the Phase 7B runner applies to
+    ``--benchmarks``). This also rules out the reserved synthesis reference ``"self"``.
 
 **INVALID vs INCOMPLETE:**
 
@@ -24,11 +31,11 @@ import re
 from evidence_packet.models import EvidencePacket
 from evidence_synthesis import rules
 from evidence_synthesis.canonical import content_id
+from market_data.models import EXCHANGE_TZ, SYMBOL
 
 PACKET_KEYS = frozenset(("format_version", "packet_id", "symbol", "as_of", "market_context", "technical", "news",
                          "provenance"))
 PACKET_ID = re.compile(r"sha256:[0-9a-f]{64}")
-SYMBOL = re.compile(r"[A-Z][A-Z0-9.\-]{0,9}")
 AVAILABILITY = ("available", "available_empty", "partial", "unavailable")
 
 
@@ -85,7 +92,7 @@ def _availability(section, name, allowed):
     return availability["status"]
 
 
-def _technical(section, symbol):
+def _technical(section, symbol, as_of):
     status = _availability(section, "technical", ("available", "partial", "unavailable"))
     frames = section.get("timeframes")
     _require(isinstance(frames, list) and [f.get("interval") if isinstance(f, dict) else None for f in frames]
@@ -102,7 +109,8 @@ def _technical(section, symbol):
             _require(frame["bar_end"] is None, f"technical.{interval}.bar_end must be null when missing")
             continue
         present += 1
-        parse_instant(frame["bar_end"], f"technical.{interval}.bar_end")
+        _require(parse_instant(frame["bar_end"], f"technical.{interval}.bar_end") <= as_of,
+                 f"technical.{interval}.bar_end is later than the packet as_of")
         _require(isinstance(row, dict), f"technical.{interval}.row must be an object")
         _require(row.get("symbol") == symbol and row.get("interval") == interval,
                  f"technical.{interval}.row symbol/interval mismatch")
@@ -147,7 +155,8 @@ def _market_context(section, symbol, as_of):
     for comparison in comparisons:
         _require(isinstance(comparison, dict), "market_context comparison must be an object")
         key = (comparison.get("benchmark"), comparison.get("basis"))
-        _require(isinstance(key[0], str) and key[1] in rules.BASES, "market_context comparison identity is malformed")
+        _require(isinstance(key[0], str) and SYMBOL.fullmatch(key[0]) and key[1] in rules.BASES,
+                 "market_context comparison identity is malformed")
         _require(key not in seen, "duplicate market_context comparison")
         seen.add(key)
         _decimal(comparison.get("relative_return"), "comparison.relative_return")
@@ -157,8 +166,9 @@ def _market_context(section, symbol, as_of):
                  "comparison.unavailable is malformed")
 
 
-def _news(section):
+def _news(section, as_of):
     status = _availability(section, "news", AVAILABILITY)
+    as_of_day = as_of.astimezone(EXCHANGE_TZ).date()
     _require(set(section) == {"availability", "items", "excluded"}, "news has unexpected keys")
     items, excluded = section["items"], section["excluded"]
     _require(isinstance(items, list) and isinstance(excluded, list), "news items/excluded must be lists")
@@ -175,18 +185,25 @@ def _news(section):
         _require(all(isinstance(v, dict) for v in (facts, relevance, score, delivery)), "news item is malformed")
         _require(facts.get("family") in ("news", "sec"), "news item family is not supported")
         if facts.get("published_at") is not None:
-            parse_instant(facts["published_at"], "news published_at")
+            _require(parse_instant(facts["published_at"], "news published_at") <= as_of,
+                     "news published_at is later than the packet as_of")
         if facts.get("publication_date") is not None:
-            parse_day(facts["publication_date"], "news publication_date")
+            _require(parse_day(facts["publication_date"], "news publication_date") < as_of_day,
+                     "news publication_date is not before the packet as_of date")
         for key in ("symbols", "direct_symbols", "related_symbols"):
             _require(isinstance(relevance.get(key), list), f"news relevance.{key} is malformed")
         _optional_str(score.get("impact_level"), "news impact_level")
         _optional_str(delivery.get("alert_decision"), "news alert_decision")
-        parse_instant(item.get("observed_at"), "news observed_at")
+        _require(parse_instant(item.get("observed_at"), "news observed_at") <= as_of,
+                 "news observed_at is later than the packet as_of")
+    reasons = set()
     for entry in excluded:
         _require(isinstance(entry, dict) and isinstance(entry.get("reason"), str)
                  and isinstance(entry.get("count"), int) and not isinstance(entry.get("count"), bool),
                  "news exclusion entry is malformed")
+        _require(entry["count"] >= 1, "news exclusion count must be at least 1")
+        _require(entry["reason"] not in reasons, "duplicate news exclusion reason")
+        reasons.add(entry["reason"])
 
 
 def validated_packet(packet):
@@ -210,6 +227,6 @@ def validated_packet(packet):
     as_of = parse_instant(data["as_of"], "packet as_of")
     _require(isinstance(data["provenance"], dict), "packet provenance must be an object")
     _market_context(data["market_context"], data["symbol"], as_of)
-    _technical(data["technical"], data["symbol"])
-    _news(data["news"])
+    _technical(data["technical"], data["symbol"], as_of)
+    _news(data["news"], as_of)
     return data

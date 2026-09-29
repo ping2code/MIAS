@@ -79,6 +79,68 @@ class InvalidTests(unittest.TestCase):
         self.assertInvalid(data, "canonical")
 
 
+class AssemblerInvariantTests(unittest.TestCase):
+    """Phase 7H findings: resealed packets that the Phase 7C assembler can never produce are rejected, not repaired."""
+
+    def assertRejected(self, fn, fragment):
+        data = load()
+        fn(data)
+        data = resealed(data)
+        before = deepcopy(data)
+        with self.assertRaises(PacketValidationError) as caught:
+            synthesize(data)
+        self.assertIn(fragment, str(caught.exception))
+        self.assertEqual(data, before)  # Never repaired or reordered.
+
+    def test_p1_duplicate_exclusion_reasons(self):
+        for order in ((1, 2), (2, 1)):
+            with self.subTest(order=order):
+                self.assertRejected(lambda d: d["news"].update(excluded=[
+                    {"reason": "symbol_mismatch", "count": n} for n in order]), "duplicate news exclusion reason")
+
+    def test_p2_reserved_benchmark_name(self):
+        def rename(name):
+            def fn(d):
+                for comparison in d["market_context"]["context"]["comparisons"]:
+                    comparison["benchmark"] = name
+            return fn
+        for name in ("self", "qqq", "", "TOOLONGTICKER"):
+            with self.subTest(name=name):
+                self.assertRejected(rename(name), "comparison identity is malformed")
+
+    def test_p3_technical_bar_end_after_as_of(self):
+        self.assertRejected(lambda d: d["technical"]["timeframes"][2].update(bar_end="2026-09-23T20:05:01+00:00"),
+                            "technical.5m.bar_end is later than the packet as_of")
+
+    def test_p4_news_after_as_of(self):
+        item = lambda d, i: d["news"]["items"][i]  # 0: timestamped news, 1: date-only SEC.
+        cases_ = [
+            (lambda d: item(d, 0)["facts"].update(published_at="2026-09-23T20:05:01+00:00"), "published_at is later"),
+            (lambda d: item(d, 0).update(observed_at="2026-09-23T20:05:01+00:00"), "observed_at is later"),
+            (lambda d: item(d, 1)["facts"].update(publication_date="2026-09-24"), "publication_date is not before"),
+            # Phase 7C after_as_of rule: a date-only publication on as_of's New York date is not strictly before it.
+            (lambda d: item(d, 1)["facts"].update(publication_date="2026-09-23"), "publication_date is not before"),
+        ]
+        for fn, fragment in cases_:
+            with self.subTest(fragment=fragment):
+                self.assertRejected(fn, fragment)
+
+    def test_p7_exclusion_counts(self):
+        for count, fragment in ((0, "at least 1"), (-3, "at least 1"), (1.0, "malformed"), ("2", "malformed"),
+                                (True, "malformed"), (None, "malformed")):
+            with self.subTest(count=count):
+                self.assertRejected(lambda d: d["news"].update(excluded=[{"reason": "x", "count": count}]), fragment)
+
+    def test_boundaries_still_valid(self):
+        """Evidence exactly at as_of, and a date-only publication the day before, are valid (Phase 7C boundaries)."""
+        data = load()
+        data["technical"]["timeframes"][2]["bar_end"] = data["as_of"]
+        data["news"]["items"][0]["facts"]["published_at"] = data["as_of"]
+        data["news"]["items"][0]["observed_at"] = data["as_of"]
+        data["news"]["excluded"] = [{"reason": "a", "count": 1}, {"reason": "b", "count": 7}]
+        synthesize(resealed(data))
+
+
 class IncompleteButValidTests(unittest.TestCase):
     def test_incomplete_domains_are_valid(self):
         for name in ("unavailable_timeframe", "market_context_unavailable", "empty_news"):
