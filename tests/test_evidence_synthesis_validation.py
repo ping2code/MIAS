@@ -104,9 +104,10 @@ class AssemblerInvariantTests(unittest.TestCase):
                 for comparison in d["market_context"]["context"]["comparisons"]:
                     comparison["benchmark"] = name
             return fn
-        for name in ("self", "qqq", "", "TOOLONGTICKER"):
-            with self.subTest(name=name):
-                self.assertRejected(rename(name), "comparison identity is malformed")
+        self.assertRejected(rename("self"), "comparison identity is malformed")
+        data = load()
+        rename("SELF")(data)  # Only the exact reserved reference name collides; no ticker grammar is imposed.
+        synthesize(resealed(data))
 
     def test_p3_technical_bar_end_after_as_of(self):
         self.assertRejected(lambda d: d["technical"]["timeframes"][2].update(bar_end="2026-09-23T20:05:01+00:00"),

@@ -13,8 +13,8 @@ canonical JSON/dict representation. Both go through the same checks:
     before ``as_of``; a date-only ``publication_date`` must be strictly before ``as_of``'s America/New_York date
     (the assembler's ``after_as_of`` rule);
   - exclusion reasons are unique and each count is an integer >= 1 (the assembler emits a sorted ``Counter``);
-  - benchmark names are tickers (``market_data.models.SYMBOL``, the same validator the Phase 7B runner applies to
-    ``--benchmarks``). This also rules out the reserved synthesis reference ``"self"``.
+  - a benchmark name must not be one of synthesis's reserved reference names (``rules.RESERVED_BENCHMARK_NAMES``,
+    i.e. ``"self"``), which would collide with the symbol's own returns.
 
 **INVALID vs INCOMPLETE:**
 
@@ -31,11 +31,11 @@ import re
 from evidence_packet.models import EvidencePacket
 from evidence_synthesis import rules
 from evidence_synthesis.canonical import content_id
-from market_data.models import EXCHANGE_TZ, SYMBOL
 
 PACKET_KEYS = frozenset(("format_version", "packet_id", "symbol", "as_of", "market_context", "technical", "news",
                          "provenance"))
 PACKET_ID = re.compile(r"sha256:[0-9a-f]{64}")
+SYMBOL = re.compile(r"[A-Z][A-Z0-9.\-]{0,9}")
 AVAILABILITY = ("available", "available_empty", "partial", "unavailable")
 
 
@@ -155,7 +155,7 @@ def _market_context(section, symbol, as_of):
     for comparison in comparisons:
         _require(isinstance(comparison, dict), "market_context comparison must be an object")
         key = (comparison.get("benchmark"), comparison.get("basis"))
-        _require(isinstance(key[0], str) and SYMBOL.fullmatch(key[0]) and key[1] in rules.BASES,
+        _require(isinstance(key[0], str) and key[0] not in rules.RESERVED_BENCHMARK_NAMES and key[1] in rules.BASES,
                  "market_context comparison identity is malformed")
         _require(key not in seen, "duplicate market_context comparison")
         seen.add(key)
@@ -168,7 +168,7 @@ def _market_context(section, symbol, as_of):
 
 def _news(section, as_of):
     status = _availability(section, "news", AVAILABILITY)
-    as_of_day = as_of.astimezone(EXCHANGE_TZ).date()
+    as_of_day = as_of.astimezone(rules.EXCHANGE_TZ).date()
     _require(set(section) == {"availability", "items", "excluded"}, "news has unexpected keys")
     items, excluded = section["items"], section["excluded"]
     _require(isinstance(items, list) and isinstance(excluded, list), "news items/excluded must be lists")

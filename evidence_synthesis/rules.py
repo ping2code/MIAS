@@ -8,6 +8,7 @@ calculation. Nothing is tuned on outcome data.
 - The vocabularies mirror the persisted technical schema. Tests prove they equal ``persistence.models``.
 """
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 SYNTHESIS_FORMAT_VERSION = "phase7g-v1"
 RULES_VERSION = "phase7g-rules-v1"
@@ -17,6 +18,12 @@ INTERVALS = ("1d", "1h", "5m")
 PAIRS = (("1d", "1h"), ("1h", "5m"), ("1d", "5m"))
 BASES = ("prev_close", "open")
 SELF_REFERENCE = "self"
+# Benchmark names that would collide with synthesis's own reference names (a benchmark called "self" would be
+# indistinguishable from the symbol's own returns). Validation rejects them; no ticker grammar is imposed here.
+RESERVED_BENCHMARK_NAMES = frozenset({SELF_REFERENCE})
+# The exchange calendar zone (a frozen local value; tests prove it equals market_data.models.EXCHANGE_TZ, so this
+# package never imports market_data).
+EXCHANGE_TZ = ZoneInfo("America/New_York")
 
 TECHNICAL_STATES = ("bullish_setup", "bearish_setup", "bullish_momentum", "bearish_momentum", "breakout_watch",
                     "breakdown_watch", "range", "mixed", "insufficient_data")
