@@ -325,8 +325,7 @@ def assemble(underlying, as_of, records, *, provenance, calendar_state=None, und
         by_id.setdefault(contract.identity.contract_id, []).append((contract, after))
     contracts = []
     for copies in by_id.values():
-        first = copies[0][0].to_dict()
-        if all(c.to_dict() == first for c, _ in copies):
+        if len(copies) == 1 or all(c == copies[0][0] for c, _ in copies[1:]):  # Frozen dataclasses: value equality.
             contracts.append(copies[0][0])
             exclusions[m.FACT_AFTER_AS_OF] += copies[0][1]
             exclusions[m.DUPLICATE_IDENTICAL] += len(copies) - 1
