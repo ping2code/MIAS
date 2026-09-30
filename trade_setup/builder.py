@@ -1,0 +1,141 @@
+"""Pure Trade Setup builder (Phase 10B): global gates only; contract screening is Phase 10C.
+
+``assess(market_intelligence, options_intelligence, policy)``:
+
+1. validates the policy (required, sealed), then both inputs structurally (no upstream imports);
+2. fails closed (``TradeSetupInputError``) on a symbol mismatch, or ``policy_requires_phase9_v2`` when a
+   ``phase9-v1`` input meets an enabled numeric rule (``min_volume``, ``min_open_interest``,
+   ``max_premium_per_contract``). These are errors, never no_setup;
+3. evaluates every global gate in a fixed order and records each in ``decision_trace``:
+
+   ============================ =========================================================================
+   input_contemporaneity        |MI as_of - OI as_of| <= policy.max_input_gap_seconds, else
+                                ``inputs_not_contemporaneous``
+   market_bias                  locked pattern mapping (D3); technical_status != available is insufficient
+   side_allowed                 the bias side must be in policy.allowed_sides
+   context_opposition_gate      policy.block_on_market_context_opposition and the MI attention code
+                                ``market_context_opposition_present``, giving ``context_gate_blocked``
+   context_current_gate         policy.block_on_market_context_not_current and the MI attention code
+                                ``market_context_not_current``, giving ``context_gate_blocked``
+   chain_completeness           policy.require_complete_chain and OI chain_completeness.truncated, giving
+                                ``options_chain_truncated``
+   execution_data_readiness     no contract anywhere in the chain has a usable two-sided quote (complete,
+                                or locked when allowed), giving ``execution_data_unavailable``. This is a
+                                chain-level fact, not screening
+   contract_screening           not evaluated (``deferred_to_phase10c``)
+   ============================ =========================================================================
+
+4. the outcome is ``no_setup`` with the sorted failed-gate reasons, or, when every global gate passes, the Phase
+   10B interim status ``contract_screening_pending``. ``candidates`` and ``rejections`` are always empty in 10B.
+
+SEC filing presence is never a gate. There is no score, confidence, ranking, sizing, target, stop or reward/risk.
+No clock, environment, network, files, database or AI.
+"""
+from collections import Counter
+from dataclasses import replace
+from datetime import timedelta, timezone
+
+from trade_setup import model as m
+from trade_setup import rules as r
+from trade_setup.canonical import content_id
+from trade_setup.policy import validated_policy
+from trade_setup.validation import (TradeSetupInputError, instant, validated_market_intelligence,
+                                    validated_options_intelligence)
+
+
+def _counts(values):
+    return tuple(m.Count(k, n) for k, n in sorted(Counter(values).items()))
+
+
+def _step(steps, rule, result, reason, pointers):
+    steps.append(m.TraceStep(len(steps) + 1, rule, result, reason, tuple(sorted(pointers))))
+
+
+def assess(market_intelligence, options_intelligence, policy):
+    """A TradeSetupAssessment for sealed inputs and an explicit policy; raises on invalid input."""
+    policy = validated_policy(policy)
+    mi = validated_market_intelligence(market_intelligence)
+    oi = validated_options_intelligence(options_intelligence)
+    symbol = mi["synthesis_ref"]["symbol"]
+    if symbol != oi["snapshot_ref"]["underlying"]:
+        raise TradeSetupInputError("market intelligence and options intelligence symbols do not match")
+    oi_format = oi["options_intelligence_format_version"]
+    if oi_format != r.OI_V2 and any(getattr(policy, rule) is not None for rule in r.V2_POLICY_RULES):
+        raise TradeSetupInputError("policy_requires_phase9_v2")
+
+    mi_as_of, oi_as_of = instant(mi["synthesis_ref"]["as_of"], "mi as_of"), instant(oi["snapshot_ref"]["as_of"], "oi as_of")
+    gap = abs(mi_as_of - oi_as_of)
+    steps = []
+    _step(steps, "input_contemporaneity",
+          *((r.PASS, None) if gap <= timedelta(seconds=policy.max_input_gap_seconds)
+            else (r.FAIL, "inputs_not_contemporaneous")),
+          ("mi:synthesis_ref.as_of", "oi:snapshot_ref.as_of", "policy:max_input_gap_seconds"))
+
+    pattern, technical = mi["timeframe_structure"]["pattern"], mi["evidence_coverage"]["technical_status"]
+    state = r.BIAS_BY_PATTERN[pattern] if technical == "available" else "insufficient"
+    side = r.SIDE_BY_BIAS.get(state)
+    _step(steps, "market_bias", *((r.PASS, None) if side else (r.FAIL, r.REASON_BY_BIAS[state])),
+          ("mi:timeframe_structure.pattern", "mi:evidence_coverage.technical_status"))
+    if side is None:
+        _step(steps, "side_allowed", r.NOT_EVALUATED, "market_bias_not_directional", ("policy:allowed_sides",))
+    else:
+        _step(steps, "side_allowed", *((r.PASS, None) if side in policy.allowed_sides
+                                       else (r.FAIL, "side_not_allowed_by_policy")), ("policy:allowed_sides",))
+
+    attention = {a["code"] for a in mi["attention"]}
+    for rule, flag, code in (("context_opposition_gate", "block_on_market_context_opposition",
+                              "market_context_opposition_present"),
+                             ("context_current_gate", "block_on_market_context_not_current",
+                              "market_context_not_current")):
+        pointers = (f"mi:attention[{code}]", f"policy:{flag}")
+        if not getattr(policy, flag):
+            _step(steps, rule, r.NOT_EVALUATED, "policy_disabled", pointers)
+        else:
+            _step(steps, rule, *((r.FAIL, "context_gate_blocked") if code in attention else (r.PASS, None)), pointers)
+
+    truncated = oi["chain_completeness"]["truncated"]
+    pointers = ("oi:chain_completeness.truncated", "policy:require_complete_chain")
+    if not policy.require_complete_chain:
+        _step(steps, "chain_completeness", r.NOT_EVALUATED, "policy_disabled", pointers)
+    else:
+        _step(steps, "chain_completeness", *((r.FAIL, "options_chain_truncated") if truncated else (r.PASS, None)),
+              pointers)
+
+    contracts = oi["contracts"]
+    usable = ("complete", "locked") if policy.allow_locked_quote else ("complete",)
+    usable_count = sum(c["quote_state"] in usable for c in contracts)
+    _step(steps, "execution_data_readiness",
+          *((r.PASS, None) if usable_count else (r.FAIL, "execution_data_unavailable")),
+          ("oi:contracts[*].quote_state", "policy:allow_locked_quote"))
+    _step(steps, "contract_screening", r.NOT_EVALUATED, "deferred_to_phase10c", ("oi:contracts[*]",))
+
+    reasons = tuple(sorted({s.reason for s in steps if s.result == r.FAIL}))
+    v2 = oi_format == r.OI_V2
+    fields = dict(
+        assessment_format_version=r.ASSESSMENT_FORMAT_VERSION, rules_version=r.RULES_VERSION, policy=policy,
+        inputs=m.Inputs(
+            market_intelligence_ref=m.MarketIntelligenceRef(mi["intelligence_id"], mi["intelligence_format_version"],
+                                                            mi["rules_version"], symbol, mi["synthesis_ref"]["as_of"]),
+            options_intelligence_ref=m.OptionsIntelligenceRef(
+                oi["options_intelligence_id"], oi_format, oi["rules_version"], oi["snapshot_ref"]["snapshot_id"],
+                oi["snapshot_ref"]["underlying"], oi["snapshot_ref"]["as_of"]),
+            symbol=symbol, assessment_as_of=max(mi_as_of, oi_as_of).astimezone(timezone.utc).isoformat(),
+            input_gap_seconds=int(gap.total_seconds())),
+        outcome=m.Outcome(r.NO_SETUP if reasons else r.CONTRACT_SCREENING_PENDING, reasons),
+        market_bias=m.MarketBias(state, side, pattern, technical,
+                                 m.Invalidation("pattern_must_remain", r.PATTERN_BY_BIAS[state], mi["intelligence_id"])
+                                 if side else None),
+        execution_readiness=m.ExecutionReadiness(
+            options_intelligence_format_version=oi_format, contract_count=len(contracts), truncated=truncated,
+            quote_state_counts=_counts(c["quote_state"] for c in contracts), usable_two_sided_quote_count=usable_count,
+            greeks_time_basis_counts=_counts(c["greeks"]["time_basis"] for c in contracts),
+            iv_time_basis_counts=_counts(c["implied_volatility"]["time_basis"] for c in contracts),
+            day_session_relation_counts=_counts(c["day"]["session_relation"] for c in contracts),
+            numeric_activity_facts_available=v2,
+            shares_per_contract_present_count=sum(c["shares_per_contract"] is not None for c in contracts) if v2
+            else None),
+        candidates=(), rejections=(), decision_trace=tuple(steps),
+        provenance=m.Provenance(mi["intelligence_id"], oi["options_intelligence_id"], oi_format, policy.policy_id,
+                                r.RULES_VERSION, r.POINTER_VERSION))
+    draft = m.TradeSetupAssessment(assessment_id="", **fields)
+    return replace(draft, assessment_id=content_id(draft.body()))
