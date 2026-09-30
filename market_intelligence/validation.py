@@ -14,6 +14,11 @@ dict. Both go through the same checks:
   - the complete contradiction key set (code, subjects), including the session-date rule;
   - completeness, availability and provenance agreement.
 
+**Previous synthesis (Phase 8B):** ``validated_pair`` validates the current and the previous synthesis
+independently, then requires the same symbol, ``previous.as_of < current.as_of`` and two different syntheses.
+A version difference between two individually valid syntheses is not an error: the comparison is then reported
+as ``not_comparable``.
+
 **INVALID vs INCOMPLETE:** invalid input raises ``MarketIntelligenceInputError`` with a stable message.
 Incomplete evidence (missing or insufficient-data timeframes, unavailable market context or benchmarks, empty or
 unavailable news) is valid and is described, never rejected.
@@ -364,3 +369,16 @@ def validated_synthesis(synthesis):
              "provenance is inconsistent with the synthesis")
     _strings(provenance["source_domains"], "provenance.source_domains")
     return data
+
+
+def validated_pair(current, previous):
+    """(current, previous) as plain dicts: each fully validated, then checked as a comparable pair of inputs."""
+    current, previous = validated_synthesis(current), validated_synthesis(previous)
+    _require(previous["synthesis_id"] != current["synthesis_id"],
+             "previous and current synthesis are the same synthesis")
+    _require(previous["packet_ref"]["symbol"] == current["packet_ref"]["symbol"],
+             "previous synthesis symbol does not match the current synthesis")
+    _require(instant(previous["packet_ref"]["as_of"], "previous as_of") < instant(current["packet_ref"]["as_of"],
+                                                                                  "current as_of"),
+             "previous synthesis as_of must be earlier than the current synthesis as_of")
+    return current, previous

@@ -53,6 +53,25 @@ ATTENTION_CODES = {
 NOT_CURRENT_FRESHNESS = frozenset({"lagging", "no_data", "unknown"})
 MISALIGNED = "misaligned"
 
+# Phase 8B: comparison with an explicit, caller-supplied previous synthesis (same symbol, earlier as_of).
+COMPARABLE, NOT_COMPARABLE = "comparable", "not_comparable"
+COMPARISON_STATUSES = (COMPARABLE, NOT_COMPARABLE)
+FORMAT_VERSION_MISMATCH = "synthesis_format_version_mismatch"
+RULES_VERSION_MISMATCH = "synthesis_rules_version_mismatch"
+NOT_COMPARABLE_REASONS = (FORMAT_VERSION_MISMATCH, RULES_VERSION_MISMATCH)
+DOMAINS = ("market_context", "technical", "news")
+ALIGNED_PATTERNS = ("all_bullish", "all_bearish")
+# Contradiction codes that are gaps (missing, misaligned or out-of-session evidence), as opposed to CONFLICT_CODES.
+GAP_CODES = (synthesis_rules.TIMEFRAME_UNAVAILABLE, synthesis_rules.MARKET_CONTEXT_UNAVAILABLE,
+             synthesis_rules.COMPARISON_MISALIGNED, synthesis_rules.CONTEXT_SESSION_MISMATCH,
+             synthesis_rules.NEWS_UNAVAILABLE)
+# Closed, descriptive transition codes. None of them says a change is good or bad.
+TRANSITION_CODES = (
+    "timeframe_state_changed", "timeframe_direction_changed", "pattern_changed", "entered_alignment",
+    "exited_alignment", "opposition_appeared", "opposition_resolved", "gap_appeared", "gap_resolved",
+    "domain_became_available", "domain_became_unavailable", "reference_sign_changed", "news_identities_added",
+    "news_identities_removed")
+
 
 def sign_profile(signs):
     """all_positive | all_negative | all_zero | mixed | unavailable over the available signs (no weighting)."""

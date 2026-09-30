@@ -163,6 +163,24 @@ class Attention(_Plain):
 
 
 @dataclass(frozen=True)
+class Comparison(_Plain):
+    """Phase 8B: set only when a previous synthesis is supplied (None for current-only builds)."""
+    status: str                              # comparable | not_comparable
+    reasons: tuple                           # closed reason codes; empty when comparable
+    previous_ref: SynthesisRef
+    elapsed_seconds: int                     # current as_of - previous as_of (> 0; a fact, no threshold)
+
+
+@dataclass(frozen=True)
+class Transition(_Plain):
+    """Phase 8B: a descriptive difference between the previous and the current synthesis."""
+    code: str
+    subjects: tuple
+    previous_pointers: tuple                 # "previous:<synthesis pointer>" (empty if absent in previous)
+    current_pointers: tuple                  # "current:<synthesis pointer>" (empty if absent in current)
+
+
+@dataclass(frozen=True)
 class Provenance(_Plain):
     synthesis_id: str
     synthesis_format_version: str
@@ -177,13 +195,13 @@ class MarketIntelligence(_Plain):
     intelligence_id: str
     rules_version: str
     synthesis_ref: SynthesisRef
-    comparison: object                       # Phase 8B reserved: always None in Phase 8A
+    comparison: Comparison                   # None unless a previous synthesis is supplied (Phase 8B)
     evidence_coverage: EvidenceCoverage
     timeframe_structure: TimeframeStructure
     market_context_alignment: MarketContextAlignment
     event_presence: EventPresence
     conflicts: tuple
-    transitions: tuple                       # Phase 8B reserved: always () in Phase 8A
+    transitions: tuple                       # Transition; () unless comparable with a previous synthesis
     attention: tuple
     provenance: Provenance
 
