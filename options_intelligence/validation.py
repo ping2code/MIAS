@@ -181,6 +181,8 @@ def verify_against_snapshot(intelligence, snapshot, market_intelligence=None, *,
     data = validated_options_intelligence(intelligence)
     expected = build(snapshot, market_intelligence, calendar=calendar).to_dict()
     if canonical_json(expected) != canonical_json(data):
+        # The id always differs when the body does (and was verified above), so report the first body difference.
+        body = lambda d: {k: v for k, v in d.items() if k != "options_intelligence_id"}  # noqa: E731
         raise OptionsIntelligenceError(
-            f"options intelligence does not match its snapshot at {_first_difference(expected, data)}")
+            f"options intelligence does not match its snapshot at {_first_difference(body(expected), body(data))}")
     return data
