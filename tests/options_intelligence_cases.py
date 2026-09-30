@@ -16,6 +16,7 @@ from options_data.canonical import canonical_json
 from tests.options_snapshot_cases import AS_OF, BEFORE, chain_record, full_snapshot, live_snapshot, meta_chain, nvda_chain
 
 FIXTURES = Path(__file__).parent / "fixtures" / "options_intelligence"
+V2_FIXTURES = Path(__file__).parent / "fixtures" / "options_intelligence_v2"   # phase9-v2 (Phase 10 amendment)
 PREVIOUS_SESSION = datetime(2026, 9, 29, 20, 0, tzinfo=timezone.utc)
 OLDER_SESSION = datetime(2026, 9, 25, 20, 0, tzinfo=timezone.utc)
 PRICE = dict(value="700", observed_at=BEFORE, source="synthetic_stocks")
@@ -90,6 +91,20 @@ def names():
     return sorted(CASES)
 
 
+def intelligence_v2_path(name):
+    return V2_FIXTURES / f"{name}.intelligence.json"
+
+
+def regenerate_v2():
+    """phase9-v2 goldens from the same snapshots (the v1 goldens are never rewritten by this)."""
+    from options_intelligence.builder import build
+    V2_FIXTURES.mkdir(parents=True, exist_ok=True)
+    for name in names():
+        intelligence_v2_path(name).write_text(
+            canonical_json(build(snapshot(name), calendar=CALENDAR, format="phase9-v2").to_dict()) + "\n",
+            encoding="utf-8")
+
+
 def regenerate():
     from options_intelligence.builder import build
     FIXTURES.mkdir(parents=True, exist_ok=True)
@@ -103,5 +118,8 @@ def regenerate():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="python -m tests.options_intelligence_cases")
     parser.add_argument("--regenerate", action="store_true", required=True)
-    parser.parse_args()
-    regenerate()
+    parser.add_argument("--v2-only", action="store_true", help="write only the phase9-v2 goldens")
+    args = parser.parse_args()
+    if not args.v2_only:
+        regenerate()
+    regenerate_v2()

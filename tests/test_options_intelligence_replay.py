@@ -47,7 +47,7 @@ def _set(d, **kw):
 C690, C700 = "META261016C00690000", "META261016C00700000"
 
 STRUCTURAL = [
-    ("wrong format version", lambda d: _set(d, options_intelligence_format_version="phase9-v2"), True,
+    ("wrong format version", lambda d: _set(d, options_intelligence_format_version="phase9-v9"), True,
      "unsupported options intelligence format version"),
     ("wrong rules version", lambda d: _set(d, rules_version="phase9-rules-v2"), True,
      "unsupported options intelligence rules version"),

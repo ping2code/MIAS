@@ -89,9 +89,10 @@ def validated_options_intelligence(intelligence):
     data = intelligence.to_dict() if isinstance(intelligence, m.OptionsIntelligence) else intelligence
     _require(isinstance(data, dict) and set(data) == set(m.TOP_LEVEL_FIELDS),
              "options intelligence must have exactly the 13 phase9-v1 keys")
-    _require(data["options_intelligence_format_version"] == r.OPTIONS_INTELLIGENCE_FORMAT_VERSION,
-             "unsupported options intelligence format version")
-    _require(data["rules_version"] == r.RULES_VERSION, "unsupported options intelligence rules version")
+    _require(data["options_intelligence_format_version"] in r.FORMATS, "unsupported options intelligence format version")
+    rules_version = r.FORMATS[data["options_intelligence_format_version"]]
+    _require(data["rules_version"] == rules_version, "unsupported options intelligence rules version")
+    v2 = data["options_intelligence_format_version"] == r.OPTIONS_INTELLIGENCE_FORMAT_V2
     _require(isinstance(data["options_intelligence_id"], str)
              and CONTENT_ID.fullmatch(data["options_intelligence_id"]), "options_intelligence_id is malformed")
     try:
@@ -114,7 +115,7 @@ def validated_options_intelligence(intelligence):
     provenance = data["provenance"]
     _require(isinstance(provenance, dict) and provenance.get("snapshot_id") == ref["snapshot_id"]
              and provenance.get("market_intelligence_id") == (mi["intelligence_id"] if mi else None)
-             and provenance.get("rules_version") == r.RULES_VERSION
+             and provenance.get("rules_version") == rules_version
              and provenance.get("pointer_version") == r.POINTER_VERSION,
              "provenance is inconsistent with the references")
     contracts = data["contracts"]
@@ -126,6 +127,8 @@ def validated_options_intelligence(intelligence):
                  "contract activity state is not supported")
         _require(c.get("day", {}).get("session_relation") in r.SESSION_RELATIONS,
                  "contract session_relation is not supported")
+        _require(all((k in c) == v2 for k in r.V2_CONTRACT_FIELDS),
+                 "contract fields do not match the options intelligence format version")
         pointers = c.get("source_pointers")
         _require(isinstance(pointers, list) and pointers == sorted(set(pointers)), "source_pointers must be sorted")
         for pointer in pointers:
@@ -179,7 +182,8 @@ def verify_against_snapshot(intelligence, snapshot, market_intelligence=None, *,
     """Structural validation, then re-derivation from the snapshot (and reference); returns the plain dict."""
     from options_intelligence.builder import build
     data = validated_options_intelligence(intelligence)
-    expected = build(snapshot, market_intelligence, calendar=calendar).to_dict()
+    expected = build(snapshot, market_intelligence, calendar=calendar,
+                     format=data["options_intelligence_format_version"]).to_dict()
     if canonical_json(expected) != canonical_json(data):
         # The id always differs when the body does (and was verified above), so report the first body difference.
         body = lambda d: {k: v for k, v in d.items() if k != "options_intelligence_id"}  # noqa: E731

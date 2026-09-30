@@ -32,7 +32,8 @@ from options_data.validation import validated_snapshot
 from options_intelligence import model as m
 from options_intelligence import rules as r
 from options_intelligence.canonical import content_id
-from options_intelligence.validation import market_intelligence_reference, validated_options_intelligence
+from options_intelligence.validation import (OptionsIntelligenceError, market_intelligence_reference,
+                                             validated_options_intelligence)
 
 
 def _d(value):
@@ -52,7 +53,7 @@ def _session_relation(observed, as_of_day, previous_day):
     return "previous_session" if day >= previous_day else "older_session"
 
 
-def _contract(c, as_of, as_of_day, previous_day, price):
+def _contract(c, as_of, as_of_day, previous_day, price, v2=False):
     i, q, day, oi, iv, g = (c[k] for k in ("identity", "quote", "day", "open_interest", "implied_volatility",
                                            "greeks"))
     cid, strike = i["contract_id"], Decimal(i["strike"])
@@ -85,7 +86,7 @@ def _contract(c, as_of, as_of_day, previous_day, price):
     greek_values = {name: _d(g[name]) for name in r.GREEK_FIELDS}
     available = tuple(name for name in r.GREEK_FIELDS if greek_values[name] is not None)
     pointers |= {f"contracts[{cid}].greeks.{name}" for name in available}
-    derived = m.Contract(
+    fields = dict(
         contract_id=cid, provider_symbol=i["provider_symbol"], option_type=i["option_type"],
         expiration=i["expiration"], strike=i["strike"], dte_calendar_days=dte, expires_on_as_of_date=dte == 0,
         strike_relation=relation, strike_distance=r.text(distance), strike_distance_relative=r.text(relative),
@@ -99,6 +100,18 @@ def _contract(c, as_of, as_of_day, previous_day, price):
         day=m.Day(day["status"], day["observed_at"],
                   int((as_of - observed).total_seconds()) if observed else None, session),
         source_pointers=tuple(sorted(pointers)))
+    if not v2:
+        derived = m.Contract(**fields)
+    else:
+        current = r.text(volume) if volume is not None and session == "current_session" else None
+        if current is not None:
+            pointers.add(f"contracts[{cid}].day.volume")
+        if c["terms"]["shares_per_contract"] is not None:
+            pointers.add(f"contracts[{cid}].terms.shares_per_contract")
+        fields["source_pointers"] = tuple(sorted(pointers | {f"contracts[{cid}].open_interest.time_basis"}))
+        derived = m.ContractV2(**fields, current_session_volume=current, open_interest_value=oi["value"],
+                               open_interest_time_basis=oi["time_basis"],
+                               shares_per_contract=c["terms"]["shares_per_contract"])
     return derived, dict(volume=volume, oi=oi_value, iv=_d(iv["value"]))
 
 
@@ -193,8 +206,14 @@ def _attention(snapshot, contracts):
     return tuple(sorted(flags, key=lambda a: (a.category, a.code)))
 
 
-def build(snapshot, market_intelligence=None, *, calendar=None):
-    """OptionsIntelligence for one valid OptionsSnapshot; raises OptionsSnapshotError / OptionsIntelligenceError."""
+def build(snapshot, market_intelligence=None, *, calendar=None, format=r.OPTIONS_INTELLIGENCE_FORMAT_VERSION):
+    """OptionsIntelligence for one valid OptionsSnapshot; raises OptionsSnapshotError / OptionsIntelligenceError.
+
+    ``format`` is ``phase9-v1`` (default, unchanged) or ``phase9-v2`` (the Phase 10 compatibility amendment).
+    """
+    if format not in r.FORMATS:
+        raise OptionsIntelligenceError("unsupported options intelligence format version")
+    rules_version, v2 = r.FORMATS[format], format == r.OPTIONS_INTELLIGENCE_FORMAT_V2
     data = validated_snapshot(snapshot)  # Also enforces the supported snapshot format version.
     mi_ref = market_intelligence_reference(market_intelligence, data)
     if calendar is None:
@@ -205,7 +224,7 @@ def build(snapshot, market_intelligence=None, *, calendar=None):
     previous_day = calendar.previous_trading_day(as_of_day)
     price_block = data["underlying_price"]
     price = Decimal(price_block["value"]) if price_block["status"] == "present" else None
-    rows = [_contract(c, as_of, as_of_day, previous_day, price) for c in data["contracts"]]
+    rows = [_contract(c, as_of, as_of_day, previous_day, price, v2) for c in data["contracts"]]
     contracts = tuple(c for c, _ in rows)
     by_expiration = defaultdict(list)
     by_type = defaultdict(list)
@@ -215,7 +234,7 @@ def build(snapshot, market_intelligence=None, *, calendar=None):
     observed = datetime.fromisoformat(price_block["observed_at"]) if price_block["observed_at"] else None
     provenance = data["provenance"]
     fields = dict(
-        options_intelligence_format_version=r.OPTIONS_INTELLIGENCE_FORMAT_VERSION, rules_version=r.RULES_VERSION,
+        options_intelligence_format_version=format, rules_version=rules_version,
         snapshot_ref=m.SnapshotRef(data["snapshot_id"], data["snapshot_format_version"], data["underlying"],
                                    data["as_of"]),
         market_intelligence_ref=mi_ref,
@@ -235,7 +254,7 @@ def build(snapshot, market_intelligence=None, *, calendar=None):
         contracts=contracts, activity=_activity(rows),
         volatility=m.Volatility(_iv_summary(rows), tuple(_iv_summary(by_type[k], *k) for k in sorted(by_type))),
         attention=_attention(data, contracts),
-        provenance=m.Provenance(data["snapshot_id"], mi_ref.intelligence_id if mi_ref else None, r.RULES_VERSION,
+        provenance=m.Provenance(data["snapshot_id"], mi_ref.intelligence_id if mi_ref else None, rules_version,
                                 r.POINTER_VERSION))
     draft = m.OptionsIntelligence(options_intelligence_id="", **fields)
     intelligence = replace(draft, options_intelligence_id=content_id(draft.body()))

@@ -9,6 +9,13 @@ from market_data.models import format_decimal
 
 OPTIONS_INTELLIGENCE_FORMAT_VERSION = "phase9-v1"
 RULES_VERSION = "phase9-rules-v1"
+# Phase 10 compatibility amendment (additive): phase9-v2 contracts also carry numeric current-session volume, open
+# interest (value and time basis) and shares per contract. phase9-v1 is unchanged and stays the default.
+OPTIONS_INTELLIGENCE_FORMAT_V2 = "phase9-v2"
+RULES_VERSION_V2 = "phase9-rules-v2"
+FORMATS = {OPTIONS_INTELLIGENCE_FORMAT_VERSION: RULES_VERSION, OPTIONS_INTELLIGENCE_FORMAT_V2: RULES_VERSION_V2}
+V2_CONTRACT_FIELDS = ("current_session_volume", "open_interest_value", "open_interest_time_basis",
+                      "shares_per_contract")
 POINTER_VERSION = "phase9-pointer-v1"
 SUPPORTED_SNAPSHOT_FORMATS = frozenset({"phase9-snapshot-v1"})
 # MarketIntelligence versions this rule set can reference (frozen local copies; a test pins them to

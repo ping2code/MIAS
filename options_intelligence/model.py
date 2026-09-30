@@ -108,6 +108,15 @@ class Contract(_Plain):
 
 
 @dataclass(frozen=True)
+class ContractV2(Contract):
+    """phase9-v2 contract (Phase 10 compatibility amendment): the v1 facts plus four copied/filtered numbers."""
+    current_session_volume: str       # day.volume only when the day record is current-session, else None
+    open_interest_value: str          # the snapshot open-interest value, else None
+    open_interest_time_basis: str     # the snapshot open-interest time basis
+    shares_per_contract: str          # snapshot terms.shares_per_contract, else None (never assumed)
+
+
+@dataclass(frozen=True)
 class Activity(_Plain):
     volume_basis: str                 # volume totals count current-session day records only
     call_volume_total: str
