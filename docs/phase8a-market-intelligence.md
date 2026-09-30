@@ -245,4 +245,4 @@ Incomplete evidence is valid and is described:
   synthesis of the same symbol with an earlier `as_of`.
 - **`transitions`:** always `[]` in Phase 8A. Phase 8B may fill it with deterministic transition codes.
 
-Both are already part of Phase 8A identity, so Phase 8B changes the rules version when it populates them.
+Both are already part of Phase 8A identity. Phase 8B populates them under the same `phase8-rules-v1`, so current-only output and ids stay unchanged (see `docs/phase8b-intelligence-transitions.md`).
