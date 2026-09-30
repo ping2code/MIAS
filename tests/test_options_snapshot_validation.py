@@ -41,6 +41,12 @@ def full():
     return full_snapshot(records).to_dict()
 
 
+def oi_dated():
+    records = meta_chain()
+    records[0] = chain_record(open_interest=dict(value=100, as_of_date="2026-09-29"), strike=690)
+    return live_snapshot(records).to_dict()
+
+
 def first(d, group):
     return d["contracts"][0][group]
 
@@ -107,6 +113,12 @@ TAMPER = [
      "greeks.time_basis is not supported for this group"),
     ("invented OI date", live, lambda d: first(d, "open_interest").update(as_of_date="2026-09-29"), True,
      "open_interest.as_of_date is inconsistent with its time_basis"),
+    ("provider_as_of_date without a date", live,
+     lambda d: first(d, "open_interest").update(time_basis="provider_as_of_date"), True,
+     "open_interest.as_of_date is inconsistent with its time_basis"),
+    ("OI date after the as_of date", oi_dated,
+     lambda d: first(d, "open_interest").update(as_of_date="2026-10-01"), True,
+     "open_interest.as_of_date is later than the as_of date"),
     ("IV not from provider", live, lambda d: first(d, "implied_volatility").update(source="model"), True,
      "implied_volatility.source must be provider"),
     ("capability inconsistency", live, lambda d: first(d, "quote").update(status="missing"), True,

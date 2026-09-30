@@ -147,8 +147,18 @@ are `provider_snapshot_unverified`.
 
 ## 9. Open interest, IV, Greeks, day, quote and trade
 
-- **Open interest:** a non-negative whole number. `as_of_date` is set only if the source supplied one; otherwise it
-  is null, with `provider_snapshot_unverified`.
+- **Open interest:** a non-negative whole number. Its time basis follows exactly what the source supplied, and
+  nothing is invented:
+
+  | Source supplied | `time_basis` | `as_of_date` | `observed_at` |
+  |---|---|---|---|
+  | No date or time (the Phase 9A live case) | `provider_snapshot_unverified` | null (required) | null |
+  | A date | `provider_as_of_date` | the date (required) | null |
+  | A timestamp | `observed_at` | null | the timestamp |
+  | A timestamp and a date | `observed_at` | the date (kept, not invented) | the timestamp |
+
+  Validation rejects `provider_as_of_date` without a date, and `provider_snapshot_unverified` with one. A date after
+  the `as_of` exchange date excludes the group (`excluded_after_as_of`).
 - **IV:** copied from the provider (`source: "provider"`), finite and non-negative, never recomputed. There is no
   percentile, rank, or cheap or expensive label.
 - **Greeks:** copied from the provider. `rho` is optional. Mathematically surprising values (e.g. delta 1.7) are

@@ -222,10 +222,20 @@ class TimeBasisTests(unittest.TestCase):
                                                                                 "provider", None))
         self.assertEqual(c.day.time_basis, "provider_snapshot_unverified")
 
-    def test_open_interest_with_a_source_date(self):
-        c = full_snapshot([chain_record(open_interest=dict(value=100, as_of_date="2026-09-29"))]).contracts[0]
-        self.assertEqual((c.open_interest.time_basis, c.open_interest.as_of_date),
-                         ("provider_as_of_date", "2026-09-29"))
+    def test_open_interest_time_basis_contract(self):
+        """A: no date -> unverified; B: source date -> provider_as_of_date; C: timestamp -> observed_at (a source
+        date supplied alongside is kept). Nothing is invented."""
+        cases = {
+            "A": (dict(value=100), ("provider_snapshot_unverified", None, None)),
+            "B": (dict(value=100, as_of_date="2026-09-29"), ("provider_as_of_date", "2026-09-29", None)),
+            "C": (dict(value=100, observed_at=BEFORE), ("observed_at", None, BEFORE.isoformat())),
+            "C+date": (dict(value=100, observed_at=BEFORE, as_of_date="2026-09-29"),
+                       ("observed_at", "2026-09-29", BEFORE.isoformat())),
+        }
+        for label, (oi, expected) in cases.items():
+            with self.subTest(case=label):
+                c = full_snapshot([chain_record(open_interest=oi)]).contracts[0].open_interest
+                self.assertEqual((c.time_basis, c.as_of_date, c.observed_at), expected)
 
     def test_timed_iv_and_greeks(self):
         c = full_snapshot([chain_record(implied_volatility=dict(value="0.3", observed_at=BEFORE),

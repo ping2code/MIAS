@@ -112,7 +112,10 @@ def _group(contract, group, as_of, as_of_day, capability):
         _require(canonical_instant(data["observed_at"], f"{group}.observed_at") <= as_of,
                  f"{group}.observed_at is later than as_of")
     if group == "open_interest":
-        _require((data["as_of_date"] is not None) == (basis == m.PROVIDER_AS_OF_DATE),
+        # provider_as_of_date requires the source date; provider_snapshot_unverified never carries one; with an
+        # observed timestamp, a date the source also supplied is kept (never invented).
+        _require(data["as_of_date"] is not None if basis == m.PROVIDER_AS_OF_DATE
+                 else data["as_of_date"] is None if basis == m.PROVIDER_SNAPSHOT_UNVERIFIED else True,
                  "open_interest.as_of_date is inconsistent with its time_basis")
         if data["as_of_date"] is not None:
             _require(iso_day(data["as_of_date"], "open_interest.as_of_date") <= as_of_day,
