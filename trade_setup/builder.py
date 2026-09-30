@@ -1,6 +1,6 @@
-"""Pure Trade Setup builder (Phase 10B): global gates only; contract screening is Phase 10C.
+"""Pure Trade Setup global gates (Phase 10B); contract screening is Phase 10C.
 
-``assess(market_intelligence, options_intelligence, policy)``:
+``prescreen(market_intelligence, options_intelligence, policy)``:
 
 1. validates the policy (required, sealed), then both inputs structurally (no upstream imports);
 2. fails closed (``TradeSetupInputError``) on a symbol mismatch, or ``policy_requires_phase9_v2`` when a
@@ -22,11 +22,16 @@
    execution_data_readiness     no contract anywhere in the chain has a usable two-sided quote (complete,
                                 or locked when allowed), giving ``execution_data_unavailable``. This is a
                                 chain-level fact, not screening
-   contract_screening           not evaluated (``deferred_to_phase10c``)
    ============================ =========================================================================
 
-4. the outcome is ``no_setup`` with the sorted failed-gate reasons, or, when every global gate passes, the Phase
-   10B interim status ``contract_screening_pending``. ``candidates`` and ``rejections`` are always empty in 10B.
+4. returns one of two results:
+
+   - any global gate failed: a sealed phase10-v1 ``TradeSetupAssessment`` with ``outcome.status = no_setup``,
+     the sorted failed-gate reasons, ``candidates = rejections = []`` and a final ``contract_screening`` trace
+     step that is ``not_evaluated`` / ``global_gate_failed``;
+   - every global gate passed: an internal, unsealed ``PreScreeningEligibility`` carrying the global-gate trace,
+     bias, side, execution readiness, input facts, policy and provenance for contract screening. It is not an
+     assessment and has no outcome. ``setup_candidates`` is only ever emitted after real contract screening.
 
 SEC filing presence is never a gate. There is no score, confidence, ranking, sizing, target, stop or reward/risk.
 No clock, environment, network, files, database or AI.
@@ -51,8 +56,9 @@ def _step(steps, rule, result, reason, pointers):
     steps.append(m.TraceStep(len(steps) + 1, rule, result, reason, tuple(sorted(pointers))))
 
 
-def assess(market_intelligence, options_intelligence, policy):
-    """A TradeSetupAssessment for sealed inputs and an explicit policy; raises on invalid input."""
+def prescreen(market_intelligence, options_intelligence, policy):
+    """A no_setup TradeSetupAssessment or a PreScreeningEligibility for sealed inputs and an explicit policy; raises
+    TradeSetupInputError on invalid input (never no_setup)."""
     policy = validated_policy(policy)
     mi = validated_market_intelligence(market_intelligence)
     oi = validated_options_intelligence(options_intelligence)
@@ -107,12 +113,11 @@ def assess(market_intelligence, options_intelligence, policy):
     _step(steps, "execution_data_readiness",
           *((r.PASS, None) if usable_count else (r.FAIL, "execution_data_unavailable")),
           ("oi:contracts[*].quote_state", "policy:allow_locked_quote"))
-    _step(steps, "contract_screening", r.NOT_EVALUATED, "deferred_to_phase10c", ("oi:contracts[*]",))
 
     reasons = tuple(sorted({s.reason for s in steps if s.result == r.FAIL}))
     v2 = oi_format == r.OI_V2
-    fields = dict(
-        assessment_format_version=r.ASSESSMENT_FORMAT_VERSION, rules_version=r.RULES_VERSION, policy=policy,
+    shared = dict(
+        policy=policy,
         inputs=m.Inputs(
             market_intelligence_ref=m.MarketIntelligenceRef(mi["intelligence_id"], mi["intelligence_format_version"],
                                                             mi["rules_version"], symbol, mi["synthesis_ref"]["as_of"]),
@@ -121,7 +126,6 @@ def assess(market_intelligence, options_intelligence, policy):
                 oi["snapshot_ref"]["underlying"], oi["snapshot_ref"]["as_of"]),
             symbol=symbol, assessment_as_of=max(mi_as_of, oi_as_of).astimezone(timezone.utc).isoformat(),
             input_gap_seconds=int(gap.total_seconds())),
-        outcome=m.Outcome(r.NO_SETUP if reasons else r.CONTRACT_SCREENING_PENDING, reasons),
         market_bias=m.MarketBias(state, side, pattern, technical,
                                  m.Invalidation("pattern_must_remain", r.PATTERN_BY_BIAS[state], mi["intelligence_id"])
                                  if side else None),
@@ -134,8 +138,13 @@ def assess(market_intelligence, options_intelligence, policy):
             numeric_activity_facts_available=v2,
             shares_per_contract_present_count=sum(c["shares_per_contract"] is not None for c in contracts) if v2
             else None),
-        candidates=(), rejections=(), decision_trace=tuple(steps),
         provenance=m.Provenance(mi["intelligence_id"], oi["options_intelligence_id"], oi_format, policy.policy_id,
                                 r.RULES_VERSION, r.POINTER_VERSION))
-    draft = m.TradeSetupAssessment(assessment_id="", **fields)
+    if not reasons:
+        return m.PreScreeningEligibility(eligible_for_contract_screening=True, eligible_side=side,
+                                         decision_trace=tuple(steps), **shared)
+    _step(steps, "contract_screening", r.NOT_EVALUATED, "global_gate_failed", ("oi:contracts[*]",))
+    draft = m.TradeSetupAssessment(
+        assessment_format_version=r.ASSESSMENT_FORMAT_VERSION, assessment_id="", rules_version=r.RULES_VERSION,
+        outcome=m.Outcome(r.NO_SETUP, reasons), candidates=(), rejections=(), decision_trace=tuple(steps), **shared)
     return replace(draft, assessment_id=content_id(draft.body()))

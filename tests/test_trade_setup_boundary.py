@@ -1,5 +1,5 @@
-"""Phase 10B Trade Setup: assessment tamper matrix, determinism, cross-process, sealed no-I/O, import boundary,
-frozen upstream constants, and forbidden semantics."""
+"""Phase 10B Trade Setup: no_setup assessment tamper matrix, determinism (assessment and eligibility),
+cross-process, sealed no-I/O, import boundary, frozen upstream constants, and forbidden semantics."""
 import ast
 from copy import deepcopy
 import inspect
@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 from trade_setup import builder, canonical, model, policy, rules, validation
-from trade_setup.builder import assess
+from trade_setup.builder import prescreen
 from trade_setup.canonical import canonical_json, content_id
 from trade_setup.validation import TradeSetupInputError, validated_assessment, verify_assessment
 from tests import trade_setup_cases as cases
@@ -26,8 +26,14 @@ def inputs(mi_name="all_bullish", oi_name="quoted_complete"):
 
 
 def assessment(**policy_overrides):
+    """A sealed no_setup assessment (by default: bullish input, puts-only policy)."""
     mi, oi = inputs()
-    return assess(mi, oi, cases.policy(**policy_overrides)).to_dict()
+    return prescreen(mi, oi, cases.policy(**dict(dict(allowed_sides=["put"]), **policy_overrides))).to_dict()
+
+
+def eligibility():
+    mi, oi = inputs()
+    return prescreen(mi, oi, cases.policy()).to_dict()
 
 
 def resealed(data):
@@ -48,19 +54,22 @@ STRUCTURAL = [
     ("unknown status", lambda d: d["outcome"].update(status="maybe"), True, "assessment outcome status is not supported"),
     ("unsorted reasons", lambda d: d["outcome"].update(status="no_setup", no_setup_reasons=["b_reason", "a_reason"]),
      True, "assessment no_setup_reasons must be sorted, unique and from the closed set"),
-    ("status without reasons", lambda d: d["outcome"].update(status="no_setup"), True,
+    ("no_setup without reasons", lambda d: d["outcome"].update(no_setup_reasons=[]), True,
      "assessment outcome is inconsistent with its reasons"),
     ("candidates in 10B", lambda d: d.update(candidates=[{"contract_id": "X"}]), True,
      "phase 10B assessments carry no candidates or rejections"),
     ("inconsistent side", lambda d: d["market_bias"].update(side="put"), True, "assessment market_bias is inconsistent"),
+    ("interim status", lambda d: d["outcome"].update(status="contract_screening_pending", no_setup_reasons=[]), True,
+     "assessment outcome status is not supported"),
+    ("screening evaluated", lambda d: d["decision_trace"][-1].update(result="pass", reason=None), True,
+     "assessment contract_screening step requires a failed global gate (screening is Phase 10C)"),
     ("trace reordered", lambda d: d["decision_trace"].reverse(), True, "assessment decision_trace is malformed"),
     ("trace reason", lambda d: d["decision_trace"][0].update(reason="context_gate_blocked"), True,
      "assessment decision_trace reason is inconsistent with its result"),
     ("trace pointer", lambda d: d["decision_trace"][0].update(pointers=["db:table"]), True,
      "assessment decision_trace pointers are malformed"),
-    ("reasons vs trace", lambda d: (d["decision_trace"][5].update(result="fail", reason="options_chain_truncated"),
-                                    d["outcome"].update(status="no_setup", no_setup_reasons=[])), True,
-     "assessment outcome is inconsistent with its reasons"),
+    ("reasons vs trace", lambda d: d["decision_trace"][5].update(result="fail", reason="options_chain_truncated"), True,
+     "assessment no_setup_reasons do not match the failed trace steps"),
     ("provenance", lambda d: d["provenance"].update(policy_id="sha256:" + "0" * 64), True,
      "assessment provenance is inconsistent with its inputs and policy"),
 ]
@@ -82,8 +91,8 @@ class TamperTests(unittest.TestCase):
         mi, oi = inputs()
         data = assessment()
         # A self-consistent but false no_setup (trace, outcome and all structure agree).
-        data["decision_trace"][2].update(result="fail", reason="side_not_allowed_by_policy")
-        data["outcome"].update(status="no_setup", no_setup_reasons=["side_not_allowed_by_policy"])
+        data["decision_trace"][5].update(result="fail", reason="options_chain_truncated")
+        data["outcome"].update(no_setup_reasons=["options_chain_truncated", "side_not_allowed_by_policy"])
         data = resealed(data)
         validated_assessment(data)
         with self.assertRaises(TradeSetupInputError) as caught:
@@ -96,13 +105,14 @@ class TamperTests(unittest.TestCase):
         mi, oi = inputs()
         mi["intelligence_id"] = "sha256:" + "1" * 64
         with self.assertRaises(TradeSetupInputError):
-            assess(mi, oi, cases.policy())
+            prescreen(mi, oi, cases.policy())
 
 
 class DeterminismTests(unittest.TestCase):
     def test_100_repeats_and_dict_order(self):
-        expected = canonical_json(assessment())
+        expected, expected_eligibility = canonical_json(assessment()), canonical_json(eligibility())
         self.assertEqual({canonical_json(assessment()) for _ in range(100)}, {expected})
+        self.assertEqual({canonical_json(eligibility()) for _ in range(100)}, {expected_eligibility})
 
         def reversed_keys(value):
             if isinstance(value, dict):
@@ -111,18 +121,20 @@ class DeterminismTests(unittest.TestCase):
                 return [reversed_keys(v) for v in value]
             return value
         mi, oi = inputs()
-        p = cases.policy().to_dict()
-        self.assertEqual(canonical_json(assess(reversed_keys(mi), reversed_keys(oi), reversed_keys(p)).to_dict()),
-                         expected)
+        for p, want in ((cases.policy(allowed_sides=["put"]).to_dict(), expected),
+                        (cases.policy().to_dict(), expected_eligibility)):
+            self.assertEqual(canonical_json(prescreen(reversed_keys(mi), reversed_keys(oi), reversed_keys(p)).to_dict()),
+                             want)
         from trade_setup.policy import make_policy
         shuffled = dict(reversed(list(cases.BASE_POLICY.items())))
         self.assertEqual(make_policy(**shuffled), cases.policy())
 
     def test_fresh_processes_and_environments(self):
-        code = ("from tests import trade_setup_cases as c\nfrom trade_setup.builder import assess\n"
-                "print(assess(c.market_intelligence('all_bullish'), c.options_intelligence('quoted_complete'), "
-                "c.policy()).assessment_id)")
-        expected = assess(*inputs(), cases.policy()).assessment_id
+        code = ("from tests import trade_setup_cases as c\nfrom trade_setup.builder import prescreen\n"
+                "from trade_setup.canonical import canonical_json, content_id\n"
+                "run = lambda p: prescreen(c.market_intelligence('all_bullish'), c.options_intelligence('quoted_complete'), p)\n"
+                "print(run(c.policy(allowed_sides=['put'])).assessment_id, content_id(run(c.policy()).to_dict()))")
+        expected = f"{assessment()['assessment_id']} {content_id(eligibility())}"
         for extra in ({"PYTHONHASHSEED": "0"}, {"PYTHONHASHSEED": "11", "TZ": "Asia/Tokyo", "HOSTNAME": "elsewhere"},
                       {"PYTHONHASHSEED": "65003", "LANG": "C", "TZ": "UTC", "MIAS_UNRELATED": "x"}):
             with tempfile.TemporaryDirectory() as cwd:
@@ -136,11 +148,11 @@ class BoundaryTests(unittest.TestCase):
     def test_sealed_no_io(self):
         from tests.test_market_intelligence_isolation import sealed
         mi, oi = inputs()
-        p = cases.policy()
-        expected = assess(mi, oi, p).to_dict()
+        p, puts = cases.policy(), cases.policy(allowed_sides=["put"])
+        expected = prescreen(mi, oi, puts).to_dict(), prescreen(mi, oi, p).to_dict()
         with sealed():
-            produced = assess(mi, oi, p).to_dict()
-            verify_assessment(produced, mi, oi)
+            produced = prescreen(mi, oi, puts).to_dict(), prescreen(mi, oi, p).to_dict()
+            verify_assessment(produced[0], mi, oi)
         self.assertEqual(produced, expected)
 
     def test_ast_imports_and_calls(self):
@@ -222,7 +234,7 @@ def words(identifier):
 
 class ForbiddenSemanticsTests(unittest.TestCase):
     def test_keys_and_vocabularies(self):
-        stack = [assessment(), assessment(allowed_sides=["put"])]
+        stack = [assessment(), assessment(max_input_gap_seconds=0), eligibility()]
         while stack:
             value = stack.pop()
             if isinstance(value, dict):

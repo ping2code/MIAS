@@ -1,11 +1,11 @@
 """Phase 10B Trade Setup core: policy, input validation and compatibility, market bias, gates, v1/v2 policy
-compatibility, and the assessment shell."""
+compatibility, the no_setup assessment shell, and the internal pre-screening eligibility result."""
 from copy import deepcopy
 import unittest
 
 from trade_setup import model as m
 from trade_setup import rules as r
-from trade_setup.builder import assess
+from trade_setup.builder import prescreen
 from trade_setup.canonical import canonical_json, content_id
 from trade_setup.policy import PolicyError, make_policy, validated_policy
 from trade_setup.validation import TradeSetupInputError, validated_assessment, verify_assessment
@@ -23,7 +23,11 @@ def oi(name="quoted_complete", fmt="phase9-v2"):
 
 
 def run(mi_name="all_bullish", oi_name="quoted_complete", fmt="phase9-v2", **policy):
-    return assess(mi(mi_name), oi(oi_name, fmt), cases.policy(**policy))
+    return prescreen(mi(mi_name), oi(oi_name, fmt), cases.policy(**policy))
+
+
+def eligible(result):
+    return isinstance(result, m.PreScreeningEligibility) and result.eligible_for_contract_screening is True
 
 
 def reseal(data, key):
@@ -83,7 +87,7 @@ class PolicyTests(unittest.TestCase):
 class InputValidationTests(unittest.TestCase):
     def assertInputError(self, market, options, message, policy=None):
         with self.assertRaises(TradeSetupInputError) as caught:
-            assess(market, options, policy or cases.policy())
+            prescreen(market, options, policy or cases.policy())
         self.assertEqual(str(caught.exception), message)
 
     def test_valid_inputs(self):
@@ -116,13 +120,13 @@ class InputValidationTests(unittest.TestCase):
                               "options intelligence contracts are not unique and in canonical order")
         for bad in (None, [], "mi"):
             with self.assertRaises(TradeSetupInputError):
-                assess(bad, oi(), cases.policy())
+                prescreen(bad, oi(), cases.policy())
 
     def test_symbol_mismatch_is_an_error(self):
         self.assertInputError(mi(), oi("nvda"), "market intelligence and options intelligence symbols do not match")
 
     def test_input_gap(self):
-        self.assertEqual(run(max_input_gap_seconds=GAP).outcome.status, "contract_screening_pending")
+        self.assertTrue(eligible(run(max_input_gap_seconds=GAP)))
         late = run(max_input_gap_seconds=GAP - 1)
         self.assertEqual((late.outcome.status, late.outcome.no_setup_reasons),
                          ("no_setup", ("inputs_not_contemporaneous",)))
@@ -155,7 +159,7 @@ class MarketBiasTests(unittest.TestCase):
     def test_partial_technical_is_insufficient(self):
         data = mi("all_bullish")
         data["evidence_coverage"]["technical_status"] = "partial"
-        a = assess(reseal(data, "intelligence_id"), oi(), cases.policy())
+        a = prescreen(reseal(data, "intelligence_id"), oi(), cases.policy())
         self.assertEqual((a.market_bias.state, a.market_bias.pattern), ("insufficient", "all_bullish"))
 
 
@@ -164,7 +168,7 @@ class GateTests(unittest.TestCase):
         self.assertEqual(run(allowed_sides=["put"]).outcome.no_setup_reasons, ("side_not_allowed_by_policy",))
         self.assertEqual(run("all_bearish", allowed_sides=["call"]).outcome.no_setup_reasons,
                          ("side_not_allowed_by_policy",))
-        self.assertEqual(run("all_bearish", allowed_sides=["put"]).outcome.status, "contract_screening_pending")
+        self.assertTrue(eligible(run("all_bearish", allowed_sides=["put"])))
 
     def test_context_gates(self):
         # all_bullish carries both market_context_opposition_present and market_context_not_current.
@@ -173,7 +177,7 @@ class GateTests(unittest.TestCase):
                          ("context_gate_blocked",))
         clean = run("bullish_current_no_opposition", block_on_market_context_opposition=True,
                     block_on_market_context_not_current=True)
-        self.assertEqual(clean.outcome.status, "contract_screening_pending")
+        self.assertTrue(eligible(clean))
         self.assertEqual([s.result for s in clean.decision_trace if s.rule.startswith("context")], ["pass", "pass"])
 
     def test_sec_filing_never_blocks(self):
@@ -181,16 +185,15 @@ class GateTests(unittest.TestCase):
         self.assertIn("sec_filing_present", codes)
         every_gate = run("bullish_current_no_opposition", block_on_market_context_opposition=True,
                          block_on_market_context_not_current=True, require_complete_chain=True)
-        self.assertEqual(every_gate.outcome.status, "contract_screening_pending")
+        self.assertTrue(eligible(every_gate))
 
     def test_chain_and_execution_gates(self):
         self.assertEqual(run(oi_name="quoted_truncated", require_complete_chain=True).outcome.no_setup_reasons,
                          ("options_chain_truncated",))
-        self.assertEqual(run(oi_name="quoted_truncated").outcome.status, "contract_screening_pending")
+        self.assertTrue(eligible(run(oi_name="quoted_truncated")))
         self.assertEqual(run(oi_name="live_like_no_quotes").outcome.no_setup_reasons, ("execution_data_unavailable",))
         self.assertEqual(run(oi_name="locked_only").outcome.no_setup_reasons, ("execution_data_unavailable",))
-        self.assertEqual(run(oi_name="locked_only", allow_locked_quote=True).outcome.status,
-                         "contract_screening_pending")
+        self.assertTrue(eligible(run(oi_name="locked_only", allow_locked_quote=True)))
 
     def test_all_reasons_collected(self):
         a = run("higher_aligned_5m_opposed", oi_name="quoted_truncated", require_complete_chain=True,
@@ -199,10 +202,10 @@ class GateTests(unittest.TestCase):
                                                       "options_chain_truncated"))
 
     def test_screening_reasons_not_manufactured(self):
-        for a in (run(), run(oi_name="live_like_no_quotes"), run("non_directional")):
+        for a in (run(allowed_sides=["put"]), run(oi_name="live_like_no_quotes"), run("non_directional")):
             self.assertFalse({"no_candidate_satisfies_policy", "source_timing_unverified"} & set(a.outcome.no_setup_reasons))
             self.assertEqual(a.decision_trace[-1].to_dict(), dict(step=8, rule="contract_screening", result="not_evaluated",
-                                                                   reason="deferred_to_phase10c",
+                                                                   reason="global_gate_failed",
                                                                    pointers=["oi:contracts[*]"]))
 
 
@@ -218,20 +221,20 @@ class PolicyCompatibilityTests(unittest.TestCase):
         self.assertEqual((v1.execution_readiness.numeric_activity_facts_available,
                           v1.execution_readiness.shares_per_contract_present_count), (False, None))
         v2 = run(min_volume=10, min_open_interest=100, max_premium_per_contract="2000")
+        self.assertTrue(eligible(v2))
         self.assertEqual((v2.execution_readiness.numeric_activity_facts_available,
-                          v2.execution_readiness.shares_per_contract_present_count, v2.outcome.status),
-                         (True, 9, "contract_screening_pending"))
+                          v2.execution_readiness.shares_per_contract_present_count), (True, 9))
 
 
 class AssessmentShellTests(unittest.TestCase):
     def test_exact_schema_and_identity(self):
-        a = run()
+        a = run(allowed_sides=["put"])
         data = a.to_dict()
         self.assertEqual(list(data), list(m.TOP_LEVEL_FIELDS))
         self.assertEqual((data["assessment_format_version"], data["rules_version"]), ("phase10-v1", "phase10-rules-v1"))
         self.assertEqual(a.assessment_id, content_id(a.body()))
         self.assertNotIn("generated_at", canonical_json(data))
-        self.assertEqual((data["candidates"], data["rejections"]), ([], []))
+        self.assertEqual((data["candidates"], data["rejections"], data["outcome"]["status"]), ([], [], "no_setup"))
         self.assertEqual(validated_assessment(data), data)
         self.assertEqual(verify_assessment(data, mi(), oi()), data)
 
@@ -248,7 +251,7 @@ class AssessmentShellTests(unittest.TestCase):
                          dict(current_session=4, previous_session=1, older_session=1, unavailable=3))
 
     def test_trace_covers_every_gate(self):
-        trace = run().decision_trace
+        trace = run(allowed_sides=["put"]).decision_trace
         self.assertEqual([s.rule for s in trace], list(r.TRACE_RULES))
         self.assertEqual([s.step for s in trace], list(range(1, 9)))
 
@@ -262,6 +265,95 @@ class AssessmentShellTests(unittest.TestCase):
         self.assertEqual(produced, set(r.NO_SETUP_REASONS) - {"source_timing_unverified",
                                                                "no_candidate_satisfies_policy"})
         self.assertNotIn("underlying_price_unavailable", r.NO_SETUP_REASONS)
+
+
+class OutcomeContractTests(unittest.TestCase):
+    """phase10-v1 has exactly two outcomes; 10B seals only global-gate no_setup, and a global pass is internal."""
+
+    def test_frozen_two_value_vocabulary(self):
+        self.assertEqual(r.OUTCOME_STATUSES, ("setup_candidates", "no_setup"))
+        self.assertFalse(hasattr(r, "CONTRACT_SCREENING_PENDING"))
+        self.assertNotIn("deferred_to_phase10c", r.NOT_EVALUATED_REASONS)
+
+    def test_interim_status_rejected(self):
+        data = run(allowed_sides=["put"]).to_dict()
+        data["outcome"] = dict(status="contract_screening_pending", no_setup_reasons=[])
+        with self.assertRaises(TradeSetupInputError) as caught:
+            validated_assessment(reseal(data, "assessment_id"))
+        self.assertEqual(str(caught.exception), "assessment outcome status is not supported")
+
+    def test_setup_candidates_not_available_in_10b(self):
+        data = run(allowed_sides=["put"]).to_dict()
+        data["outcome"] = dict(status="setup_candidates", no_setup_reasons=[])
+        with self.assertRaises(TradeSetupInputError) as caught:
+            validated_assessment(reseal(data, "assessment_id"))
+        self.assertEqual(str(caught.exception), "setup_candidates requires contract screening (Phase 10C)")
+
+    def test_every_global_failure_is_a_sealed_no_setup(self):
+        for kwargs in (dict(mi_name="unavailable_timeframe"), dict(mi_name="higher_aligned_5m_opposed"),
+                       dict(mi_name="non_directional"), dict(mi_name="meta_real_shaped"), dict(allowed_sides=["put"]),
+                       dict(block_on_market_context_opposition=True), dict(block_on_market_context_not_current=True),
+                       dict(max_input_gap_seconds=0), dict(oi_name="live_like_no_quotes"),
+                       dict(oi_name="locked_only"), dict(oi_name="quoted_truncated", require_complete_chain=True)):
+            with self.subTest(**kwargs):
+                a = run(**kwargs)
+                self.assertIsInstance(a, m.TradeSetupAssessment)
+                self.assertEqual((a.outcome.status, a.candidates, a.rejections), ("no_setup", (), ()))
+                self.assertTrue(a.outcome.no_setup_reasons)
+                self.assertEqual(a, run(**kwargs))
+                self.assertEqual(verify_assessment(a.to_dict(), mi(kwargs.get("mi_name", "all_bullish")),
+                                                   oi(kwargs.get("oi_name", "quoted_complete"))), a.to_dict())
+
+    def test_global_pass_is_pre_screening_eligibility(self):
+        e = run()
+        self.assertTrue(eligible(e))
+        self.assertNotIsInstance(e, m.TradeSetupAssessment)
+        data = e.to_dict()
+        self.assertEqual(list(data), ["eligible_for_contract_screening", "eligible_side", "policy", "inputs",
+                                      "market_bias", "execution_readiness", "decision_trace", "provenance"])
+        for absent in ("assessment_id", "assessment_format_version", "rules_version", "outcome", "candidates",
+                       "rejections"):
+            self.assertNotIn(absent, data)
+        self.assertEqual((e.eligible_side, e.market_bias.side, e.market_bias.state), ("call", "call", "bullish"))
+        self.assertEqual(run("all_bearish", allowed_sides=["put"]).eligible_side, "put")
+        self.assertEqual([s.rule for s in e.decision_trace], list(r.GLOBAL_GATE_RULES))
+        self.assertTrue(all(s.result in ("pass", "not_evaluated") for s in e.decision_trace))
+        self.assertEqual(e.policy, cases.policy())
+        self.assertEqual(e.provenance.policy_id, cases.policy().policy_id)
+        with self.assertRaises(Exception):
+            e.eligible_side = "put"
+
+    def test_eligibility_is_deterministic(self):
+        first = canonical_json(run().to_dict())
+        self.assertEqual({canonical_json(run().to_dict()) for _ in range(20)}, {first})
+        self.assertEqual(run(), run())
+
+    def test_no_screening_in_10b(self):
+        # A global pass carries only chain-level facts; nothing per contract is chosen or rejected.
+        e = run(min_volume=10 ** 9, max_premium_per_contract="0.01", abs_delta_min="0.99", abs_delta_max="1")
+        self.assertTrue(eligible(e))
+        self.assertEqual(e.execution_readiness, run().execution_readiness)
+
+    def test_forged_no_setup_for_a_passing_input_is_rejected(self):
+        data = run(allowed_sides=["put"]).to_dict()
+        data["policy"] = cases.policy().to_dict()
+        data["provenance"]["policy_id"] = data["policy"]["policy_id"]
+        data["decision_trace"][2].update(result="fail", reason="side_not_allowed_by_policy")
+        data = reseal(data, "assessment_id")
+        validated_assessment(data)
+        with self.assertRaises(TradeSetupInputError) as caught:
+            verify_assessment(data, mi(), oi())
+        self.assertEqual(str(caught.exception),
+                         "assessment does not match its inputs: every global gate passes (contract screening required)")
+
+    def test_screening_step_requires_a_failed_global_gate(self):
+        for step in (dict(result="pass", reason=None), dict(result="not_evaluated", reason="policy_disabled")):
+            data = run(allowed_sides=["put"]).to_dict()
+            data["decision_trace"][-1].update(step)
+            with self.subTest(step=step), self.assertRaises(TradeSetupInputError) as caught:
+                validated_assessment(reseal(data, "assessment_id"))
+            self.assertEqual(str(caught.exception),
+                             "assessment contract_screening step requires a failed global gate (screening is Phase 10C)")
 
 
 if __name__ == "__main__":

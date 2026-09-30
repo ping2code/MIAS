@@ -69,17 +69,18 @@ REASON_BY_BIAS = {"insufficient": "market_evidence_insufficient", "conflicting":
                   "partially_directional": "market_evidence_partially_directional"}
 
 # --- Outcome ---
+# The frozen phase10-v1 outcome vocabulary (exactly two values).
 SETUP_CANDIDATES, NO_SETUP = "setup_candidates", "no_setup"
-# Phase 10B interim status: every global gate passed, and contract screening (Phase 10C) has not run yet.
-CONTRACT_SCREENING_PENDING = "contract_screening_pending"
-OUTCOME_STATUSES = (SETUP_CANDIDATES, NO_SETUP, CONTRACT_SCREENING_PENDING)
+OUTCOME_STATUSES = (SETUP_CANDIDATES, NO_SETUP)
 
 # --- Decision trace ---
 PASS, FAIL, NOT_EVALUATED = "pass", "fail", "not_evaluated"
 TRACE_RESULTS = (PASS, FAIL, NOT_EVALUATED)
-NOT_EVALUATED_REASONS = ("policy_disabled", "market_bias_not_directional", "deferred_to_phase10c")
-TRACE_RULES = ("input_contemporaneity", "market_bias", "side_allowed", "context_opposition_gate",
-               "context_current_gate", "chain_completeness", "execution_data_readiness", "contract_screening")
+# global_gate_failed: contract screening is never evaluated once any global gate has failed.
+NOT_EVALUATED_REASONS = ("policy_disabled", "market_bias_not_directional", "global_gate_failed")
+GLOBAL_GATE_RULES = ("input_contemporaneity", "market_bias", "side_allowed", "context_opposition_gate",
+                     "context_current_gate", "chain_completeness", "execution_data_readiness")
+TRACE_RULES = GLOBAL_GATE_RULES + ("contract_screening",)
 POINTER = re.compile(r"(mi|oi|policy):[a-z_.\[\]*]+")
 
 # Numeric policy rules that need phase9-v2 facts (R4): a phase9-v1 input with any of them enabled is an error.

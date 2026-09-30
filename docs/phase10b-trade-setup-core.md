@@ -4,7 +4,8 @@
 screening (10C), premium-risk facts (10D) and the runner (10E) do not exist yet.
 
 > Phase 10B adds the pure `trade_setup` package: the explicit policy, structural validation of both inputs, the
-> market-bias derivation, the global no-setup gates and the `TradeSetupAssessment` shell. It also adds the bounded
+> market-bias derivation, the global no-setup gates, the `TradeSetupAssessment` shell (sealed only for `no_setup` in
+> 10B) and the internal `PreScreeningEligibility` result for a global pass. It also adds the bounded
 > `phase9-v2` OptionsIntelligence compatibility amendment (D2). No contract is screened, selected or ranked, and there
 > is no score, confidence, sizing, target, stop or reward/risk.
 
@@ -112,7 +113,8 @@ intelligence_id}`. This descriptor is the only market-state invalidation in 10B.
 
 ## 6. Global gates and `decision_trace`
 
-The gates are always evaluated in this order. Each is recorded as `{step, rule, result, reason, pointers}`, where
+`trade_setup.builder.prescreen(market_intelligence, options_intelligence, policy)` always evaluates the gates in
+this order. Each is recorded as `{step, rule, result, reason, pointers}`, where
 `result` is one of `pass`, `fail` or `not_evaluated`. Pointers use `phase10-pointer-v1` (`mi:` / `oi:` / `policy:`
 paths).
 
@@ -125,16 +127,20 @@ paths).
 | 5 | `context_current_gate` | `context_gate_blocked` when enabled and MI attention has `market_context_not_current` |
 | 6 | `chain_completeness` | `options_chain_truncated` when `require_complete_chain` and the chain is truncated |
 | 7 | `execution_data_readiness` | `execution_data_unavailable` when no contract in the chain has a usable two-sided quote (`complete`, or `locked` if allowed) |
-| 8 | `contract_screening` | always `not_evaluated` / `deferred_to_phase10c` |
+| 8 | `contract_screening` | in a global-gate `no_setup`: `not_evaluated` / `global_gate_failed` |
 
 Disabled gates are `not_evaluated` / `policy_disabled`. SEC filing presence is never consulted.
+
+`global_gate_failed` is final phase10-v1 semantics, not a 10B lifecycle state: once any global gate fails, contract
+screening is never evaluated. The `PreScreeningEligibility` trace holds only steps 1–7; screening (10C) appends
+step 8.
 
 - Gate 7 is a chain-level fact, not per-contract screening. On the live Starter plan (no quotes), every run is
   `no_setup` with `execution_data_unavailable` (D8).
 - `source_timing_unverified` and `no_candidate_satisfies_policy` are in the locked reason set but are only reachable
   once 10C screening exists.
 
-## 7. Outcome and the assessment shell (`phase10-v1` / `phase10-rules-v1`)
+## 7. Outcome, the assessment shell (`phase10-v1` / `phase10-rules-v1`) and pre-screening eligibility
 
 `TradeSetupAssessment` has exactly 12 top-level fields:
 - `assessment_format_version`, `assessment_id`, `rules_version`;
@@ -148,14 +154,24 @@ Disabled gates are `not_evaluated` / `policy_disabled`. SEC filing presence is n
 - `candidates`, `rejections` and `decision_trace`;
 - `provenance`.
 
-`outcome.status` is one of the following:
-- `no_setup`, with the sorted, unique failed-gate reasons;
-- `contract_screening_pending`, a **Phase 10B interim status** that means every global gate passed and screening has
-  not run;
-- `setup_candidates`, which is reserved for 10C and rejected by the 10B validator.
+The phase10-v1 outcome vocabulary is frozen at exactly two values: `setup_candidates` and `no_setup`. There is no
+interim or pending status, and `phase10-rules-v1` encodes no 10B lifecycle state.
 
-`candidates` and `rejections` are always `[]` in 10B. The `phase10-rules-v1` label covers this interim behaviour.
-10C will introduce screening under its own rules label.
+`prescreen` returns one of two results:
+
+- **Any global gate failed:** a sealed `TradeSetupAssessment` with `outcome.status = no_setup`, the sorted, unique
+  failed-gate reasons, `candidates = rejections = []`, and step 8 `not_evaluated` / `global_gate_failed`.
+- **Every global gate passed:** an internal `PreScreeningEligibility`, and no assessment. It is:
+  - an immutable, pure result for contract screening to consume;
+  - **not** phase10-v1, **not** an outcome, never persisted, and not a public contract;
+  - unsealed: it has no id, format version or rules version.
+
+  Its fields are `eligible_for_contract_screening` (always `true`), `eligible_side`, `policy`, `inputs`,
+  `market_bias`, `execution_readiness`, `decision_trace` (steps 1–7, each `pass` or `not_evaluated`) and `provenance`.
+  It carries nothing per contract.
+
+`setup_candidates` is only emitted once contract screening has actually run (10C). Until then the validator rejects
+it, and any assessment that is not a global-gate `no_setup`.
 
 ## 8. Canonical form, ids and verification
 
@@ -166,8 +182,12 @@ The canonical form and ids follow the earlier phases:
 - `assessment_id` is `sha256:` over the body without the id.
 
 `validated_assessment(data)` checks structure, id, policy, trace order and consistency, outcome/trace agreement and
-provenance. `verify_assessment(data, mi, oi)` rebuilds from the inputs with the embedded policy. It names the first
-differing top-level fields.
+provenance. It rejects any status outside `setup_candidates` / `no_setup`, and any assessment whose screening step
+is not `not_evaluated` / `global_gate_failed` after a failed global gate.
+
+`verify_assessment(data, mi, oi)` rebuilds from the inputs with the embedded policy. It names the differing
+top-level fields. If every global gate actually passes for those inputs, it rejects the assessment ("contract
+screening required").
 
 ## 9. Boundaries
 
@@ -187,7 +207,7 @@ Output is identical across the following, and the tests cover each:
 
 | Module | Tests |
 |---|---|
-| `tests/test_trade_setup_core.py` | policy, inputs, bias, gates, v1/v2 compatibility, shell |
+| `tests/test_trade_setup_core.py` | policy, inputs, bias, gates, v1/v2 compatibility, `no_setup` shell, two-outcome contract, pre-screening eligibility |
 | `tests/test_trade_setup_boundary.py` | tamper matrices, determinism, cross-process, no-I/O, import boundary, frozen upstream constants, forbidden semantics |
 | `tests/test_options_intelligence_v2.py` | the `phase9-v2` amendment |
 | `tests/trade_setup_cases.py` | test-only sealed inputs built from real Phase 8 / Phase 9 cases |

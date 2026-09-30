@@ -81,7 +81,7 @@ class Inputs(_Plain):
 
 @dataclass(frozen=True)
 class Outcome(_Plain):
-    status: str                       # setup_candidates | no_setup | contract_screening_pending (10B interim)
+    status: str                       # setup_candidates | no_setup (the frozen phase10-v1 vocabulary)
     no_setup_reasons: tuple           # sorted, closed vocabulary; empty unless no_setup
 
 
@@ -155,3 +155,20 @@ class TradeSetupAssessment(_Plain):
         data = self.to_dict()
         data.pop("assessment_id")
         return data
+
+
+@dataclass(frozen=True)
+class PreScreeningEligibility(_Plain):
+    """Internal, unsealed result of the global gates when every one passed: the input to contract screening.
+
+    Not a TradeSetupAssessment, not phase10-v1, not an outcome, never persisted and not a public contract. It has no
+    id or format version. ``decision_trace`` holds the global-gate steps only; screening appends its own step.
+    """
+    eligible_for_contract_screening: bool   # always True (a failed gate gives a no_setup assessment instead)
+    eligible_side: str                      # call | put (equal to market_bias.side)
+    policy: Policy
+    inputs: Inputs
+    market_bias: MarketBias
+    execution_readiness: ExecutionReadiness
+    decision_trace: tuple                   # global-gate steps 1..7, each pass or not_evaluated
+    provenance: Provenance

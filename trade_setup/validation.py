@@ -9,7 +9,8 @@
   session and time-basis vocabularies, canonical contract order, and exactly the contract fields of its format.
   No snapshot re-derivation, and no import of options_intelligence or options_data.
 - ``validated_assessment``: a sealed TradeSetupAssessment on its own (keys, versions, id, policy, closed
-  vocabularies, outcome and trace consistency, reference and provenance agreement).
+  vocabularies, outcome and trace consistency, reference and provenance agreement). The outcome vocabulary is
+  exactly ``setup_candidates`` / ``no_setup``; in Phase 10B only a global-gate ``no_setup`` can validate.
 - ``verify_assessment``: the structural check, then a rebuild from (MarketIntelligence, OptionsIntelligence,
   embedded policy) that must match byte for byte.
 
@@ -160,9 +161,9 @@ def validated_assessment(assessment):
     _require(isinstance(reasons, list) and reasons == sorted(set(reasons)) and set(reasons) <= set(r.NO_SETUP_REASONS),
              "assessment no_setup_reasons must be sorted, unique and from the closed set")
     _require((outcome["status"] == r.NO_SETUP) == bool(reasons), "assessment outcome is inconsistent with its reasons")
+    _require(outcome["status"] != r.SETUP_CANDIDATES, "setup_candidates requires contract screening (Phase 10C)")
     _require(data["candidates"] == [] and data["rejections"] == [],
              "phase 10B assessments carry no candidates or rejections")
-    _require(outcome["status"] != r.SETUP_CANDIDATES, "setup_candidates requires contract screening (Phase 10C)")
     bias = data["market_bias"]
     _require(isinstance(bias, dict) and bias.get("state") in r.BIAS_STATES
              and bias.get("side") == r.SIDE_BY_BIAS.get(bias["state"]), "assessment market_bias is inconsistent")
@@ -180,6 +181,11 @@ def validated_assessment(assessment):
                  and all(r.POINTER.fullmatch(p) for p in t["pointers"]), "assessment decision_trace pointers are malformed")
     _require(sorted({t["reason"] for t in trace if t["result"] == r.FAIL}) == reasons,
              "assessment no_setup_reasons do not match the failed trace steps")
+    # Phase 10B seals only global-gate no_setup: some global gate failed, so screening was not evaluated.
+    gates, screening = trace[:-1], trace[-1]
+    _require(any(t["result"] == r.FAIL for t in gates) and all(t["reason"] != "global_gate_failed" for t in gates)
+             and (screening["result"], screening["reason"]) == (r.NOT_EVALUATED, "global_gate_failed"),
+             "assessment contract_screening step requires a failed global gate (screening is Phase 10C)")
     inputs, provenance = data["inputs"], data["provenance"]
     mi_ref, oi_ref = inputs["market_intelligence_ref"], inputs["options_intelligence_ref"]
     _require(provenance == dict(market_intelligence_id=mi_ref["intelligence_id"],
@@ -194,9 +200,12 @@ def validated_assessment(assessment):
 
 def verify_assessment(assessment, market_intelligence, options_intelligence):
     """Structural validation, then a rebuild from the inputs and the embedded policy; returns the plain dict."""
-    from trade_setup.builder import assess
+    from trade_setup.builder import prescreen
     data = validated_assessment(assessment)
-    expected = assess(market_intelligence, options_intelligence, data["policy"]).to_dict()
+    rebuilt = prescreen(market_intelligence, options_intelligence, data["policy"])
+    _require(isinstance(rebuilt, m.TradeSetupAssessment),
+             "assessment does not match its inputs: every global gate passes (contract screening required)")
+    expected = rebuilt.to_dict()
     body = lambda d: {k: v for k, v in d.items() if k != "assessment_id"}  # noqa: E731
     if canonical_json(body(expected)) != canonical_json(body(data)):
         differing = sorted(k for k in body(data) if expected.get(k) != data.get(k))
