@@ -1,4 +1,4 @@
-"""Pure builder: one verified EvidenceSynthesis -> one MarketIntelligence (Phase 8A, current state only).
+"""Pure builder: one verified EvidenceSynthesis (plus an optional previous one) -> one MarketIntelligence.
 
 ``build(synthesis)`` validates the synthesis (typed or canonical dict; ``synthesis_id`` and every derived fact are
 re-verified), then organizes it into descriptive blocks. Every value is copied from the synthesis or condensed by a
@@ -11,7 +11,18 @@ fixed rule; nothing is weighted, ranked, scored or predicted, and market context
 - ``conflicts``: the synthesis opposition contradictions, unresolved and unranked;
 - ``attention``: closed operational flags (conflict, gap, presence), sorted by (category, code, subjects).
 
-``comparison`` is always ``None`` and ``transitions`` always ``()``: both are reserved for Phase 8B.
+Every block above is derived from the **current** synthesis only.
+
+**Phase 8B:** ``build(current, previous=None)``. Without ``previous`` the output is exactly the Phase 8A output
+(``comparison`` is ``None``, ``transitions`` is ``()``). With an explicit, caller-supplied ``previous`` (same
+symbol, earlier ``as_of``, a different synthesis):
+
+- ``comparison``: ``comparable``, or ``not_comparable`` with reason codes when the synthesis format or rules
+  versions differ; the previous synthesis reference; ``elapsed_seconds`` (a fact, no threshold);
+- ``transitions``: closed, descriptive differences (only when comparable), each with ``previous:`` and ``current:``
+  pointers. They describe differences between two cutoff-safe syntheses and never predict what happens next.
+
+The previous synthesis never changes any current-state block.
 
 ``intelligence_id = "sha256:" + SHA-256(canonical body without intelligence_id)``. There is no ``generated_at``;
 no clock, environment, network, database, file or AI is used.
@@ -21,7 +32,7 @@ from dataclasses import replace
 from market_intelligence import model as m
 from market_intelligence import rules as r
 from market_intelligence.canonical import content_id
-from market_intelligence.validation import instant, validated_synthesis
+from market_intelligence.validation import instant, validated_pair, validated_synthesis
 
 
 def _ref_key(reference, basis):
@@ -199,9 +210,96 @@ def _attention(data, frames, market, references, alignment, events):
     return tuple(sorted(flags, key=lambda a: (a.category, a.code, a.subjects)))
 
 
-def build(synthesis):
-    """MarketIntelligence for one valid EvidenceSynthesis; raises MarketIntelligenceInputError for invalid input."""
-    data = validated_synthesis(synthesis)
+def _comparison(previous, current):
+    prev_ref = previous["packet_ref"]
+    reasons = tuple(reason for reason, key in ((r.FORMAT_VERSION_MISMATCH, "synthesis_format_version"),
+                                               (r.RULES_VERSION_MISMATCH, "rules_version"))
+                    if previous[key] != current[key])
+    elapsed = int((instant(current["packet_ref"]["as_of"], "current as_of")
+                   - instant(prev_ref["as_of"], "previous as_of")).total_seconds())
+    return m.Comparison(status=r.NOT_COMPARABLE if reasons else r.COMPARABLE, reasons=reasons,
+                        previous_ref=m.SynthesisRef(previous["synthesis_id"], previous["synthesis_format_version"],
+                                                    previous["rules_version"], prev_ref["packet_id"],
+                                                    prev_ref["symbol"], prev_ref["as_of"]),
+                        elapsed_seconds=elapsed)
+
+
+def _identity(item):
+    """news.items[<identity_version>:<event_key>] -> <identity_version>:<event_key>."""
+    return item[len("news.items["):-1]
+
+
+def _transitions(previous, current):
+    """Closed, descriptive differences between two comparable syntheses, by stable identity (never list position)."""
+    out = []
+
+    def transition(code, subjects, previous_pointers=(), current_pointers=()):
+        out.append(m.Transition(code, tuple(subjects), tuple(f"previous:{p}" for p in previous_pointers),
+                                tuple(f"current:{p}" for p in current_pointers)))
+
+    before = {f["interval"]: f for f in previous["timeframes"]}
+    after = {f["interval"]: f for f in current["timeframes"]}
+    for i in r.INTERVALS:
+        p, c = before[i], after[i]
+        if p["available"] and c["available"] and p["state"] != c["state"]:
+            pointer = (f"timeframes[{i}].state",)
+            transition("timeframe_state_changed", (i, p["state"], c["state"]), pointer, pointer)
+        if p["state_direction"] != c["state_direction"]:
+            pointer = (f"timeframes[{i}].state_direction",)
+            transition("timeframe_direction_changed", (i, p["state_direction"], c["state_direction"]), pointer,
+                       pointer)
+    earlier, later = previous["timeframe_alignment"]["pattern"], current["timeframe_alignment"]["pattern"]
+    if earlier != later:
+        pointer = ("timeframe_alignment.pattern",)
+        transition("pattern_changed", (earlier, later), pointer, pointer)
+        if later in r.ALIGNED_PATTERNS and earlier not in r.ALIGNED_PATTERNS:
+            transition("entered_alignment", (earlier, later), pointer, pointer)
+        if earlier in r.ALIGNED_PATTERNS and later not in r.ALIGNED_PATTERNS:
+            transition("exited_alignment", (earlier, later), pointer, pointer)
+
+    def identities(data):
+        return {(c["code"], tuple(c["subjects"])): _contradiction_pointer(c) for c in data["contradictions"]}
+    old, new = identities(previous), identities(current)
+    for key in sorted(new.keys() - old.keys()):
+        code = "opposition_appeared" if key[0] in r.CONFLICT_CODES else "gap_appeared"
+        transition(code, (key[0], *key[1]), (), (new[key],))
+    for key in sorted(old.keys() - new.keys()):
+        code = "opposition_resolved" if key[0] in r.CONFLICT_CODES else "gap_resolved"
+        transition(code, (key[0], *key[1]), (old[key],), ())
+    for domain in r.DOMAINS:
+        earlier, later = previous["completeness"][domain], current["completeness"][domain]
+        pointer = (f"completeness.{domain}",)
+        if earlier == "unavailable" and later != "unavailable":
+            transition("domain_became_available", (domain, earlier, later), pointer, pointer)
+        if earlier != "unavailable" and later == "unavailable":
+            transition("domain_became_unavailable", (domain, earlier, later), pointer, pointer)
+    signs_before = {(x["reference"], x["basis"]): x["value_sign"] for x in previous["market_context"]["references"]}
+    for ref in current["market_context"]["references"]:
+        key = (ref["reference"], ref["basis"])
+        if key in signs_before and signs_before[key] != ref["value_sign"]:
+            pointer = (f"market_context.references[{_ref_key(*key)}].value_sign",)
+            transition("reference_sign_changed", (*key, signs_before[key], ref["value_sign"]), pointer, pointer)
+    items_before, items_after = set(previous["news"]["sources"]), set(current["news"]["sources"])
+    added, removed = sorted(items_after - items_before), sorted(items_before - items_after)
+    if added:
+        ids = [_identity(item) for item in added]
+        transition("news_identities_added", (str(len(ids)), *ids), (), tuple(f"news.sources[{i}]" for i in ids))
+    if removed:
+        ids = [_identity(item) for item in removed]
+        transition("news_identities_removed", (str(len(ids)), *ids), tuple(f"news.sources[{i}]" for i in ids), ())
+    return tuple(sorted(out, key=lambda t: (t.code, t.subjects)))
+
+
+def build(current, previous=None):
+    """MarketIntelligence for one valid EvidenceSynthesis, optionally compared with an explicit previous one.
+
+    Raises MarketIntelligenceInputError for invalid input or an invalid pair.
+    """
+    if previous is None:
+        data, before, comparison = validated_synthesis(current), None, None
+    else:
+        data, before = validated_pair(current, previous)
+        comparison = _comparison(before, data)
     ref = data["packet_ref"]
     as_of = instant(ref["as_of"], "packet_ref.as_of")
     frames = {f["interval"]: f for f in data["timeframes"]}
@@ -215,10 +313,11 @@ def build(synthesis):
         intelligence_format_version=r.INTELLIGENCE_FORMAT_VERSION, rules_version=r.RULES_VERSION,
         synthesis_ref=m.SynthesisRef(data["synthesis_id"], data["synthesis_format_version"], data["rules_version"],
                                      ref["packet_id"], ref["symbol"], ref["as_of"]),
-        comparison=None,
+        comparison=comparison,
         evidence_coverage=_coverage(data, frames, references),
         timeframe_structure=structure, market_context_alignment=alignment, event_presence=events,
-        conflicts=_conflicts(data), transitions=(),
+        conflicts=_conflicts(data),
+        transitions=_transitions(before, data) if comparison and comparison.status == r.COMPARABLE else (),
         attention=_attention(data, frames, market, references, alignment, events),
         provenance=m.Provenance(data["synthesis_id"], data["synthesis_format_version"], data["rules_version"],
                                 ref["packet_id"], tuple(data["provenance"]["source_domains"])))

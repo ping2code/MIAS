@@ -133,6 +133,9 @@ FORBIDDEN = {"direction", "score", "confidence", "severity", "conviction", "prob
              "options", "call", "calls", "put", "puts", "strike", "expiry", "expiration", "target", "stop",
              "priority", "rank", "ranking", "regime", "important", "catalyst", "sentiment"}
 FORBIDDEN_PHRASES = ("expected_return", "risk_reward", "position_size", "stop_loss")
+# Phase 8B transition code naming a change in the synthesis's own state_direction fact (an upstream contract field),
+# required by the Phase 8B code list. It is descriptive, not a decision field.
+UPSTREAM_FACT_CODES = {"timeframe_direction_changed"}
 
 
 def words(identifier):
@@ -208,7 +211,7 @@ class ForbiddenConceptTests(unittest.TestCase):
                 else:
                     continue
                 for name in names:
-                    if name not in upstream and name != "state_direction":
+                    if name not in upstream and name != "state_direction" and name not in UPSTREAM_FACT_CODES:
                         self.assertFalse(words(name) & FORBIDDEN, (module.__name__, name))
 
 
