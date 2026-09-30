@@ -4,6 +4,9 @@
 - Phase 9B: the pure snapshot layer: ``model``, ``identity``, ``normalization`` (assembly), ``validation`` and
   ``canonical``. No network, files, environment, clock, database or AI.
 
-The live adapter and runner (Phase 9C) and OptionsIntelligence (Phase 9D) are not implemented yet. See
-docs/phase9a-massive-options-check.md and docs/phase9b-options-snapshot.md.
+- Phase 9C: ``provider`` (the provider-neutral interface and a fixture provider), ``massive`` (the live chain
+  adapter) and ``runner`` (one clock read, pure assembly, atomic canonical snapshot file). I/O modules.
+
+OptionsIntelligence (Phase 9D) is not implemented yet. See docs/phase9a-massive-options-check.md,
+docs/phase9b-options-snapshot.md and docs/phase9c-massive-options-adapter.md.
 """
