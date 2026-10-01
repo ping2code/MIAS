@@ -184,6 +184,109 @@ class TamperTests(unittest.TestCase):
         self.assertEqual(rebuilt, self.data)
 
 
+class DeltaValidationTests(unittest.TestCase):
+    """Candidate deltas are held to the Phase 9 bound (call [0, 1], put [-1, 0]); nothing is clamped or recomputed."""
+    DELTA = dict(abs_delta_min="0.2", abs_delta_max="0.7")
+
+    def candidate_assessment(self, side):
+        mi_name = "all_bullish" if side == "call" else "all_bearish"
+        delta = "0.55" if side == "call" else "-0.45"
+        rec = record(option_type=side, greeks=dict(delta=delta, gamma="0.01", theta="-0.1", vega="0.2"))
+        a, oi = cases.screened([rec], mi_name=mi_name, **self.DELTA)
+        return a.to_dict(), oi, cases.market_intelligence(mi_name)
+
+    def assertRejected(self, data):
+        with self.assertRaises(TradeSetupInputError) as caught:
+            validated_assessment(resealed(data))
+        self.assertEqual(str(caught.exception), "assessment candidate does not satisfy the policy")
+
+    def test_sign_invalid_call_delta(self):                                                                 # 1
+        data, _, _ = self.candidate_assessment("call")
+        data["candidates"][0]["source"]["delta"] = "-0.5"
+        self.assertRejected(data)
+
+    def test_sign_invalid_put_delta(self):                                                                  # 2
+        data, _, _ = self.candidate_assessment("put")
+        data["candidates"][0]["source"]["delta"] = "0.5"
+        self.assertRejected(data)
+
+    def test_valid_deltas_pass(self):                                                                       # 3, 4
+        for side, delta in (("call", "0.55"), ("put", "-0.45")):
+            data, oi, mi = self.candidate_assessment(side)
+            self.assertEqual(data["candidates"][0]["source"]["delta"], delta)
+            self.assertEqual(validated_assessment(data), data)
+            self.assertEqual(verify_assessment(data, mi, oi), data)
+
+    def test_rederivation_catches_in_bounds_tampering(self):                                                # 5
+        data, oi, mi = self.candidate_assessment("call")
+        data["candidates"][0]["source"]["delta"] = "0.6"
+        data = resealed(data)
+        validated_assessment(data)
+        with self.assertRaises(TradeSetupInputError) as caught:
+            verify_assessment(data, mi, oi)
+        self.assertEqual(str(caught.exception), "assessment does not match its inputs at candidates")
+
+    def test_out_of_bounds_screening_unchanged(self):
+        wild = record(greeks=dict(delta="-0.5", gamma="0.01", theta="-0.1", vega="0.2"))  # call with a put-signed delta
+        a, oi = cases.screened([wild], **self.DELTA)
+        cid = cases.contract_id(oi, wild)
+        self.assertEqual([x.reason_code for x in a.rejections if cid in x.contract_ids], ["delta_unavailable"])
+        b, oi = cases.screened([wild])  # delta rule off: delta is not screened, and the candidate validates
+        data = b.to_dict()
+        self.assertEqual(data["candidates"][0]["source"]["delta"], "-0.5")
+        self.assertEqual(verify_assessment(data, cases.market_intelligence("all_bullish"), oi), data)
+
+    def test_schema_unchanged(self):                                                                        # 6
+        data, _, _ = self.candidate_assessment("call")
+        self.assertEqual(set(data["candidates"][0]), {"source", "derived", "policy_checks"})
+        self.assertEqual(list(data["candidates"][0]["source"]), [
+            "contract_id", "provider_symbol", "option_type", "expiration", "strike", "dte_calendar_days", "quote_state",
+            "mid", "spread_absolute", "spread_relative", "delta", "greeks_time_basis", "implied_volatility",
+            "iv_time_basis", "volume_state", "open_interest_state", "day_session_relation", "current_session_volume",
+            "open_interest_value", "open_interest_time_basis", "shares_per_contract"])
+        self.assertEqual(list(data["candidates"][0]["derived"]),
+                         ["entry_reference_ask", "max_loss_per_contract", "premium_risk_status"])
+        self.assertEqual(set(data["rejections"][0]), {"reason_code", "count", "contract_ids"})
+        self.assertEqual(len(rules.REJECTION_REASONS), 19)
+
+    def test_bound_matches_phase9(self):
+        from decimal import Decimal
+        from options_intelligence.rules import greeks_out_of_bounds
+        for side in ("call", "put"):
+            for text in ("-1.5", "-1", "-0.5", "0", "0.5", "1", "1.5"):
+                self.assertEqual(screening.delta_out_of_bounds(side, text),
+                                 "delta" in greeks_out_of_bounds(side, {"delta": Decimal(text)}), (side, text))
+        self.assertFalse(screening.delta_out_of_bounds("call", None))
+
+
+class PremiumRiskStatusTests(unittest.TestCase):
+    """Frozen phase10-v1: computed | multiplier_unavailable (A, B, C)."""
+
+    def test_semantics(self):
+        self.assertEqual(rules.PREMIUM_RISK_STATUSES, ("computed", "multiplier_unavailable"))
+        a, _ = cases.screened([record()])                                                                   # A
+        self.assertEqual(a.candidates[0].derived.to_dict(), dict(entry_reference_ask="10.1",
+                                                                 max_loss_per_contract="1010",
+                                                                 premium_risk_status="computed"))
+        b, oi = cases.screened([record(shares=None)])                                                       # B
+        self.assertEqual(b.candidates[0].derived.to_dict(), dict(entry_reference_ask="10.1", max_loss_per_contract=None,
+                                                                 premium_risk_status="multiplier_unavailable"))
+        c, oi = cases.screened([record(shares=None)], max_premium_per_contract="5000")                      # C
+        self.assertEqual((c.candidates, c.outcome.status), ((), "no_setup"))
+        self.assertIn("multiplier_unavailable", [x.reason_code for x in c.rejections])
+
+    def test_forged_case_c_candidate_is_rejected(self):
+        b, _ = cases.screened([record(shares=None)])
+        data = b.to_dict()
+        data["policy"] = cases.screen_policy(max_premium_per_contract="5000").to_dict()
+        data["provenance"]["policy_id"] = data["policy"]["policy_id"]
+        data["decision_trace"][-1]["pointers"] = list(builder.screening_pointers(
+            cases.screen_policy(max_premium_per_contract="5000")))
+        with self.assertRaises(TradeSetupInputError) as caught:
+            validated_assessment(resealed(data))
+        self.assertEqual(str(caught.exception), "assessment candidate does not satisfy the policy")
+
+
 class DeterminismTests(unittest.TestCase):
     def test_100_repeats(self):                                                                             # 97
         a, oi = screened()

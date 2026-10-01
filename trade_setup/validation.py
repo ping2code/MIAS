@@ -188,7 +188,10 @@ def _validated_screening(data, policy, reasons):
         _require(isinstance(source["contract_id"], str) and source["option_type"] == side
                  and canonical_decimal(source["strike"]) is not None, "assessment candidate identity is inconsistent")
         try:
-            reasons_for, checks = screening.evaluate(source, policy, side, False)
+            # The candidate's own delta is held to the same Phase 9 sign/range bound screening used, so a sign-invalid
+            # delta (e.g. call -0.5) re-screens as delta_unavailable whenever the delta rule is enabled.
+            out_of_bounds = screening.delta_out_of_bounds(source["option_type"], source["delta"])
+            reasons_for, checks = screening.evaluate(source, policy, side, out_of_bounds)
             derived = screening.derived(source).to_dict()
         except TradeSetupInputError:
             raise TradeSetupInputError("assessment candidate source facts are malformed") from None

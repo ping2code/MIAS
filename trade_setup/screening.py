@@ -73,6 +73,15 @@ def enabled_rules(policy):
     return tuple(rule for rule in r.SCREENING_RULE_NAMES if on.get(rule, True))
 
 
+def delta_out_of_bounds(option_type, delta):
+    """The Phase 9 mathematical sanity predicate (call delta in [0, 1], put delta in [-1, 0]); a frozen local copy
+    of options_intelligence.rules.greeks_out_of_bounds for delta (test-pinned). Missing delta is not out of bounds."""
+    value = _number(delta, "delta")
+    if value is None:
+        return False
+    return not ((0 <= value <= 1) if option_type == "call" else (-1 <= value <= 0))
+
+
 def check(rule):
     field, pointers = RULES[rule]
     return m.PolicyCheck(rule, r.PASS, field, pointers)
