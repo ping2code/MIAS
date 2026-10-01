@@ -87,4 +87,3 @@ def resolve(schedule, assessment_as_of, n):
     forward = [s for s in sessions if _instant(s["regular_open"]) > assessment_as_of]
     _require(len(forward) >= n, "schedule does not cover the horizon")
     return forward[n - 1]
-
