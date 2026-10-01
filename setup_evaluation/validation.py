@@ -277,6 +277,9 @@ def validated_evaluation(evaluation):
              and horizon["name"] in r.HORIZONS and horizon["target_session_date"] == obs["session_date"],
              "evaluation horizon is malformed")
     anchor = instant(setup["assessment_as_of"], "assessment_as_of")
+    _require(protocol["purpose"] != "production"
+             or anchor >= instant(r.PRODUCTION_PROSPECTIVE_START, "production prospective_start"),
+             "evaluation assessment is before the production prospective_start")
     target_open, target_close = instant(horizon["target_open"], "target_open"), instant(horizon["target_close"], "target_close")
     window_start, as_of = instant(horizon["window_start"], "window_start"), instant(obs["as_of"], "observation as_of")
     _require(anchor < target_open < target_close and window_start == window(target_close),

@@ -143,15 +143,41 @@ python -m setup_evaluation.runner test-protocol --output PROTOCOL.json
 - `evaluate` optionally takes `--invalidation-check CHECK.json` (repeatable) and `--overwrite`.
 - Outputs are atomic and no-clobber, and verified before being written.
 - Summaries are metadata only: no quotes, marks, returns or contract lists.
+- `verify --evaluation EVAL.json` plus the same inputs re-verifies a sealed evaluation (structure and a byte-identical
+  rebuild) and writes nothing.
+- **Production schedule completeness (activation hardening):**
+  - Under a `production` protocol, `evaluate` and `verify` first regenerate the XNYS sessions for the supplied
+    schedule's exact first-through-last dates, and require an identical sealed schedule. Otherwise:
+    `schedule does not match the XNYS calendar`.
+  - This catches omitted middle sessions (one would silently move `session_5`), added non-sessions, altered opens,
+    closes or early closes, and reordered or duplicate rows, none of which a content-addressed schedule can detect by
+    itself.
+  - The pure core stays calendar-free.
+  - Test protocols accept any valid sealed schedule, so synthetic fixtures remain possible.
 - Exit codes are 0/2/3/4, as in `trade_setup.runner`.
-- Only `build-schedule` loads the calendar.
+- Only `build-schedule`, and the production calendar check in `evaluate`/`verify`, load the calendar.
 
 ## 9. Protocol and production activation
 
 - v1 implements one semantics, so a protocol's semantic fields must equal the frozen rules. Changing the window,
   adding a horizon and similar edits are rejected.
-- `make_test_protocol()` produces `purpose: test` with no `prospective_start`. It is used for fixtures and replay
-  only. **Its hash is not a production hash.**
+- The protocol records every frozen semantic explicitly:
+  - `evaluation_format_version` `phase11-v1`, `rules_version` `phase11-rules-v1`, `schedule_format_version`
+    `phase11-sessions-v1`;
+  - the horizons, horizon rule, window, mark, entry, quote requirements, return quantization, status vocabularies,
+    all-candidate inclusion and the invalidation rule;
+  - `missing_contract_rule` `contract_absent_if_complete_chain_else_observation_incomplete`;
+  - `multiplier_rule` `assessment_candidate_multiplier_never_assumed`;
+  - `exclusions`, sorted: `expiration_settlement`, `labels`, `mae`, `mfe`, `portfolio_pnl`, `position_sizing`,
+    `ranking`, `retrospective_selection`.
+- `make_test_protocol()` produces `purpose: test` with no `prospective_start`, for fixtures and replay only. Its id
+  is `sha256:1eebe890…`; the pre-hardening test id `sha256:188119d4…` is retired and never reused. **A test hash is
+  never a production hash.**
+- **Prospective boundary (activation hardening):** under a production protocol, `evaluate` requires
+  `assessment_as_of >= prospective_start`; it is accepted exactly at the start. `validated_evaluation` rejects any
+  sealed production evaluation whose assessment precedes the pinned start, so re-derivation can't accept one either.
+  `prospective_start` must be canonical UTC (`+00:00`, round-trip exact), leaving no timezone ambiguity. Nothing made
+  before activation is ever evaluated or backfilled.
 - **The production protocol is not activated.** `rules.PRODUCTION_PROTOCOL_ID` and
   `rules.PRODUCTION_PROSPECTIVE_START` are `None`, and every `purpose: production` protocol is rejected.
 - **Activation is a separate step, only after Phase 10 live regular-session validation closes successfully.** It:

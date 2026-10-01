@@ -3,6 +3,8 @@
     python -m setup_evaluation.runner evaluate --assessment A.json --snapshot SNAP.json --schedule SCHED.json \\
         --protocol PROTOCOL.json --horizon session_1|session_5 --output EVAL.json \\
         [--invalidation-check CHECK.json ...] [--overwrite]
+    python -m setup_evaluation.runner verify --evaluation EVAL.json --assessment A.json --snapshot SNAP.json \
+        --schedule SCHED.json --protocol PROTOCOL.json [--invalidation-check CHECK.json ...]
     python -m setup_evaluation.runner build-schedule --from YYYY-MM-DD --through YYYY-MM-DD --output SCHED.json
     python -m setup_evaluation.runner test-protocol --output PROTOCOL.json
 
@@ -11,6 +13,13 @@
   temporary file in the target directory, is fsynced, then hard-linked into place (no-clobber) or replaces the target
   with ``--overwrite``. It prints a metadata-only summary: ids, horizon, counts and the relation status. It never
   prints quotes, marks, returns or contract lists.
+- **verify** re-verifies a sealed SetupEvaluation against its inputs: structural validation plus a byte-identical
+  rebuild. It writes nothing.
+- **Production schedule completeness:** under a ``production`` protocol, ``evaluate`` and ``verify`` first regenerate
+  the XNYS schedule for the supplied schedule's exact first-through-last session dates, and require an identical
+  sealed schedule. This rejects omitted, added, altered (open, close or early close), reordered or duplicate sessions,
+  none of which a content-addressed schedule can detect by itself. The pure core stays calendar-free. Test protocols
+  accept any valid sealed schedule, so synthetic fixtures remain possible.
 - **build-schedule** writes a sealed SessionSchedule from ``market_data.calendar`` (XNYS). For a final evaluation,
   build it after the target date, so known ad-hoc closures and early closes are included.
 - **test-protocol** writes the sealed *test* protocol. A production protocol does not exist yet; activation is a
@@ -31,7 +40,7 @@ import tempfile
 from setup_evaluation.builder import evaluate, verify_evaluation
 from setup_evaluation.canonical import canonical_json
 from setup_evaluation.protocol import make_test_protocol
-from setup_evaluation.schedule import ScheduleError, make_schedule
+from setup_evaluation.schedule import ScheduleError, make_schedule, validated_schedule
 from setup_evaluation.validation import SetupEvaluationInputError
 
 OK, INVALID, INTEGRITY, OUTPUT = 0, 2, 3, 4
@@ -109,6 +118,23 @@ def build_schedule(start, end):
                           for day in calendar.trading_days(start, end)])
 
 
+def verify_calendar(schedule, protocol):
+    """Under a production protocol, require the supplied schedule to equal the XNYS calendar's sessions for its
+    exact first-through-last date range (identical sealed bytes). A no-op for test protocols."""
+    from datetime import date
+    if not isinstance(protocol, dict) or protocol.get("purpose") != "production":
+        return
+    try:
+        data = validated_schedule(schedule)
+    except ScheduleError as error:
+        raise SetupEvaluationInputError(f"schedule is invalid: {error}") from None
+    sessions = data["sessions"]
+    expected = build_schedule(date.fromisoformat(sessions[0]["session_date"]),
+                              date.fromisoformat(sessions[-1]["session_date"])).to_dict()
+    if canonical_json(expected) != canonical_json(data):
+        raise SetupEvaluationInputError("schedule does not match the XNYS calendar")
+
+
 def main(argv=None, *, out=None, err=None):
     out, err = out or sys.stdout, err or sys.stderr
     parser = argparse.ArgumentParser(prog="python -m setup_evaluation.runner")
@@ -119,6 +145,10 @@ def main(argv=None, *, out=None, err=None):
     ev.add_argument("--horizon", required=True, choices=("session_1", "session_5"))
     ev.add_argument("--invalidation-check", action="append", default=[])
     ev.add_argument("--overwrite", action="store_true")
+    vf = commands.add_parser("verify")
+    for flag in ("--evaluation", "--assessment", "--snapshot", "--schedule", "--protocol"):
+        vf.add_argument(flag, required=True)
+    vf.add_argument("--invalidation-check", action="append", default=[])
     sc = commands.add_parser("build-schedule")
     sc.add_argument("--from", dest="start", required=True)
     sc.add_argument("--through", dest="end", required=True)
@@ -144,6 +174,7 @@ def main(argv=None, *, out=None, err=None):
             files = [read_json(args.assessment, "assessment"), read_json(args.snapshot, "snapshot"),
                      read_json(args.schedule, "schedule"), read_json(args.protocol, "protocol")]
             checks = [read_json(p, "invalidation check") for p in args.invalidation_check]
+            verify_calendar(files[2], files[3])
             data = evaluate(*files, args.horizon, checks).to_dict()
             try:
                 verify_evaluation(data, *files, checks)
@@ -151,6 +182,15 @@ def main(argv=None, *, out=None, err=None):
                 return fail(INTEGRITY, str(error))
             size = write_atomic(args.output, canonical_json(data) + "\n", overwrite=args.overwrite)
             report = summary(data, size)
+        elif args.command == "verify":
+            files = [read_json(args.assessment, "assessment"), read_json(args.snapshot, "snapshot"),
+                     read_json(args.schedule, "schedule"), read_json(args.protocol, "protocol")]
+            checks = [read_json(p, "invalidation check") for p in args.invalidation_check]
+            evaluation = read_json(args.evaluation, "evaluation")
+            verify_calendar(files[2], files[3])
+            data = verify_evaluation(evaluation, *files, checks)
+            report = dict(result="VERIFIED", evaluation_id=data["evaluation_id"],
+                          protocol_purpose=data["protocol_ref"]["purpose"], horizon=data["horizon"]["name"])
         elif args.command == "build-schedule":
             from datetime import date
             try:

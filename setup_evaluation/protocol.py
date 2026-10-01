@@ -11,6 +11,7 @@ step, after Phase 10 live validation closes, will write the production protocol,
 and record the activation commit.
 """
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 from setup_evaluation import model as m
 from setup_evaluation import rules as r
@@ -26,14 +27,29 @@ def _require(condition, message):
         raise ProtocolError(message)
 
 
+def canonical_utc(value):
+    """True for a canonical UTC ISO 8601 instant (offset +00:00, round-trips exactly): no timezone ambiguity."""
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return parsed.utcoffset() == timedelta(0) and parsed.isoformat() == value
+
+
 def frozen_fields():
     """The v1 semantic fields, exactly as implemented."""
-    return dict(horizons=sorted(r.HORIZONS), horizon_rule=r.HORIZON_RULE, window_seconds=r.WINDOW_SECONDS,
+    return dict(evaluation_format_version=r.EVALUATION_FORMAT_VERSION, rules_version=r.RULES_VERSION,
+                schedule_format_version=r.SCHEDULE_FORMAT_VERSION,
+                horizons=sorted(r.HORIZONS), horizon_rule=r.HORIZON_RULE, window_seconds=r.WINDOW_SECONDS,
                 window_rule=r.WINDOW_RULE, mark=r.MARK, entry=r.ENTRY, quote_requirements=list(r.QUOTE_REQUIREMENTS),
                 return_places=r.RETURN_PLACES, return_rounding=r.RETURN_ROUNDING,
                 outcome_statuses=list(r.OUTCOME_STATUSES), return_statuses=list(r.RETURN_STATUSES),
                 dollar_statuses=list(r.DOLLAR_STATUSES), relation_statuses=list(r.RELATION_STATUSES),
-                candidate_inclusion=r.CANDIDATE_INCLUSION, invalidation_rule=r.INVALIDATION_RULE)
+                candidate_inclusion=r.CANDIDATE_INCLUSION, invalidation_rule=r.INVALIDATION_RULE,
+                missing_contract_rule=r.MISSING_CONTRACT_RULE, multiplier_rule=r.MULTIPLIER_RULE,
+                exclusions=list(r.EXCLUSIONS))
 
 
 def make_test_protocol():
@@ -61,6 +77,7 @@ def validated_protocol(protocol):
     else:
         _require(r.PRODUCTION_PROTOCOL_ID is not None and r.PRODUCTION_PROSPECTIVE_START is not None,
                  "production evaluation protocol is not activated")
+        _require(canonical_utc(data["prospective_start"]), "production prospective_start must be canonical UTC")
         _require(data["protocol_id"] == r.PRODUCTION_PROTOCOL_ID
                  and data["prospective_start"] == r.PRODUCTION_PROSPECTIVE_START,
                  "protocol is not the pinned production protocol")

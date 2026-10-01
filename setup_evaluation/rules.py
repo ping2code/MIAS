@@ -45,6 +45,11 @@ DOLLAR_STATUSES = ("computed", "multiplier_unavailable", "contract_terms_changed
 RELATION_STATUSES = ("invalidated_by_target", "no_invalidation_observed", "not_evaluated")
 CANDIDATE_INCLUSION = "all_assessment_candidates_in_canonical_order"
 INVALIDATION_RULE = "supplied_checks_only"
+MISSING_CONTRACT_RULE = "contract_absent_if_complete_chain_else_observation_incomplete"
+MULTIPLIER_RULE = "assessment_candidate_multiplier_never_assumed"
+# Explicitly excluded from v1 (recorded in the protocol; none of these exists in the implementation). Sorted.
+EXCLUSIONS = ("expiration_settlement", "labels", "mae", "mfe", "portfolio_pnl", "position_sizing", "ranking",
+              "retrospective_selection")
 # Fixed decision-trace steps and pointers (every step passes in a sealed object; failures are input errors).
 TRACE_STEPS = (
     ("protocol", ("protocol:protocol_id",)),

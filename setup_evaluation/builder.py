@@ -2,8 +2,10 @@
 
 ``evaluate(assessment, snapshot, schedule, protocol, horizon, invalidation_checks=())``:
 
-1. Validate every input: protocol (test only; production is not activated), assessment (``setup_candidates``),
-   snapshot, schedule, and each check (each must belong to the assessment; no duplicates).
+1. Validate every input: protocol (test, or the pinned activated production protocol), assessment
+   (``setup_candidates``; under a production protocol ``assessment_as_of >= prospective_start``), snapshot, schedule,
+   and each check (each must belong to the assessment; no duplicates). Production schedule completeness against the
+   XNYS calendar is verified at the I/O boundary (``runner``), keeping this core calendar-free.
 2. Check that the snapshot underlying equals the setup symbol.
 3. Resolve the horizon: ``session_n`` is the n-th schedule session whose ``regular_open`` is strictly later than
    ``assessment_as_of``. The window is ``[target_close - 30 min, target_close]``.
@@ -96,6 +98,10 @@ def evaluate(assessment, snapshot, schedule, protocol, horizon, invalidation_che
              "invalidation check does not belong to the assessment")
 
     symbol, anchor = setup["inputs"]["symbol"], instant(setup["inputs"]["assessment_as_of"], "assessment_as_of")
+    if protocol["purpose"] == "production":
+        # Prospective boundary: no assessment made before the activated prospective_start is ever evaluated.
+        _require(anchor >= instant(protocol["prospective_start"], "prospective_start"),
+                 "assessment is before the production prospective_start")
     _require(snap["underlying"] == symbol, "snapshot underlying does not match the setup symbol")
     try:
         session = resolve(schedule, anchor, r.HORIZONS[horizon])

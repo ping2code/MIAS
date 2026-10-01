@@ -7,10 +7,12 @@ from setup_evaluation.canonical import to_plain
 EVALUATION_FIELDS = ("evaluation_format_version", "evaluation_id", "rules_version", "protocol_ref", "setup_ref",
                      "observation_ref", "schedule_ref", "horizon", "candidate_outcomes", "summary",
                      "invalidation_relation", "decision_trace", "provenance")
-PROTOCOL_FIELDS = ("protocol_format_version", "protocol_id", "purpose", "prospective_start", "horizons",
+PROTOCOL_FIELDS = ("protocol_format_version", "protocol_id", "purpose", "prospective_start",
+                   "evaluation_format_version", "rules_version", "schedule_format_version", "horizons",
                    "horizon_rule", "window_seconds", "window_rule", "mark", "entry", "quote_requirements",
                    "return_places", "return_rounding", "outcome_statuses", "return_statuses", "dollar_statuses",
-                   "relation_statuses", "candidate_inclusion", "invalidation_rule")
+                   "relation_statuses", "candidate_inclusion", "invalidation_rule", "missing_contract_rule",
+                   "multiplier_rule", "exclusions")
 SCHEDULE_FIELDS = ("schedule_format_version", "schedule_id", "calendar", "sessions")
 OUTCOME_FIELDS = ("contract_id", "entry_reference_ask", "shares_per_contract", "observed_quote", "outcome_status",
                   "liquidation_reference_bid", "premium_change", "premium_return", "return_status",
@@ -51,7 +53,10 @@ class Protocol(_Plain):
     protocol_format_version: str
     protocol_id: str
     purpose: str                      # test | production (production needs activation)
-    prospective_start: str            # None for test protocols
+    prospective_start: str            # None for test protocols; canonical UTC for production
+    evaluation_format_version: str
+    rules_version: str
+    schedule_format_version: str
     horizons: tuple
     horizon_rule: str
     window_seconds: int
@@ -67,6 +72,9 @@ class Protocol(_Plain):
     relation_statuses: tuple
     candidate_inclusion: str
     invalidation_rule: str
+    missing_contract_rule: str
+    multiplier_rule: str
+    exclusions: tuple                 # sorted
 
     def body(self):
         return _sealed_body(self, "protocol_id")
