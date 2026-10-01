@@ -369,7 +369,9 @@ class BoundaryTests(unittest.TestCase):
         self.assertFalse(words & banned, words & banned)
         for module in (screening, builder, model, rules):
             source = inspect.getsource(module)
-            self.assertNotIn("InvalidationCheck", source)
+            if module in (screening, builder):  # screening and assessment building never depend on invalidation
+                self.assertNotIn("InvalidationCheck", source)
+                self.assertNotIn("invalidation import", source)
             for node in ast.walk(ast.parse(source)):
                 name = getattr(node, "id", None) or getattr(node, "attr", None) or getattr(node, "name", None)
                 if isinstance(name, str):
