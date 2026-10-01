@@ -137,6 +137,63 @@ class Provenance(_Plain):
 
 
 @dataclass(frozen=True)
+class CandidateSource(_Plain):
+    """Source facts copied from one OptionsIntelligence contract (never recomputed). The four phase9-v2 facts are
+    None for phase9-v1 input."""
+    contract_id: str
+    provider_symbol: str
+    option_type: str
+    expiration: str
+    strike: str
+    dte_calendar_days: int
+    quote_state: str
+    mid: str
+    spread_absolute: str
+    spread_relative: str
+    delta: str
+    greeks_time_basis: str
+    implied_volatility: str
+    iv_time_basis: str
+    volume_state: str
+    open_interest_state: str
+    day_session_relation: str
+    current_session_volume: str
+    open_interest_value: str
+    open_interest_time_basis: str
+    shares_per_contract: str
+
+
+@dataclass(frozen=True)
+class Derived(_Plain):
+    entry_reference_ask: str          # mid + spread_absolute / 2 (usable quote)
+    max_loss_per_contract: str        # entry_reference_ask * shares_per_contract; None without a multiplier
+    premium_risk_status: str          # computed | multiplier_unavailable
+
+
+@dataclass(frozen=True)
+class PolicyCheck(_Plain):
+    rule: str
+    result: str                       # always pass (a candidate carries no failed checks)
+    policy_field: str
+    source_pointers: tuple
+
+
+@dataclass(frozen=True)
+class Candidate(_Plain):
+    """An eligible long single-leg contract. Canonical order only (expiration, strike, contract_id): no rank."""
+    source: CandidateSource
+    derived: Derived
+    policy_checks: tuple              # the enabled screening rules, in the frozen order, all pass
+
+
+@dataclass(frozen=True)
+class Rejection(_Plain):
+    reason_code: str
+    count: int
+    contract_ids: tuple               # sorted, unique
+
+
+@dataclass(frozen=True)
 class TradeSetupAssessment(_Plain):
     assessment_format_version: str
     assessment_id: str
@@ -146,8 +203,8 @@ class TradeSetupAssessment(_Plain):
     outcome: Outcome
     market_bias: MarketBias
     execution_readiness: ExecutionReadiness
-    candidates: tuple                 # empty in Phase 10B (screening is Phase 10C)
-    rejections: tuple                 # empty in Phase 10B
+    candidates: tuple                 # Candidate, canonical order; empty unless setup_candidates
+    rejections: tuple                 # Rejection, by reason_code; empty after a global-gate failure
     decision_trace: tuple
     provenance: Provenance
 

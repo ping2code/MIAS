@@ -10,7 +10,10 @@
   No snapshot re-derivation, and no import of options_intelligence or options_data.
 - ``validated_assessment``: a sealed TradeSetupAssessment on its own (keys, versions, id, policy, closed
   vocabularies, outcome and trace consistency, reference and provenance agreement). The outcome vocabulary is
-  exactly ``setup_candidates`` / ``no_setup``; in Phase 10B only a global-gate ``no_setup`` can validate.
+  exactly ``setup_candidates`` / ``no_setup``. A global-gate ``no_setup`` has no candidates or rejections and a
+  ``global_gate_failed`` step 8. A screened assessment has canonical candidates, each re-screened against the
+  policy from its own source facts, and canonical aggregated rejections that, together with the candidates,
+  partition the chain.
 - ``verify_assessment``: the structural check, then a rebuild from (MarketIntelligence, OptionsIntelligence,
   embedded policy) that must match byte for byte.
 
@@ -142,6 +145,78 @@ def validated_options_intelligence(options_intelligence):
     return data
 
 
+def _trace_pair_ok(t, last):
+    pair = (t["result"], t["reason"])
+    if last:
+        return pair in r.SCREENING_STEP_RESULTS
+    return ((t["result"] == r.PASS and t["reason"] is None)
+            or (t["result"] == r.FAIL and t["reason"] in r.NO_SETUP_REASONS)
+            or (t["result"] == r.NOT_EVALUATED and t["reason"] in r.NOT_EVALUATED_REASONS
+                and t["reason"] != "global_gate_failed"))
+
+
+def _validated_screening(data, policy, reasons):
+    """Candidates and rejections of a screened (globally eligible) assessment: structure, canonical order, the
+    candidate/rejection partition, and a re-screen of every candidate's own source facts against the policy."""
+    from trade_setup import builder, screening
+    status, candidates, rejections = data["outcome"]["status"], data["candidates"], data["rejections"]
+    side, screening_step = data["market_bias"]["side"], data["decision_trace"][-1]
+    _require(side in r.OPTION_SIDES, "assessment market_bias is inconsistent")
+    expected_step = (r.PASS, r.CANDIDATES_AVAILABLE) if status == r.SETUP_CANDIDATES \
+        else (r.FAIL, "no_candidate_satisfies_policy")
+    _require((screening_step["result"], screening_step["reason"]) == expected_step,
+             "assessment contract_screening step is inconsistent with its outcome")
+    _require(screening_step["pointers"] == list(builder.screening_pointers(policy)),
+             "assessment contract_screening pointers are inconsistent with the policy")
+    _require(isinstance(candidates, list) and isinstance(rejections, list),
+             "assessment candidates and rejections must be lists")
+    if status == r.SETUP_CANDIDATES:
+        _require(candidates != [], "assessment setup_candidates requires candidates")
+    else:
+        _require(candidates == [], "assessment no_setup carries no candidates")
+        _require("no_candidate_satisfies_policy" in reasons and set(reasons) <= set(r.SCREENING_NO_SETUP_REASONS),
+                 "assessment screening no_setup reasons are inconsistent")
+
+    expected_checks = [screening.check(rule).to_dict() for rule in screening.enabled_rules(policy)]
+    candidate_ids = []
+    for c in candidates:
+        _require(isinstance(c, dict) and set(c) == {"source", "derived", "policy_checks"}
+                 and isinstance(c["source"], dict) and set(c["source"]) == set(m.CandidateSource.__dataclass_fields__)
+                 and isinstance(c["derived"], dict) and set(c["derived"]) == set(m.Derived.__dataclass_fields__),
+                 "assessment candidate is malformed")
+        source = c["source"]
+        _require(isinstance(source["contract_id"], str) and source["option_type"] == side
+                 and canonical_decimal(source["strike"]) is not None, "assessment candidate identity is inconsistent")
+        try:
+            reasons_for, checks = screening.evaluate(source, policy, side, False)
+            derived = screening.derived(source).to_dict()
+        except TradeSetupInputError:
+            raise TradeSetupInputError("assessment candidate source facts are malformed") from None
+        _require(reasons_for == () and [k.to_dict() for k in checks] == expected_checks == c["policy_checks"],
+                 "assessment candidate does not satisfy the policy")
+        _require(c["derived"] == derived, "assessment candidate derived facts are inconsistent")
+        candidate_ids.append(source["contract_id"])
+    order = [screening.canonical_order(c["source"]) for c in candidates]
+    _require(order == sorted(order) and len(set(candidate_ids)) == len(candidate_ids),
+             "assessment candidates are not unique and in canonical order")
+
+    rejected = set()
+    for x in rejections:
+        _require(isinstance(x, dict) and set(x) == {"reason_code", "count", "contract_ids"}
+                 and x["reason_code"] in r.REJECTION_REASONS and isinstance(x["contract_ids"], list)
+                 and x["contract_ids"] and all(isinstance(i, str) for i in x["contract_ids"])
+                 and x["contract_ids"] == sorted(set(x["contract_ids"])) and x["count"] == len(x["contract_ids"]),
+                 "assessment rejection is malformed")
+        rejected |= set(x["contract_ids"])
+    codes = [x["reason_code"] for x in rejections]
+    _require(codes == sorted(set(codes)), "assessment rejections are not unique and in reason order")
+    _require(not rejected & set(candidate_ids), "assessment candidate also appears in rejections")
+    _require(len(rejected) + len(candidate_ids) == data["execution_readiness"]["contract_count"],
+             "assessment candidates and rejections do not partition the contracts")
+    _require("source_timing_unverified" not in reasons or "time_basis_unverified" in codes,
+             "assessment screening no_setup reasons are inconsistent")
+
+
 def validated_assessment(assessment):
     """Structural, standalone validation of a sealed TradeSetupAssessment; returns the plain dict."""
     data = _plain(assessment)
@@ -161,31 +236,31 @@ def validated_assessment(assessment):
     _require(isinstance(reasons, list) and reasons == sorted(set(reasons)) and set(reasons) <= set(r.NO_SETUP_REASONS),
              "assessment no_setup_reasons must be sorted, unique and from the closed set")
     _require((outcome["status"] == r.NO_SETUP) == bool(reasons), "assessment outcome is inconsistent with its reasons")
-    _require(outcome["status"] != r.SETUP_CANDIDATES, "setup_candidates requires contract screening (Phase 10C)")
-    _require(data["candidates"] == [] and data["rejections"] == [],
-             "phase 10B assessments carry no candidates or rejections")
     bias = data["market_bias"]
     _require(isinstance(bias, dict) and bias.get("state") in r.BIAS_STATES
              and bias.get("side") == r.SIDE_BY_BIAS.get(bias["state"]), "assessment market_bias is inconsistent")
     trace = data["decision_trace"]
     _require(isinstance(trace, list) and [t.get("step") for t in trace] == list(range(1, len(trace) + 1))
              and [t.get("rule") for t in trace] == list(r.TRACE_RULES), "assessment decision_trace is malformed")
-    for t in trace:
+    for i, t in enumerate(trace):
         _require(set(t) == {"step", "rule", "result", "reason", "pointers"} and t["result"] in r.TRACE_RESULTS,
                  "assessment decision_trace entry is malformed")
-        _require((t["result"] == r.PASS and t["reason"] is None)
-                 or (t["result"] == r.FAIL and t["reason"] in r.NO_SETUP_REASONS)
-                 or (t["result"] == r.NOT_EVALUATED and t["reason"] in r.NOT_EVALUATED_REASONS),
-                 "assessment decision_trace reason is inconsistent with its result")
+        _require(_trace_pair_ok(t, i == len(trace) - 1), "assessment decision_trace reason is inconsistent with its result")
         _require(isinstance(t["pointers"], list) and t["pointers"] == sorted(set(t["pointers"]))
                  and all(r.POINTER.fullmatch(p) for p in t["pointers"]), "assessment decision_trace pointers are malformed")
-    _require(sorted({t["reason"] for t in trace if t["result"] == r.FAIL}) == reasons,
-             "assessment no_setup_reasons do not match the failed trace steps")
-    # Phase 10B seals only global-gate no_setup: some global gate failed, so screening was not evaluated.
-    gates, screening = trace[:-1], trace[-1]
-    _require(any(t["result"] == r.FAIL for t in gates) and all(t["reason"] != "global_gate_failed" for t in gates)
-             and (screening["result"], screening["reason"]) == (r.NOT_EVALUATED, "global_gate_failed"),
-             "assessment contract_screening step requires a failed global gate (screening is Phase 10C)")
+    gates, screening_step = trace[:-1], trace[-1]
+    gate_failures = sorted({t["reason"] for t in gates if t["result"] == r.FAIL})
+    if gate_failures:
+        # A global gate failed: contract screening never runs.
+        _require(reasons == gate_failures, "assessment no_setup_reasons do not match the failed trace steps")
+        _require((screening_step["result"], screening_step["reason"]) == (r.NOT_EVALUATED, "global_gate_failed"),
+                 "assessment contract_screening step is inconsistent with the global gates")
+        _require(data["candidates"] == [] and data["rejections"] == [],
+                 "assessment global-gate no_setup carries no candidates or rejections")
+    else:
+        _require(screening_step["reason"] != "global_gate_failed",
+                 "assessment contract_screening step is inconsistent with the global gates")
+        _validated_screening(data, policy, reasons)
     inputs, provenance = data["inputs"], data["provenance"]
     mi_ref, oi_ref = inputs["market_intelligence_ref"], inputs["options_intelligence_ref"]
     _require(provenance == dict(market_intelligence_id=mi_ref["intelligence_id"],
@@ -195,17 +270,16 @@ def validated_assessment(assessment):
                                 pointer_version=r.POINTER_VERSION),
              "assessment provenance is inconsistent with its inputs and policy")
     _require(mi_ref["symbol"] == oi_ref["underlying"] == inputs["symbol"], "assessment input symbols are inconsistent")
+    _require(oi_ref["options_intelligence_format_version"] == r.OI_V2
+             or all(getattr(policy, rule) is None for rule in r.V2_POLICY_RULES), "policy_requires_phase9_v2")
     return data
 
 
 def verify_assessment(assessment, market_intelligence, options_intelligence):
     """Structural validation, then a rebuild from the inputs and the embedded policy; returns the plain dict."""
-    from trade_setup.builder import prescreen
+    from trade_setup.builder import assess
     data = validated_assessment(assessment)
-    rebuilt = prescreen(market_intelligence, options_intelligence, data["policy"])
-    _require(isinstance(rebuilt, m.TradeSetupAssessment),
-             "assessment does not match its inputs: every global gate passes (contract screening required)")
-    expected = rebuilt.to_dict()
+    expected = assess(market_intelligence, options_intelligence, data["policy"]).to_dict()
     body = lambda d: {k: v for k, v in d.items() if k != "assessment_id"}  # noqa: E731
     if canonical_json(body(expected)) != canonical_json(body(data)):
         differing = sorted(k for k in body(data) if expected.get(k) != data.get(k))

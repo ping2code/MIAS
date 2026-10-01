@@ -282,12 +282,12 @@ class OutcomeContractTests(unittest.TestCase):
             validated_assessment(reseal(data, "assessment_id"))
         self.assertEqual(str(caught.exception), "assessment outcome status is not supported")
 
-    def test_setup_candidates_not_available_in_10b(self):
+    def test_setup_candidates_cannot_follow_a_global_failure(self):
         data = run(allowed_sides=["put"]).to_dict()
         data["outcome"] = dict(status="setup_candidates", no_setup_reasons=[])
         with self.assertRaises(TradeSetupInputError) as caught:
             validated_assessment(reseal(data, "assessment_id"))
-        self.assertEqual(str(caught.exception), "setup_candidates requires contract screening (Phase 10C)")
+        self.assertEqual(str(caught.exception), "assessment no_setup_reasons do not match the failed trace steps")
 
     def test_every_global_failure_is_a_sealed_no_setup(self):
         for kwargs in (dict(mi_name="unavailable_timeframe"), dict(mi_name="higher_aligned_5m_opposed"),
@@ -343,8 +343,7 @@ class OutcomeContractTests(unittest.TestCase):
         validated_assessment(data)
         with self.assertRaises(TradeSetupInputError) as caught:
             verify_assessment(data, mi(), oi())
-        self.assertEqual(str(caught.exception),
-                         "assessment does not match its inputs: every global gate passes (contract screening required)")
+        self.assertEqual(str(caught.exception), "assessment does not match its inputs at decision_trace, outcome, rejections")
 
     def test_screening_step_requires_a_failed_global_gate(self):
         for step in (dict(result="pass", reason=None), dict(result="not_evaluated", reason="policy_disabled")):
@@ -352,8 +351,7 @@ class OutcomeContractTests(unittest.TestCase):
             data["decision_trace"][-1].update(step)
             with self.subTest(step=step), self.assertRaises(TradeSetupInputError) as caught:
                 validated_assessment(reseal(data, "assessment_id"))
-            self.assertEqual(str(caught.exception),
-                             "assessment contract_screening step requires a failed global gate (screening is Phase 10C)")
+            self.assertEqual(str(caught.exception), "assessment decision_trace reason is inconsistent with its result")
 
 
 if __name__ == "__main__":

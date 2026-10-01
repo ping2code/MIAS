@@ -85,3 +85,52 @@ POINTER = re.compile(r"(mi|oi|policy):[a-z_.\[\]*]+")
 
 # Numeric policy rules that need phase9-v2 facts (R4): a phase9-v1 input with any of them enabled is an error.
 V2_POLICY_RULES = ("min_volume", "min_open_interest", "max_premium_per_contract")
+
+# --- Contract screening (Phase 10C) ---
+# Step-8 results: (pass, candidates_available) | (fail, no_candidate_satisfies_policy) |
+# (not_evaluated, global_gate_failed).
+CANDIDATES_AVAILABLE = "candidates_available"
+SCREENING_STEP_RESULTS = ((PASS, CANDIDATES_AVAILABLE), (FAIL, "no_candidate_satisfies_policy"),
+                          (NOT_EVALUATED, "global_gate_failed"))
+# The no_setup reasons a screened (globally eligible) input can carry.
+SCREENING_NO_SETUP_REASONS = ("execution_data_unavailable", "no_candidate_satisfies_policy", "source_timing_unverified")
+
+# Frozen per-contract rejection vocabulary (10A/10C; multiplier_unavailable added by the 10C decision).
+REJECTION_REASONS = ("side_mismatch", "expiration_outside_policy", "same_day_expiry_excluded", "quote_unavailable",
+                     "quote_one_sided", "quote_crossed", "quote_locked_excluded", "quote_after_as_of",
+                     "spread_relative_unavailable", "spread_above_policy", "delta_unavailable",
+                     "delta_outside_policy", "time_basis_unverified", "iv_unavailable", "volume_below_policy",
+                     "open_interest_below_policy", "day_not_current_session", "premium_above_policy",
+                     "multiplier_unavailable")
+# Unusable quote states (complete is usable; locked is usable only when the policy allows it).
+QUOTE_STATE_REASONS = {"unavailable": "quote_unavailable", "bid_missing": "quote_one_sided",
+                       "ask_missing": "quote_one_sided", "both_missing": "quote_one_sided",
+                       "crossed": "quote_crossed", "locked": "quote_locked_excluded",
+                       "excluded_after_as_of": "quote_after_as_of"}
+VERIFIED_TIME_BASES = ("observed_at", "provider_as_of_date")
+PREMIUM_RISK_STATUSES = ("computed", "multiplier_unavailable")
+
+# The frozen screening order: (rule, policy_field, source_pointers). Every contract is evaluated against every
+# enabled rule in this order (never stopping at the first failure); the order never depends on the data.
+SCREENING_RULES = (
+    ("side", "allowed_sides", ("oi:contracts[*].option_type",)),
+    ("dte_minimum", "min_dte", ("oi:contracts[*].dte_calendar_days",)),
+    ("dte_maximum", "max_dte", ("oi:contracts[*].dte_calendar_days",)),
+    ("same_day_expiry", "allow_same_day_expiry", ("oi:contracts[*].dte_calendar_days",)),
+    ("quote_state", "allow_locked_quote", ("oi:contracts[*].quote_state",)),
+    ("spread_availability", "max_spread_relative", ("oi:contracts[*].spread_relative",)),
+    ("spread_threshold", "max_spread_relative", ("oi:contracts[*].spread_relative",)),
+    ("delta_minimum", "abs_delta_min", ("oi:contracts[*].greeks.delta", "oi:contracts[*].greeks.out_of_bounds_fields")),
+    ("delta_maximum", "abs_delta_max", ("oi:contracts[*].greeks.delta", "oi:contracts[*].greeks.out_of_bounds_fields")),
+    ("greeks_time_basis", "allow_unverified_time_basis", ("oi:contracts[*].greeks.time_basis",)),
+    ("iv_availability", "require_iv", ("oi:contracts[*].implied_volatility.value",)),
+    ("iv_time_basis", "allow_unverified_time_basis", ("oi:contracts[*].implied_volatility.time_basis",)),
+    ("day_session", "require_current_session_day", ("oi:contracts[*].day.session_relation",)),
+    ("volume_threshold", "min_volume", ("oi:contracts[*].current_session_volume",)),
+    ("open_interest_threshold", "min_open_interest", ("oi:contracts[*].open_interest_value",)),
+    ("open_interest_time_basis", "allow_unverified_time_basis", ("oi:contracts[*].open_interest_time_basis",)),
+    ("multiplier_availability", "max_premium_per_contract", ("oi:contracts[*].shares_per_contract",)),
+    ("premium_cap", "max_premium_per_contract", ("oi:contracts[*].mid", "oi:contracts[*].shares_per_contract",
+                                                 "oi:contracts[*].spread_absolute")),
+)
+SCREENING_RULE_NAMES = tuple(rule for rule, _, _ in SCREENING_RULES)

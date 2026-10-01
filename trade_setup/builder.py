@@ -1,4 +1,8 @@
-"""Pure Trade Setup global gates (Phase 10B); contract screening is Phase 10C.
+"""Pure Trade Setup builder: global gates (Phase 10B) and contract screening (Phase 10C).
+
+``assess(market_intelligence, options_intelligence, policy)`` is the entry point. It returns the final sealed
+phase10-v1 ``TradeSetupAssessment`` (``setup_candidates`` or ``no_setup``): ``prescreen``, then ``screen`` when every
+global gate passed.
 
 ``prescreen(market_intelligence, options_intelligence, policy)``:
 
@@ -33,15 +37,26 @@
      bias, side, execution readiness, input facts, policy and provenance for contract screening. It is not an
      assessment and has no outcome. ``setup_candidates`` is only ever emitted after real contract screening.
 
+``screen(eligibility, options_intelligence)`` screens every contract of the OptionsIntelligence the eligibility
+references, against the enabled rules in the frozen order (``trade_setup.screening``). Each contract becomes either
+a candidate or a rejection under every reason that applies.
+- Candidates are in canonical order (expiration, strike, contract_id). This is an order, not a ranking.
+- Rejections are aggregated by reason code.
+- Step 8 is ``pass``/``candidates_available`` or ``fail``/``no_candidate_satisfies_policy``.
+- A screening ``no_setup`` also carries ``execution_data_unavailable`` when no eligible-side contract has a usable
+  quote. It carries ``source_timing_unverified`` when some eligible-side contract failed only on
+  ``time_basis_unverified``.
+
 SEC filing presence is never a gate. There is no score, confidence, ranking, sizing, target, stop or reward/risk.
 No clock, environment, network, files, database or AI.
 """
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import replace
 from datetime import timedelta, timezone
 
 from trade_setup import model as m
 from trade_setup import rules as r
+from trade_setup import screening
 from trade_setup.canonical import content_id
 from trade_setup.policy import validated_policy
 from trade_setup.validation import (TradeSetupInputError, instant, validated_market_intelligence,
@@ -148,3 +163,62 @@ def prescreen(market_intelligence, options_intelligence, policy):
         assessment_format_version=r.ASSESSMENT_FORMAT_VERSION, assessment_id="", rules_version=r.RULES_VERSION,
         outcome=m.Outcome(r.NO_SETUP, reasons), candidates=(), rejections=(), decision_trace=tuple(steps), **shared)
     return replace(draft, assessment_id=content_id(draft.body()))
+
+
+def screening_pointers(policy):
+    """Step-8 pointers: the contract collection and the policy fields of every enabled screening rule."""
+    return tuple(sorted({"oi:contracts[*]"} | {f"policy:{screening.RULES[rule][0]}"
+                                                for rule in screening.enabled_rules(policy)}))
+
+
+def screen(eligibility, options_intelligence):
+    """The final TradeSetupAssessment for a globally eligible input; raises TradeSetupInputError on a mismatch."""
+    if not isinstance(eligibility, m.PreScreeningEligibility) or eligibility.eligible_for_contract_screening is not True:
+        raise TradeSetupInputError("contract screening needs a PreScreeningEligibility")
+    oi = validated_options_intelligence(options_intelligence)
+    if oi["options_intelligence_id"] != eligibility.provenance.options_intelligence_id:
+        raise TradeSetupInputError("options intelligence does not match the pre-screening eligibility")
+    policy, side, fmt = eligibility.policy, eligibility.eligible_side, oi["options_intelligence_format_version"]
+    if fmt != r.OI_V2 and any(getattr(policy, rule) is not None for rule in r.V2_POLICY_RULES):
+        raise TradeSetupInputError("policy_requires_phase9_v2")
+    if side not in policy.allowed_sides or side != eligibility.market_bias.side:
+        raise TradeSetupInputError("pre-screening eligibility side is inconsistent")
+
+    candidates, rejected = [], defaultdict(list)
+    side_usable_quote = timing_only = False
+    for contract in oi["contracts"]:
+        source = screening.source_facts(contract, fmt == r.OI_V2)
+        reasons, checks = screening.evaluate(source, policy, side, "delta" in contract["greeks"]["out_of_bounds_fields"])
+        if source["option_type"] == side:
+            side_usable_quote |= screening.usable_quote(source["quote_state"], policy)
+            timing_only |= reasons == ("time_basis_unverified",)
+        for reason in reasons:
+            rejected[reason].append(source["contract_id"])
+        if not reasons:
+            candidates.append(m.Candidate(m.CandidateSource(**source), screening.derived(source), checks))
+    candidates.sort(key=lambda c: screening.canonical_order(c.source.to_dict()))
+    rejections = tuple(m.Rejection(code, len(ids), tuple(sorted(ids))) for code, ids in sorted(rejected.items()))
+
+    if candidates:
+        outcome, step = m.Outcome(r.SETUP_CANDIDATES, ()), (r.PASS, r.CANDIDATES_AVAILABLE)
+    else:
+        reasons = {"no_candidate_satisfies_policy"} | ({"execution_data_unavailable"} if not side_usable_quote
+                                                       else set()) | ({"source_timing_unverified"} if timing_only
+                                                                      else set())
+        outcome, step = m.Outcome(r.NO_SETUP, tuple(sorted(reasons))), (r.FAIL, "no_candidate_satisfies_policy")
+    trace = eligibility.decision_trace + (m.TraceStep(len(eligibility.decision_trace) + 1, "contract_screening",
+                                                      *step, screening_pointers(policy)),)
+    draft = m.TradeSetupAssessment(
+        assessment_format_version=r.ASSESSMENT_FORMAT_VERSION, assessment_id="", rules_version=r.RULES_VERSION,
+        policy=policy, inputs=eligibility.inputs, outcome=outcome, market_bias=eligibility.market_bias,
+        execution_readiness=eligibility.execution_readiness, candidates=tuple(candidates), rejections=rejections,
+        decision_trace=trace, provenance=eligibility.provenance)
+    return replace(draft, assessment_id=content_id(draft.body()))
+
+
+def assess(market_intelligence, options_intelligence, policy):
+    """The final sealed phase10-v1 TradeSetupAssessment; raises TradeSetupInputError on invalid input."""
+    result = prescreen(market_intelligence, options_intelligence, policy)
+    if isinstance(result, m.TradeSetupAssessment):
+        return result
+    return screen(result, options_intelligence)
