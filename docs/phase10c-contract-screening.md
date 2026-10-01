@@ -140,9 +140,13 @@ Each candidate (long single-leg only) has three parts:
     These are null for phase9-v1 input.
 - **`derived`:**
   - `entry_reference_ask` and `max_loss_per_contract`, as in §4;
-  - `premium_risk_status`: `computed`. A candidate with no multiplier gets `multiplier_unavailable` and a null
-    `max_loss_per_contract`. That happens with phase9-v1 input, or phase9-v2 with a null multiplier when the
-    premium cap is off.
+  - `premium_risk_status`: exactly `computed` or `multiplier_unavailable`, frozen for phase10-v1:
+    - **A.** `shares_per_contract` is present: `max_loss_per_contract = entry_reference_ask * shares_per_contract`,
+      and the status is `computed`.
+    - **B.** The multiplier is missing and `max_premium_per_contract` is null: the contract stays eligible, with
+      `max_loss_per_contract` null and the status `multiplier_unavailable`. This covers every phase9-v1 candidate.
+    - **C.** The multiplier is missing and the cap is enabled: the contract is rejected with
+      `multiplier_unavailable`, and never becomes a candidate.
 - **`policy_checks`:** the enabled rules, in the frozen order, each `{rule, result: "pass", policy_field,
   source_pointers}`. A candidate never carries a failed check.
 
@@ -185,6 +189,9 @@ for every enabled screening rule. The trace never lists contract ids.
   - `setup_candidates` has candidates and no reasons, while a screening `no_setup` has no candidates and
     `no_candidate_satisfies_policy`;
   - the candidate structure, with the side equal to the bias side;
+  - each candidate's delta held to the Phase 9 sign bound (call [0, 1], put [-1, 0]). A sign-invalid delta re-screens
+    as `delta_unavailable`, which rejects the candidate whenever the delta rule is enabled. The delta is never
+    clamped or recomputed. With the delta rule off, delta is not screened, so this bound doesn't apply;
   - **every candidate re-screened from its own source facts** against the policy, with checks equal to the
     enabled rules and the derived facts recomputed;
   - canonical candidate order;
