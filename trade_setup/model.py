@@ -229,3 +229,67 @@ class PreScreeningEligibility(_Plain):
     execution_readiness: ExecutionReadiness
     decision_trace: tuple                   # global-gate steps 1..7, each pass or not_evaluated
     provenance: Provenance
+
+
+# --- InvalidationCheck (Phase 10D) ---
+INVALIDATION_FIELDS = ("invalidation_format_version", "invalidation_id", "rules_version", "setup_ref",
+                       "market_intelligence_ref", "symbol", "required_market_state", "observed_market_state", "result",
+                       "reason", "decision_trace", "provenance")
+
+
+@dataclass(frozen=True)
+class SetupRef(_Plain):
+    """The setup whose market-state requirement is checked (no contract ids: it applies to the whole setup)."""
+    assessment_id: str
+    assessment_format_version: str
+    assessment_rules_version: str
+    policy_id: str
+    side: str                         # call | put
+    assessment_as_of: str
+    established_by: str               # the MarketIntelligence id that established the setup
+    established_as_of: str            # that MarketIntelligence's as_of (the time-ordering anchor)
+
+
+@dataclass(frozen=True)
+class RequiredMarketState(_Plain):
+    rule: str                         # pattern_must_remain
+    required_pattern: str             # all_bullish | all_bearish
+    required_technical_status: str    # available
+
+
+@dataclass(frozen=True)
+class ObservedMarketState(_Plain):
+    pattern: str                      # Phase 8 timeframe pattern (copied)
+    technical_status: str             # Phase 8 technical status (copied)
+
+
+@dataclass(frozen=True)
+class InvalidationProvenance(_Plain):
+    assessment_id: str
+    market_intelligence_id: str
+    established_by: str
+    rules_version: str
+    pointer_version: str
+
+
+@dataclass(frozen=True)
+class InvalidationCheck(_Plain):
+    """Point-in-time, stateless: does the newer MarketIntelligence still show the setup's required market state?
+    Separate from (and never mutating) the TradeSetupAssessment. Only ``holds`` confirms the requirement."""
+    invalidation_format_version: str
+    invalidation_id: str
+    rules_version: str
+    setup_ref: SetupRef
+    market_intelligence_ref: MarketIntelligenceRef
+    symbol: str
+    required_market_state: RequiredMarketState
+    observed_market_state: ObservedMarketState
+    result: str                       # holds | invalidated | not_evaluable
+    reason: str                       # exactly one reason, from the closed set
+    decision_trace: tuple
+    provenance: InvalidationProvenance
+
+    def body(self):
+        data = self.to_dict()
+        data.pop("invalidation_id")
+        return data

@@ -137,3 +137,26 @@ SCREENING_RULES = (
                                                  "oi:contracts[*].spread_absolute")),
 )
 SCREENING_RULE_NAMES = tuple(rule for rule, _, _ in SCREENING_RULES)
+
+
+# --- InvalidationCheck (Phase 10D): a separate, point-in-time market-state check of a setup ---
+INVALIDATION_FORMAT_VERSION = "phase10-invalidation-v1"
+INVALIDATION_RULES_VERSION = "phase10-invalidation-rules-v1"
+INVALIDATION_POINTER_VERSION = "phase10-invalidation-pointer-v1"
+INVALIDATION_POINTER = re.compile(r"(setup|mi):[a-z_.\[\]*]+")
+REQUIRED_TECHNICAL_STATUS = "available"
+HOLDS, INVALIDATED, NOT_EVALUABLE = "holds", "invalidated", "not_evaluable"
+INVALIDATION_RESULTS = (HOLDS, INVALIDATED, NOT_EVALUABLE)
+# Every reason belongs to exactly one result.
+INVALIDATION_REASONS = {"required_pattern_present": HOLDS, "required_pattern_absent": INVALIDATED,
+                        "technical_evidence_not_available": NOT_EVALUABLE,
+                        "timeframe_evidence_incomplete": NOT_EVALUABLE}
+INVALIDATION_NOT_EVALUATED_REASON = "earlier_step_failed"
+# The fixed decision-trace steps and their pointers.
+INVALIDATION_STEPS = (
+    ("symbol_match", ("mi:synthesis_ref.symbol", "setup:inputs.symbol")),
+    ("as_of_order", ("mi:synthesis_ref.as_of", "setup:inputs.market_intelligence_ref.as_of")),
+    ("technical_evidence", ("mi:evidence_coverage.technical_status",)),
+    ("timeframe_completeness", ("mi:timeframe_structure.pattern",)),
+    ("pattern_match", ("mi:timeframe_structure.pattern", "setup:market_bias.invalidation.required_pattern")),
+)
