@@ -162,9 +162,10 @@ def validated_invalidation(check):
 
 def verify_invalidation(check, assessment, market_intelligence):
     """Structural validation, then a rebuild from the setup and MarketIntelligence that must match byte for byte."""
-    data = validated_invalidation(check)
+    data = validated_invalidation(check)  # the id is already proven to match the body
     expected = check_invalidation(assessment, market_intelligence).to_dict()
-    if canonical_json(expected) != canonical_json(data):
-        differing = sorted(k for k in data if expected.get(k) != data.get(k))
+    body = lambda d: {k: v for k, v in d.items() if k != "invalidation_id"}  # noqa: E731
+    if canonical_json(body(expected)) != canonical_json(body(data)):
+        differing = sorted(k for k in body(data) if expected.get(k) != data.get(k))
         raise TradeSetupInputError(f"invalidation check does not match its inputs at {', '.join(differing)}")
     return data

@@ -131,3 +131,37 @@ def resealed_oi(oi, cid, **fields):
     next(c for c in data["contracts"] if c["contract_id"] == cid).update(fields)
     data["options_intelligence_id"] = content_id({k: v for k, v in data.items() if k != "options_intelligence_id"})
     return data
+
+
+# --- Phase 10D invalidation fixtures ---
+def later_mi(name, seconds=86400, symbol=None):
+    """A real Phase 8 MarketIntelligence for a golden case (genuine pattern and technical evidence), with its
+    synthesis as_of moved ``seconds`` later (negative: earlier) and resealed, standing in for a newer observation.
+    The Phase 8 goldens all share one as_of, so later MIs cannot come from the corpus directly."""
+    from copy import deepcopy
+    from datetime import datetime, timedelta
+    from trade_setup.canonical import content_id
+    mi = deepcopy(market_intelligence(name))
+    ref = mi["synthesis_ref"]
+    ref["as_of"] = (datetime.fromisoformat(ref["as_of"]) + timedelta(seconds=seconds)).isoformat()
+    if symbol:
+        ref["symbol"] = symbol
+    mi["intelligence_id"] = content_id({k: v for k, v in mi.items() if k != "intelligence_id"})
+    return mi
+
+
+def setup(side="call"):
+    """A sealed setup_candidates assessment: bullish/call from all_bullish, or bearish/put from all_bearish."""
+    if side == "call":
+        return screened([record()])[0]
+    return screened([record(option_type="put", greeks=dict(delta="-0.45", gamma="0.01", theta="-0.1", vega="0.2"))],
+                    mi_name="all_bearish")[0]
+
+
+# Real Phase 8 cases by observed state: (pattern, technical_status).
+OBSERVED_CASES = {
+    "all_bullish": ("all_bullish", "available"), "all_bearish": ("all_bearish", "available"),
+    "higher_aligned_5m_opposed": ("opposed", "available"), "mixed_all": ("all_non_directional", "available"),
+    "meta_real_shaped": ("partially_directional", "available"), "insufficient_data_state": ("incomplete", "available"),
+    "missing_1d": ("incomplete", "partial"), "technical_unavailable": ("incomplete", "unavailable"),
+}

@@ -11,14 +11,14 @@ import sys
 import tempfile
 import unittest
 
-from trade_setup import builder, canonical, model, policy, rules, screening, validation
+from trade_setup import builder, canonical, invalidation, model, policy, rules, screening, validation
 from trade_setup.builder import prescreen
 from trade_setup.canonical import canonical_json, content_id
 from trade_setup.validation import TradeSetupInputError, validated_assessment, verify_assessment
 from tests import trade_setup_cases as cases
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PURE = (builder, canonical, model, policy, rules, screening, validation)
+PURE = (builder, canonical, invalidation, model, policy, rules, screening, validation)
 
 
 def inputs(mi_name="all_bullish", oi_name="quoted_complete"):
@@ -178,7 +178,8 @@ class BoundaryTests(unittest.TestCase):
                     self.assertNotIn(node.attr, ("environ", "argv"), module.__name__)
 
     def test_runtime_imports(self):
-        code = ("import sys, trade_setup.builder, trade_setup.validation, trade_setup.policy, trade_setup.screening\n"
+        code = ("import sys, trade_setup.builder, trade_setup.validation, trade_setup.policy, trade_setup.screening, "
+                "trade_setup.invalidation\n"
                 "print(sorted({n.split('.')[0] for n in sys.modules} & {'market_intelligence', 'options_intelligence', "
                 "'options_data', 'market_data', 'evidence_packet', 'evidence_synthesis', 'evidence', 'evaluation', "
                 "'persistence', 'sqlalchemy', 'requests', 'openai', 'redis', 'technical', 'market_context'}))")
