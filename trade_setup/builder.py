@@ -142,7 +142,7 @@ def prescreen(market_intelligence, options_intelligence, policy):
             symbol=symbol, assessment_as_of=max(mi_as_of, oi_as_of).astimezone(timezone.utc).isoformat(),
             input_gap_seconds=int(gap.total_seconds())),
         market_bias=m.MarketBias(state, side, pattern, technical,
-                                 m.Invalidation("pattern_must_remain", r.PATTERN_BY_BIAS[state], mi["intelligence_id"])
+                                 m.Invalidation(r.INVALIDATION_RULE, r.PATTERN_BY_BIAS[state], mi["intelligence_id"])
                                  if side else None),
         execution_readiness=m.ExecutionReadiness(
             options_intelligence_format_version=oi_format, contract_count=len(contracts), truncated=truncated,

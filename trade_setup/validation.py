@@ -220,6 +220,29 @@ def _validated_screening(data, policy, reasons):
              "assessment screening no_setup reasons are inconsistent")
 
 
+def _validated_bias_descriptor(data):
+    """The market bias re-derives from its own copied pattern and technical status (D3), and a directional bias
+    carries exactly the pattern_must_remain descriptor established by the referenced MarketIntelligence."""
+    bias = data["market_bias"]
+    pattern, technical = bias.get("pattern"), bias.get("technical_status")
+    _require(pattern in r.MI_PATTERNS and technical in r.MI_TECHNICAL_STATUSES
+             and bias["state"] == (r.BIAS_BY_PATTERN[pattern] if technical == "available" else "insufficient"),
+             "assessment market_bias is inconsistent with its pattern and technical status")
+    descriptor = bias.get("invalidation")
+    if bias["side"] is None:
+        _require(descriptor is None, "assessment market_bias invalidation descriptor is inconsistent")
+        return
+    inputs, provenance = data.get("inputs"), data.get("provenance")
+    mi_ref = inputs.get("market_intelligence_ref") if isinstance(inputs, dict) else None
+    _require(isinstance(descriptor, dict) and set(descriptor) == set(r.INVALIDATION_DESCRIPTOR_FIELDS)
+             and descriptor["rule"] == r.INVALIDATION_RULE
+             and descriptor["required_pattern"] == r.PATTERN_BY_BIAS[bias["state"]] == pattern
+             and isinstance(mi_ref, dict) and isinstance(provenance, dict)
+             and descriptor["established_by"] == mi_ref.get("intelligence_id")
+             == provenance.get("market_intelligence_id"),
+             "assessment market_bias invalidation descriptor is inconsistent")
+
+
 def validated_assessment(assessment):
     """Structural, standalone validation of a sealed TradeSetupAssessment; returns the plain dict."""
     data = _plain(assessment)
@@ -242,6 +265,7 @@ def validated_assessment(assessment):
     bias = data["market_bias"]
     _require(isinstance(bias, dict) and bias.get("state") in r.BIAS_STATES
              and bias.get("side") == r.SIDE_BY_BIAS.get(bias["state"]), "assessment market_bias is inconsistent")
+    _validated_bias_descriptor(data)
     trace = data["decision_trace"]
     _require(isinstance(trace, list) and [t.get("step") for t in trace] == list(range(1, len(trace) + 1))
              and [t.get("rule") for t in trace] == list(r.TRACE_RULES), "assessment decision_trace is malformed")

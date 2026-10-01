@@ -57,6 +57,9 @@ BIAS_BY_PATTERN = {"all_bullish": "bullish", "all_bearish": "bearish", "opposed"
 BIAS_STATES = ("bullish", "bearish", "conflicting", "insufficient", "non_directional", "partially_directional")
 SIDE_BY_BIAS = {"bullish": "call", "bearish": "put"}
 PATTERN_BY_BIAS = {"bullish": "all_bullish", "bearish": "all_bearish"}
+# The market-state invalidation descriptor rule of a directional setup (D10).
+INVALIDATION_RULE = "pattern_must_remain"
+INVALIDATION_DESCRIPTOR_FIELDS = ("rule", "required_pattern", "established_by")
 
 # --- No-setup reasons (locked v1 set; underlying_price_unavailable deliberately excluded) ---
 NO_SETUP_REASONS = ("market_evidence_insufficient", "market_evidence_conflicting",

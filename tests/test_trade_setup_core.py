@@ -354,5 +354,63 @@ class OutcomeContractTests(unittest.TestCase):
             self.assertEqual(str(caught.exception), "assessment decision_trace reason is inconsistent with its result")
 
 
+class HardenedDescriptorTests(unittest.TestCase):
+    """validated_assessment checks the market_bias invalidation descriptor structurally (Phase 10D hardening)."""
+
+    def setup_data(self):
+        from tests.trade_setup_cases import record, screened
+        a, _ = screened([record()])
+        self.assertEqual(a.outcome.status, "setup_candidates")
+        return a.to_dict()
+
+    def assertDescriptorError(self, mutate, message="assessment market_bias invalidation descriptor is inconsistent",
+                              data=None):
+        data = data or self.setup_data()
+        mutate(data)
+        with self.assertRaises(TradeSetupInputError) as caught:
+            validated_assessment(reseal(data, "assessment_id"))
+        self.assertEqual(str(caught.exception), message)
+
+    def test_valid_descriptors(self):
+        data = self.setup_data()
+        self.assertEqual(data["market_bias"]["invalidation"]["rule"], "pattern_must_remain")
+        self.assertEqual(validated_assessment(data), data)
+        no_setup = run("non_directional").to_dict()
+        self.assertIsNone(no_setup["market_bias"]["invalidation"])
+        self.assertEqual(validated_assessment(no_setup), no_setup)
+
+    def test_wrong_rule(self):                                                                              # 56
+        self.assertDescriptorError(lambda d: d["market_bias"]["invalidation"].update(rule="pattern_may_drift"))
+
+    def test_wrong_required_pattern(self):                                                                  # 57
+        self.assertDescriptorError(lambda d: d["market_bias"]["invalidation"].update(required_pattern="all_bearish"))
+
+    def test_wrong_established_by(self):                                                                    # 58
+        self.assertDescriptorError(lambda d: d["market_bias"]["invalidation"].update(
+            established_by="sha256:" + "a" * 64))
+
+        def both_refs(d):  # established_by agrees with the input ref but not with provenance
+            d["market_bias"]["invalidation"]["established_by"] = "sha256:" + "b" * 64
+            d["inputs"]["market_intelligence_ref"]["intelligence_id"] = "sha256:" + "b" * 64
+        self.assertDescriptorError(both_refs)
+
+    def test_setup_pattern_mismatch(self):                                                                  # 59
+        self.assertDescriptorError(lambda d: d["market_bias"].update(pattern="opposed"),
+                                   "assessment market_bias is inconsistent with its pattern and technical status")
+
+    def test_setup_technical_inconsistent(self):                                                            # 60
+        self.assertDescriptorError(lambda d: d["market_bias"].update(technical_status="partial"),
+                                   "assessment market_bias is inconsistent with its pattern and technical status")
+
+    def test_missing_and_extra_descriptors(self):
+        self.assertDescriptorError(lambda d: d["market_bias"].update(invalidation=None))
+        self.assertDescriptorError(lambda d: d["market_bias"]["invalidation"].update(note="x"))
+        self.assertDescriptorError(
+            lambda d: d["market_bias"].update(invalidation=dict(rule="pattern_must_remain",
+                                                                required_pattern="all_bullish",
+                                                                established_by=d["provenance"]["market_intelligence_id"])),
+            data=run("non_directional").to_dict())
+
+
 if __name__ == "__main__":
     unittest.main()
