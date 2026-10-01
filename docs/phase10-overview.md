@@ -1,7 +1,7 @@
 # Phase 10 — Trade Setup: overview and closure status
 
-**Status:** 10A–10D are complete. 10E's implementation is complete, but its **live-session validation is pending**.
-**Phase 10 is not yet closed** (see the checklist in `docs/phase10e-runner-live-validation.md` §9).
+**Status: PHASE 10 COMPLETE** (closure date 2026-10-01). 10A–10E are complete, and the live regular-session
+validation for META and NVDA is complete. See `docs/phase10-closure.md`.
 
 Phase 10 turns sealed MarketIntelligence (Phase 8) and OptionsIntelligence (Phase 9) into a deterministic
 `TradeSetupAssessment`, using an explicit policy. It checks the setup's market state later with a separate
@@ -24,6 +24,7 @@ Policy (phase10-policy-v1) ──────┘                     │
 | 10C | Contract screening, candidates, aggregated rejections, premium A/B/C, delta bound | `phase10c-contract-screening.md` |
 | 10D | `InvalidationCheck`, validator hardening, risk-fact decisions | `phase10d-invalidation.md` |
 | 10E | `trade_setup.runner`, replay fixtures, live-validation tooling and policy | `phase10e-runner-live-validation.md` |
+| Closure | Regular-session live validation, 2026-10-01 (META and NVDA) | `phase10-closure.md` |
 
 **Frozen versions:**
 - assessment: `phase10-v1`, rules `phase10-rules-v1`, policy `phase10-policy-v1`, pointer `phase10-pointer-v1`;

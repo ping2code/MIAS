@@ -1,8 +1,7 @@
 # Phase 10E — Runner, replay and live validation
 
-**Status:** implementation is complete on `claude/phase10e-runner-live-validation`; not merged. **Live validation
-is pending:** the live META/NVDA runs and the regular-session quote-freshness check need operator credentials and
-market hours (§6). **Phase 10 is not closed until they are done** (§9).
+**Status:** implementation complete (merged). **The live regular-session validation was completed on 2026-10-01
+for META and NVDA, and Phase 10 is COMPLETE.** The results are recorded in `docs/phase10-closure.md`.
 
 > Phase 10E adds orchestration and file replay only. It connects the frozen pipeline:
 >
@@ -210,14 +209,9 @@ contract or a recommendation. Raw live snapshots in `/tmp` are never committed.
 
 ### Live results
 
-*Pending the operator runs above.* This section records, for META and NVDA:
-- quote-state counts and quote age;
-- multiplier and phase9-v2 fact counts;
-- MI and OI as-of times and the input gap;
-- the assessment outcome and reasons, candidate count and rejection counts;
-- the ids;
-- invalidation status;
-- whether the regular-session quotes appear real-time.
+Recorded in `docs/phase10-closure.md`, from the 2026-10-01 regular-session runs for META and NVDA. That record
+covers ids, quote-state counts and quote age, multiplier and phase9-v2 fact counts, MI/OI as-of times and input gaps,
+the assessment outcomes (both `no_setup` from the D3 market-bias rule) and the invalidation note.
 
 ## 7. Stocks Starter
 
@@ -247,14 +241,13 @@ The earliest `invalidated` check is terminal downstream. `trade_setup` keeps no 
 |---|---|---|
 | 1–4 | 10A frozen; 10B gates, 10C screening and 10D invalidation pass | done |
 | 5–7 | runner from sealed files; byte-deterministic replay; phase9-v2 integration | done |
-| 8 | Options Advanced quote entitlement verified | operator check done (out of hours) |
-| 9 | a live META/NVDA snapshot shows usable quote facts | **pending** (§6, steps 1–2) |
-| 10 | a live TradeSetupAssessment runs end-to-end | **pending** (§6, step 5) |
-| 11 | regular-session quote freshness characterized | **pending** (§6, step 7) |
+| 8 | Options Advanced quote entitlement verified | done (regular session, 2026-10-01) |
+| 9 | a live META/NVDA snapshot shows usable quote facts | done (META 4,135, NVDA 2,473 two-sided timestamped quotes) |
+| 10 | a live TradeSetupAssessment runs end-to-end | done (META and NVDA, both `no_setup`) |
+| 11 | regular-session quote freshness characterized | done (`docs/phase10-closure.md` §3) |
 | 12–14 | Phase 6 untouched; full regression passes; protected packages stable | done |
 
-**Status: Phase 10E implementation is complete; Phase 10 live-session validation is pending.** Phase 10 closes
-when items 9–11 are recorded in §6.
+**Status: Phase 10 is COMPLETE** (closure date 2026-10-01; see `docs/phase10-closure.md`).
 
 ## 10. What remains for Phase 11
 
