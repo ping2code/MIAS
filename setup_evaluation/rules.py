@@ -45,8 +45,17 @@ DOLLAR_STATUSES = ("computed", "multiplier_unavailable", "contract_terms_changed
 RELATION_STATUSES = ("invalidated_by_target", "no_invalidation_observed", "not_evaluated")
 CANDIDATE_INCLUSION = "all_assessment_candidates_in_canonical_order"
 INVALIDATION_RULE = "supplied_checks_only"
-TRACE_RULES = ("protocol", "setup", "symbol_match", "horizon_resolution", "observation_window", "candidate_set",
-               "invalidation_relation")
+# Fixed decision-trace steps and pointers (every step passes in a sealed object; failures are input errors).
+TRACE_STEPS = (
+    ("protocol", ("protocol:protocol_id",)),
+    ("setup", ("setup:candidates[*]", "setup:outcome.status")),
+    ("symbol_match", ("setup:inputs.symbol", "snapshot:underlying")),
+    ("horizon_resolution", ("schedule:sessions[*]", "setup:inputs.assessment_as_of")),
+    ("observation_window", ("snapshot:as_of", "snapshot:session.calendar_state", "snapshot:session.session_date")),
+    ("candidate_set", ("setup:candidates[*].source.contract_id", "snapshot:contracts[*].identity.contract_id")),
+    ("invalidation_relation", ("check:market_intelligence_ref.as_of", "check:result", "check:setup_ref.assessment_id")),
+)
+TRACE_RULES = tuple(rule for rule, _ in TRACE_STEPS)
 
 # --- Phase 10 TradeSetupAssessment (sealed upstream contract; local structural validation) ---
 ASSESSMENT_FORMAT_VERSION, ASSESSMENT_RULES_VERSION = "phase10-v1", "phase10-rules-v1"
