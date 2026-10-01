@@ -74,17 +74,17 @@ class ProtocolTests(unittest.TestCase):
                 validated_protocol(data)
             self.assertEqual(str(caught.exception), message)
 
-    def test_production_protocol_not_activated(self):
-        self.assertIsNone(r.PRODUCTION_PROTOCOL_ID)
-        self.assertIsNone(r.PRODUCTION_PROSPECTIVE_START)
-        production = reseal(dict(make_test_protocol().to_dict(), purpose="production",
-                                 prospective_start="2026-10-05T13:30:00+00:00"), "protocol_id")
+    def test_only_the_pinned_production_protocol_is_accepted(self):
+        # Activated: only the checked-in production protocol (pinned id and prospective_start) validates.
+        self.assertIsNotNone(r.PRODUCTION_PROTOCOL_ID)
+        other = reseal(dict(make_test_protocol().to_dict(), purpose="production",
+                            prospective_start="2026-10-05T13:30:00+00:00"), "protocol_id")
         with self.assertRaises(ProtocolError) as caught:
-            validated_protocol(production)
-        self.assertEqual(str(caught.exception), "production evaluation protocol is not activated")
+            validated_protocol(other)
+        self.assertEqual(str(caught.exception), "protocol is not the pinned production protocol")
         with self.assertRaises(SetupEvaluationInputError) as caught:
-            run(protocol=production)
-        self.assertEqual(str(caught.exception), "protocol is invalid: production evaluation protocol is not activated")
+            run(protocol=other)
+        self.assertEqual(str(caught.exception), "protocol is invalid: protocol is not the pinned production protocol")
 
 
 class ScheduleTests(unittest.TestCase):

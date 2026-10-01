@@ -208,17 +208,19 @@ class ProtocolContentTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "protocol semantics do not match the frozen phase11-rules-v1 semantics")
         self.assertNotEqual(production_protocol()["protocol_id"], p["protocol_id"])
 
-    def test_production_not_activated(self):
-        self.assertIsNone(r.PRODUCTION_PROTOCOL_ID)
-        self.assertIsNone(r.PRODUCTION_PROSPECTIVE_START)
+    def test_only_the_pinned_production_protocol(self):
+        # Any production protocol other than the pinned one is rejected (here: a different prospective_start).
         with self.assertRaises(ProtocolError) as caught:
             validated_protocol(production_protocol())
-        self.assertEqual(str(caught.exception), "production evaluation protocol is not activated")
+        self.assertEqual(str(caught.exception), "protocol is not the pinned production protocol")
         tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+        production_files = []
         for path in tracked:
             if path.endswith(".json"):
                 with open(os.path.join(ROOT, path), encoding="utf-8", errors="ignore") as handle:
-                    self.assertNotIn('"purpose":"production"', handle.read().replace(" ", ""), path)
+                    if '"purpose":"production"' in handle.read().replace(" ", ""):
+                        production_files.append(path)
+        self.assertIn(production_files, ([], ["setup_evaluation/protocols/phase11-evaluation-protocol-v1.production.json"]))
 
 
 if __name__ == "__main__":

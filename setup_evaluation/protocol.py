@@ -5,10 +5,10 @@ v1 implements exactly one semantics, so every semantic field must equal the froz
 behaviour; it records and pins it. ``purpose`` is ``test`` (fixtures and replay, ``prospective_start`` null) or
 ``production``.
 
-**The production protocol is not activated.** ``rules.PRODUCTION_PROTOCOL_ID`` and
-``rules.PRODUCTION_PROSPECTIVE_START`` are None, so every production protocol is rejected. A separate activation
-step, after Phase 10 live validation closes, will write the production protocol, pin its id and prospective start,
-and record the activation commit.
+**Production activation:** the checked-in production protocol
+(``setup_evaluation/protocols/phase11-evaluation-protocol-v1.production.json``) is pinned by
+``rules.PRODUCTION_PROTOCOL_ID`` and ``rules.PRODUCTION_PROSPECTIVE_START``. A production protocol validates only if
+its id and prospective start equal both pins exactly. Any other production protocol is rejected.
 """
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -52,12 +52,24 @@ def frozen_fields():
                 exclusions=list(r.EXCLUSIONS))
 
 
+def _sealed(purpose, prospective_start):
+    draft = m.Protocol(protocol_format_version=r.PROTOCOL_FORMAT_VERSION, protocol_id="", purpose=purpose,
+                       prospective_start=prospective_start, **{k: tuple(v) if isinstance(v, list) else v
+                                                               for k, v in frozen_fields().items()})
+    return replace(draft, protocol_id=content_id(draft.body()))
+
+
 def make_test_protocol():
     """A sealed test/replay protocol (purpose ``test``, no prospective start). Never a production protocol."""
-    draft = m.Protocol(protocol_format_version=r.PROTOCOL_FORMAT_VERSION, protocol_id="", purpose="test",
-                       prospective_start=None, **{k: tuple(v) if isinstance(v, list) else v
-                                                  for k, v in frozen_fields().items()})
-    return replace(draft, protocol_id=content_id(draft.body()))
+    return _sealed("test", None)
+
+
+def make_production_protocol(prospective_start):
+    """The sealed production protocol for an explicit canonical-UTC ``prospective_start`` (the same frozen
+    semantics as every v1 protocol). Used once, at activation, to write the checked-in production file; validation
+    accepts it only when its id and start equal the pinned ``rules`` constants."""
+    _require(canonical_utc(prospective_start), "production prospective_start must be canonical UTC")
+    return _sealed("production", prospective_start)
 
 
 def validated_protocol(protocol):

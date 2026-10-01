@@ -16,10 +16,12 @@ DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 POINTER = re.compile(r"(setup|snapshot|schedule|protocol|check):[a-z_.\[\]*]+")
 
 # --- Production activation (decision H; correction 3) ---
-# The production protocol is NOT activated: no production hash or prospective start is pinned. A protocol with
-# purpose "production" is rejected until a separate activation step pins both.
-PRODUCTION_PROTOCOL_ID = None
-PRODUCTION_PROSPECTIVE_START = None
+# Pinned to the checked-in production protocol
+# (setup_evaluation/protocols/phase11-evaluation-protocol-v1.production.json). The activation is authoritative only
+# once the activation commit is merged into main. Assessments with assessment_as_of < PRODUCTION_PROSPECTIVE_START are
+# permanently ineligible (no backfill).
+PRODUCTION_PROTOCOL_ID = "sha256:69e050733aacf4fd66c2e1a050d750d833d747b37ef1ec233a0094c0e9900a5c"
+PRODUCTION_PROSPECTIVE_START = "2026-10-02T13:30:00+00:00"   # the next regular XNYS open after the activation commit
 PROTOCOL_PURPOSES = ("test", "production")
 
 # --- Horizons (decision C; correction 1): the n-th regular XNYS session whose regular_open > assessment_as_of ---

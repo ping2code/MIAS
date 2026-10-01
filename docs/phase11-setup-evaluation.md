@@ -1,8 +1,9 @@
 # Phase 11 — Prospective setup evaluation
 
-**Status:** implemented on `claude/phase11-setup-evaluation` using synthetic and replay inputs only; not merged.
-**Prospective collection has NOT started, and the production protocol is NOT activated** (§9). Phase 10 live
-regular-session validation is still pending, so Phase 10 is open.
+**Status:** the implementation and replay framework is merged. Phase 10 is closed (2026-10-01). **The production
+activation artifacts are prepared on `claude/phase11-production-activation`** (§9): the production protocol and its
+pins. **Activation is authoritative only once that commit is merged into main. Prospective collection has NOT
+started.**
 
 > Phase 11 is a descriptive, deterministic, replayable record of what each frozen Phase 10 candidate's quote showed
 > at fixed later session horizons.
@@ -178,26 +179,61 @@ python -m setup_evaluation.runner test-protocol --output PROTOCOL.json
   sealed production evaluation whose assessment precedes the pinned start, so re-derivation can't accept one either.
   `prospective_start` must be canonical UTC (`+00:00`, round-trip exact), leaving no timezone ambiguity. Nothing made
   before activation is ever evaluated or backfilled.
-- **The production protocol is not activated.** `rules.PRODUCTION_PROTOCOL_ID` and
-  `rules.PRODUCTION_PROSPECTIVE_START` are `None`, and every `purpose: production` protocol is rejected.
-- **Activation is a separate step, only after Phase 10 live regular-session validation closes successfully.** It:
-  1. writes the final production `phase11-evaluation-protocol-v1` JSON;
-  2. pins its SHA-256 id;
-  3. pins an explicit `prospective_start`;
-  4. records the activation commit;
-  5. begins prospective collection only after that timestamp.
+### Production activation
 
-  This is an operational gate, not tuning. **No return is inspected before activation.**
+Activation was prepared on 2026-10-01, after Phase 10 closed and the activation hardening merged. It is
+authoritative only once merged into main.
+
+| Item | Value |
+|---|---|
+| Production protocol file | `setup_evaluation/protocols/phase11-evaluation-protocol-v1.production.json` (canonical) |
+| Protocol version | `phase11-evaluation-protocol-v1`, `purpose: production` |
+| Production protocol id | `sha256:69e050733aacf4fd66c2e1a050d750d833d747b37ef1ec233a0094c0e9900a5c` |
+| `prospective_start` | **`2026-10-02T13:30:00+00:00`**: the regular XNYS open (Friday 09:30 ET) following the activation commit |
+| Pins | `rules.PRODUCTION_PROTOCOL_ID` and `rules.PRODUCTION_PROSPECTIVE_START`, which equal the file exactly |
+| Test protocol id (distinct) | `sha256:1eebe890…`; the retired pre-hardening test id is `sha256:188119d4…` |
+
+- The id comes from the project's canonical sealing code (`make_production_protocol`), not computed by hand. A
+  production protocol validates only when its id and `prospective_start` equal both pins. Any field change alters
+  the id, and any other production protocol is rejected.
+- The file freezes:
+  - horizons `session_1` and `session_5` (full forward sessions by `regular_open`);
+  - the inclusive window `[target_close − 30 min, target_close]`;
+  - entry `entry_reference_ask` and mark `liquidation_reference_bid`;
+  - the quote requirements (present, `observed_at`, two-sided, non-crossed, in the window);
+  - 8-place ROUND_HALF_EVEN returns;
+  - all-candidate inclusion;
+  - the status vocabularies;
+  - the missing-contract and multiplier rules;
+  - the supplied-checks-only invalidation relation;
+  - the sorted exclusions.
+- **No backfill:** an assessment with `assessment_as_of < 2026-10-02T13:30:00+00:00` is permanently ineligible. One
+  exactly at the start is eligible. Missed windows are never backfilled, and historical quotes are never
+  substituted.
+- **Schedule integrity:** production `evaluate` and `verify` require the supplied SessionSchedule to equal the
+  regenerated XNYS schedule for its exact date range.
+- **Stale start rule:** if the merge into main can't happen before `prospective_start`, the start is not used.
+  It moves to the next regular XNYS open through a new reviewed commit.
+- This is an operational gate, not tuning. **No return was inspected before activation.**
+
+**Scientific boundary.** Phase 11 may answer how frozen Phase 10 candidates performed prospectively under this
+frozen protocol. It may not answer which candidate, setup or symbol was best, or which threshold or policy should
+change. There is no adaptive behaviour, optimization or tuning.
 
 ## 10. Collection boundary (prospective workflow, after activation)
 
-1. For each `setup_candidates` assessment after `prospective_start`, schedule one `options_data.runner` snapshot
-   inside each horizon window (about 15 minutes before the target close; `OPTIONS_DATA_DELAY_SECONDS` unset). This
-   is operator-run, and scheduling comes later.
+1. For each `setup_candidates` assessment with `assessment_as_of >= prospective_start`, collect **one**
+   `options_data.runner` snapshot (Massive Options Advanced; `OPTIONS_DATA_DELAY_SECONDS` unset) inside each horizon
+   window `[target_close − 30 min, target_close]` for `session_1` and for `session_5`. Start about 15 minutes before
+   the close: a full chain takes several pages, and the snapshot `as_of` (read once at the start) must fall in the
+   window. Each candidate's quote must also meet the frozen timing rules. This is operator-run; scheduling comes
+   later. **Collection begins only after activation is merged and `prospective_start` has passed.**
 2. After the target date, build the SessionSchedule.
 3. Run `setup_evaluation.runner evaluate`.
-4. Missed windows stay missing. There is no backfill, no historical-quote substitution and no nearest-observation
-   search.
+4. Missed windows stay missing: no evaluation object exists for that horizon. There is no backfill, no
+   historical-quote substitution and no nearest-observation search, and nothing pending inside `SetupEvaluation`.
+5. Every original candidate stays included. There is no selection, ranking or dropping, and censored observations
+   remain explicit statuses.
 
 ## 11. Phase 6 isolation
 
