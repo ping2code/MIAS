@@ -163,5 +163,21 @@ class LiveSequenceTests(ToolTestCase):
             self.assertEqual(handle.read(), replay.path("assessment.v2.json").read_bytes())
 
 
+class LivePolicyTests(unittest.TestCase):
+    """The checked-in live-validation policy is an explicit, sealed phase10-policy-v1 (illustrative, not tuned)."""
+
+    def test_live_policy(self):
+        from trade_setup.policy import validated_policy
+        path = os.path.join(ROOT, "live_validation", "policies", "phase10e_live_validation.policy.json")
+        with open(path, encoding="utf-8") as handle:
+            data = json.loads(handle.read())
+        policy = validated_policy(data)
+        self.assertEqual((policy.policy_format_version, policy.min_dte, policy.max_dte, policy.max_spread_relative,
+                          policy.abs_delta_min, policy.abs_delta_max, policy.min_volume, policy.min_open_interest,
+                          policy.max_premium_per_contract, policy.allow_unverified_time_basis,
+                          policy.require_complete_chain, policy.max_input_gap_seconds),
+                         ("phase10-policy-v1", 7, 45, "0.1", "0.25", "0.6", 10, 100, None, True, True, 1800))
+
+
 if __name__ == "__main__":
     unittest.main()
