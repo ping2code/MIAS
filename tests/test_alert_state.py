@@ -134,6 +134,18 @@ class ReplayTests(unittest.TestCase):
             self.assertEqual(rest.state, full.state)
             self.assertEqual(classes(first) + classes(rest), classes(full))
 
+    def test_consumes_caller_order_without_sorting(self):
+        e = events()
+        # The invalidation's sealed as_of (2026-09-24) precedes the assessment's (2026-09-30): any as_of or id sort
+        # would make these two orders give the same result. Caller order decides instead.
+        self.assertLess(e["invalidated"]["as_of"], e["available"]["as_of"])
+        forward = replay([e["available"], e["invalidated"]])
+        backward = replay([e["invalidated"], e["available"]])
+        self.assertEqual(classes(forward), [NEW, NEW])
+        self.assertEqual(classes(backward), [NEW, TERMINAL_SUPPRESSED])
+        for result, order in ((forward, ("available", "invalidated")), (backward, ("invalidated", "available"))):
+            self.assertEqual([d.alert_id for d in result.decisions], [e[k]["alert_id"] for k in order])
+
     def test_duplicates_do_not_alter_state(self):
         full = replay(self.sequence)
         self.assertEqual(replay(self.sequence + self.sequence).state, full.state)
@@ -302,6 +314,19 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(AlertStateUnavailable):
             RedisAlertStateStore(conflicting).restore(history.state)
         self.assertEqual(conflicting.data, snapshot)                                       # nothing written
+
+
+class RestoreCompletenessTests(unittest.TestCase):
+    def test_restored_cache_reproduces_every_accepted_decision(self):
+        e = events()
+        history = replay([e["available"], e["invalidated"], e["a_to_b"]])
+        store = RedisAlertStateStore(FakeRedis())                       # an empty cache after Redis loss
+        store.restore(history.state)
+        for key in ("available", "invalidated", "a_to_b"):              # every accepted event is a duplicate
+            self.assertEqual(store.record(e[key]).classification, DUPLICATE, key)
+        self.assertTrue(store.subject_state(subject_key(e["invalidated"]))["terminal"])
+        self.assertEqual(store.subject_state("symbol:META")["current_pattern"], "opposed")
+        self.assertEqual(store.record(e["invalidated_later"]).classification, TERMINAL_SUPPRESSED)
 
 
 @unittest.skipUnless(os.environ.get("MIAS_PHASE2J_REDIS_URL"), "disposable test Redis not configured")
