@@ -424,6 +424,18 @@ class LiveOnceTests(RunnerCase):
         hex_id = self.ev["available"]["alert_id"].split(":")[1]
         self.assertEqual(self.fake.data[f"{NS}:delivery:telegram:{hex_id}:delivered"], "777")   # no re-send later
 
+    def test_clock_failure_after_send_still_records_the_marker(self):
+        calls = []
+
+        def clock():
+            calls.append(1)
+            return datetime(2026, 10, 2, 13, 30, tzinfo=timezone.utc) if len(calls) == 1 else "not-a-time"
+        self.clock = clock
+        code, summary = self.run_cli("run-once", "--alert", self.alert("available"), "--receipt-dir", self.receipts)
+        self.assertEqual((code, summary["status"], self.receipt_files()), (5, "delivered", []))
+        hex_id = self.ev["available"]["alert_id"].split(":")[1]
+        self.assertEqual(self.fake.data[f"{NS}:delivery:telegram:{hex_id}:delivered"], "777")
+
     def test_oversized_text_is_refused_without_send(self):
         def refuse(request):
             raise ValueError("rendered text exceeds the Telegram message limit")

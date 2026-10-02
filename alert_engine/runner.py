@@ -318,10 +318,10 @@ class RecordingAdapter:
     def send(self, request):
         attempted_at = _instant(self.clock())
         self.result = self.inner.send(request)
-        completed_at = _instant(self.clock())
-        try:
+        try:                                 # after a send, nothing may stop the guard from recording the outcome
+            completed_at = _instant(self.clock())
             _, self.receipt = rc.append_receipt(self.directory, request, self.result, attempted_at, completed_at)
-        except rc.ReceiptError as error:
+        except (rc.ReceiptError, Failure) as error:
             self.receipt_error = str(error)
         return self.result
 
