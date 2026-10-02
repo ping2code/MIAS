@@ -337,6 +337,42 @@ class GuardTests(unittest.TestCase):
             g.deliver(self.request, SimpleNamespace(channel="email", send=lambda r: None))
 
 
+class DeliverySemanticsTests(unittest.TestCase):
+    """Pre-merge proofs of two documented delivery semantics (no behaviour change)."""
+
+    def setUp(self):
+        self.request = delivery_request(alerts()["setup_available"], "telegram")
+
+    def test_already_delivered_short_circuits(self):
+        fake = FakeRedis()
+        g = RedisDeliveryGuard(fake)
+        fake.data[g.key(self.request, "delivered")] = "777"
+        session = Session()                                    # any provider call would fail: no scripted outcome
+        adapter = TelegramAdapter(TOKEN, CHAT, session=session, sleep=lambda s: None)
+        writes = []
+        fake.set = lambda *a, **k: writes.append(("set", a, k))
+        fake.eval = lambda *a, **k: writes.append(("eval", a, k))
+        outcome = g.deliver(self.request, adapter)
+        self.assertEqual((outcome.action, outcome.result), (ALREADY_DELIVERED, None))
+        self.assertEqual((session.calls, writes), ([], []))   # no lease, no release, no send, no network
+
+    def test_marker_failure_keeps_lease_then_allows_retry_after_expiry(self):
+        fake, adapter = FakeRedis(fail={"marker"}), CountingAdapter(DELIVERED_RESULT)
+        g = RedisDeliveryGuard(fake)
+        lease = g.key(self.request, "lease")
+        with self.assertRaises(DeliveryStateUnavailable):
+            g.deliver(self.request, adapter)                   # confirmed send; marker write fails
+        self.assertEqual((adapter.calls, lease in fake.data, g.key(self.request, "delivered") in fake.data),
+                         (1, True, False))                     # lease intentionally kept
+        self.assertEqual(g.deliver(self.request, adapter).action, IN_PROGRESS)
+        self.assertEqual(adapter.calls, 1)                     # no other send before the lease expires
+        fake.fail.discard("marker")
+        del fake.data[lease]                                   # the lease TTL elapsed
+        self.assertEqual(g.deliver(self.request, adapter).action, SENT)
+        self.assertEqual(adapter.calls, 2)                     # the documented at-least-once duplicate send
+        self.assertEqual(fake.data[g.key(self.request, "delivered")], "777")
+
+
 @unittest.skipUnless(os.environ.get("MIAS_PHASE2J_REDIS_URL"), "disposable test Redis not configured")
 class DisposableRedisGuardTests(unittest.TestCase):
     def setUp(self):
