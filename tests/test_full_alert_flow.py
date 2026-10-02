@@ -1,3 +1,7 @@
+"""Manual end-to-end legacy alert check (operator-run only: ``python -m tests.test_full_alert_flow``).
+
+Guarded by ``__main__`` so that importing or collecting this module (pytest) never sends a message.
+"""
 from alert_engine.decision_engine import evaluate_alert
 from alert_engine.formatter import format_alert
 from alert_engine.telegram_notifier import send_telegram_alert
@@ -20,16 +24,23 @@ event = {
     "url": "https://example.com/mias-test",
 }
 
-event = evaluate_alert(event)
 
-if event["alert_decision"] == "ALERT":
-    message = format_alert(event)
+def main():
+    global event
+    event = evaluate_alert(event)
 
-    print(message)
+    if event["alert_decision"] == "ALERT":
+        message = format_alert(event)
 
-    try:
-        result = send_telegram_alert(message)
-        print("Telegram : SENT")
-        print(f"Message ID: {result['result']['message_id']}")
-    except Exception as error:
-        print(f"Telegram : FAILED - {error}")
+        print(message)
+
+        try:
+            result = send_telegram_alert(message)
+            print("Telegram : SENT")
+            print(f"Message ID: {result['result']['message_id']}")
+        except Exception as error:
+            print(f"Telegram : FAILED - {error}")
+
+
+if __name__ == "__main__":
+    main()

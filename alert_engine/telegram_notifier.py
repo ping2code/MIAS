@@ -1,11 +1,13 @@
+"""Legacy Telegram notifier used by the collectors (unchanged interface).
+
+Phase 12D hardening: this module no longer loads ``.env``. Settings come from the process environment, which the
+collectors already prepare through ``shared.config`` before importing it. Errors carry only the exception type, never
+the request URL, which contains the bot token.
+"""
 import os
 import time
 import requests
 
-from dotenv import load_dotenv
-
-
-load_dotenv()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -42,12 +44,12 @@ def send_telegram_alert(message):
             return response.json()
 
         except requests.RequestException as error:
-            last_error = error
+            last_error = type(error).__name__        # never the message: requests errors include the token URL
 
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SECONDS)
 
     raise RuntimeError(
         f"Telegram delivery failed after "
-        f"{MAX_RETRIES} attempts: {last_error}"
+        f"{MAX_RETRIES} attempts ({last_error})"
     )
