@@ -52,8 +52,9 @@ class AppFactoryTests(unittest.TestCase):
                     [r.path for r in app.routes if getattr(r, "path", None)])
         on, again = create_app(ApiSettings()), create_app(ApiSettings())
         self.assertEqual(table(on), table(again))
-        self.assertEqual(table(on), ([("/health/live", ["get"]), ("/health/ready", ["get"]), ("/api/v1/version", ["get"])],
-                                     ["/openapi.json", "/docs", "/docs/oauth2-redirect"]))
+        self.assertEqual(table(on)[0][:3], [("/health/live", ["get"]), ("/health/ready", ["get"]),
+                                            ("/api/v1/version", ["get"])])      # Phase 13C read routes follow
+        self.assertEqual(table(on)[1], ["/openapi.json", "/docs", "/docs/oauth2-redirect"])
         off = create_app(ApiSettings(docs_enabled=False))
         self.assertEqual(table(off), (table(on)[0], []))
         self.assertFalse(on.debug)
@@ -69,7 +70,8 @@ class AppFactoryTests(unittest.TestCase):
                 " 'technical', 'market_context', 'live_validation', 'pandas', 'numpy', 'exchange_calendars'}\n"
                 "loaded = sorted({n.split('.')[0] for n in sys.modules} & bad)\n"
                 "providers = sorted(n for n in sys.modules if n.startswith(('market_data.provider', 'market_data.http',"
-                " 'alert_engine.delivery', 'alert_engine.telegram', 'alert_engine.state_store')))\n"
+                " 'alert_engine.delivery.telegram', 'alert_engine.delivery.guard', 'alert_engine.telegram',"
+                " 'alert_engine.state_store', 'alert_engine.runner')))\n"
                 "print(loaded, providers)")
         env = {"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"}
         result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=120, env=env)
@@ -170,15 +172,20 @@ class HealthTests(unittest.TestCase):
         probe.assert_not_called()
 
     def test_readiness(self):
+        # Phase 13C: an artifact root and a built index are required; see tests/test_artifact_read_api.py.
         response = client().get("/health/ready")
         self.assertEqual((response.status_code, response.json()),
-                         (200, {"status": "ready", "checks": [{"name": "settings", "status": "pass"}]}))
+                         (503, {"status": "not_ready", "checks": [{"name": "settings", "status": "pass"},
+                                                                  {"name": "artifact_root", "status": "fail"},
+                                                                  {"name": "artifact_index", "status": "fail"}]}))
         with tempfile.TemporaryDirectory() as root:
-            c = client(artifact_root=root, receipt_root=os.path.join(root, "missing-receipts-canary"))
-            response = c.get("/health/ready")
+            with TestClient(create_app(ApiSettings(artifact_root=root, receipt_root=os.path.join(
+                    root, "missing-receipts-canary")), refresh_interval=0)) as c:
+                response = c.get("/health/ready")
             self.assertEqual(response.status_code, 503)
             self.assertEqual(response.json()["checks"], [{"name": "settings", "status": "pass"},
                                                          {"name": "artifact_root", "status": "pass"},
+                                                         {"name": "artifact_index", "status": "pass"},
                                                          {"name": "receipt_root", "status": "fail"}])
             self.assertNotIn(root, response.text)
             self.assertNotIn("canary", response.text)
@@ -198,9 +205,10 @@ class HealthTests(unittest.TestCase):
             ReadinessCheck("Bad Name", lambda: True)
 
     def test_health_is_open_under_read_auth(self):
-        c = client(read_token=READ_TOKEN)
-        self.assertEqual(c.get("/health/live").status_code, 200)
-        self.assertEqual(c.get("/health/ready").status_code, 200)
+        with tempfile.TemporaryDirectory() as root:
+            with TestClient(create_app(ApiSettings(read_token=READ_TOKEN, artifact_root=root), refresh_interval=0)) as c:
+                self.assertEqual(c.get("/health/live").status_code, 200)
+                self.assertEqual(c.get("/health/ready").status_code, 200)
 
 
 class VersionTests(unittest.TestCase):
@@ -382,7 +390,10 @@ class DocsTests(unittest.TestCase):
         self.assertEqual(c.get("/docs").status_code, 200)
         spec = c.get("/openapi.json")
         self.assertEqual(spec.status_code, 200)
-        self.assertEqual(sorted(spec.json()["paths"]), ["/api/v1/version", "/health/live", "/health/ready"])
+        paths = sorted(spec.json()["paths"])
+        self.assertTrue({"/api/v1/version", "/health/live", "/health/ready"} <= set(paths))
+        self.assertTrue(all(p.startswith(("/health/", "/api/v1/")) for p in paths))   # 13C adds read routes only
+        self.assertEqual([p for p in paths if "deliver" in p], ["/api/v1/alerts/{artifact_id}/deliveries"])
         for secret in (READ_TOKEN, OPERATOR_TOKEN):
             self.assertNotIn(secret, spec.text)
         self.assertEqual(c.get("/redoc").status_code, 404)
@@ -430,9 +441,10 @@ class DomainNonMutationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with open(os.path.join(root, "secret-content.json"), "w") as handle:
                 handle.write("file-content-canary")
+            app = create_app(ApiSettings(artifact_root=root), refresh_interval=0)
             with mock.patch("builtins.open", side_effect=AssertionError("no file reads")):
-                response = client(artifact_root=root).get("/health/ready")
-        self.assertEqual(response.status_code, 200)
+                response = TestClient(app).get("/health/ready")       # no lifespan: the index is never built
+        self.assertEqual(response.status_code, 503)
         self.assertNotIn("file-content-canary", response.text)
 
 
