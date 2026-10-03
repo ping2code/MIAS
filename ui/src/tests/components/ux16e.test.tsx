@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -309,6 +309,21 @@ describe("navigation drawer", () => {
     await user.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Alerts" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(await screen.findByRole("heading", { name: "Alerts", level: 1 })).toHaveFocus();
+  });
+});
+
+describe("navigation drawer: current page", () => {
+  it("choosing the page already shown closes the drawer and focuses its heading", async () => {
+    server.use(...api16c());
+    compactViewport(true);
+    renderApp("/alerts");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Menu/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Alerts" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Alerts", level: 1 })).toHaveFocus();
+    });
   });
 });
 

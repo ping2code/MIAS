@@ -59,7 +59,15 @@ export function AppShell() {
   };
   const closeDrawer = ({ returnFocus }: { returnFocus: boolean }): void => {
     setDrawerOpen(false);
-    if (returnFocus) menuButton.current?.focus();
+    if (returnFocus) {
+      menuButton.current?.focus();
+      return;
+    }
+    // A destination was chosen: focus the page heading once the drawer is gone and the main region is no longer
+    // inert. (A new page also focuses its own heading; choosing the current page changes no route.)
+    setTimeout(() => {
+      document.querySelector<HTMLElement>("main h1")?.focus();
+    }, 0);
   };
 
   return (
