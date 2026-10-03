@@ -7,6 +7,10 @@
 //   MIAS_QA_URL=http://127.0.0.1:18082 MIAS_QA_CDP=http://127.0.0.1:9222 MIAS_QA_TOKEN=… \
 //   MIAS_QA_OUT=<dir for screenshots/downloads> MIAS_QA_RESTART=<script that restarts the API with MIAS_QA_TOKEN2> \
 //   MIAS_QA_TOKEN2=… PLAYWRIGHT_CORE=<path to a playwright-core install> node ui/scripts/browser-qa.mjs
+//
+// Live (Phase 16F): MIAS_QA_URL=https://mias-ui.apps.<domain>, MIAS_QA_LAB_TLS=1 (the browser accepts the lab's
+// self-signed ingress certificate; give Node the ingress CA with NODE_EXTRA_CA_CERTS), and no MIAS_QA_RESTART
+// (token rotation restarts the API, so it only runs when explicitly configured).
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -39,7 +43,11 @@ async function apiText(path) {
 
 const browser = await chromium.connectOverCDP(CDP);
 console.log(`browser: ${browser.version()}`);
-const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, acceptDownloads: true });
+const context = await browser.newContext({
+  viewport: { width: 1920, height: 1080 },
+  acceptDownloads: true,
+  ignoreHTTPSErrors: process.env.MIAS_QA_LAB_TLS === "1",
+});
 await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
 const page = await context.newPage();
 const consoleProblems = [];
@@ -88,7 +96,9 @@ await shot("desktop-1920-overview-light");
 await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Market Intelligence" }).click();
 const miTable = page.getByRole("table", { name: /Market intelligence history/ });
 await miTable.waitFor();
-check("MI history lists rows", (await miTable.locator("tbody tr").count()) === 3);
+const miHistory = JSON.parse((await apiText("/api/v1/market-intelligence?limit=50")).text);
+const miRows = await miTable.locator("tbody tr").count();
+check("MI history lists exactly the API's rows", miRows === miHistory.data.length && miRows > 0, `${miRows} vs ${miHistory.data.length}`);
 await shot("desktop-1920-mi-list-light");
 await page.getByLabel("Symbol").fill("meta");
 await page.getByRole("button", { name: "Apply" }).click();
@@ -168,6 +178,15 @@ for (const [name, link] of [["overview", "Overview"], ["mi-list", "Market Intell
   await shot(`desktop-1440p-${name}-light`);
 }
 
+await page.getByRole("radio", { name: /Dark/ }).check();
+for (const [name, link] of [["overview", "Overview"], ["status", "System Status"]]) {
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: link }).click();
+  await h1().waitFor();
+  await page.waitForTimeout(400);
+  await shot(`desktop-1440p-${name}-dark`);
+}
+await page.getByRole("radio", { name: /Light/ }).check();
+
 // ---- Lock / unlock
 await page.setViewportSize({ width: 1920, height: 1080 });
 await page.getByRole("button", { name: "Lock" }).click();
@@ -216,6 +235,17 @@ for (const [label, w, hgt] of [["tablet-820", 820, 1180], ["mobile-390", 390, 84
   await page.getByRole("radio", { name: /Light/ }).check();
 }
 
+// ---- No page-level horizontal scroll on a phone (Phase 16F finding)
+await page.setViewportSize({ width: 390, height: 844 });
+for (const [label, link] of [["Overview", "Overview"], ["Market Intelligence", "Market Intelligence"], ["Alerts", "Alerts"], ["System Status", "System Status"]]) {
+  await page.getByRole("button", { name: /Menu/ }).click();
+  await page.getByRole("dialog").getByRole("link", { name: link }).click();
+  await page.getByRole("heading", { name: label, level: 1 }).waitFor();
+  await page.waitForTimeout(500);
+  const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  check(`mobile-390: ${label} has no page-level horizontal scroll`, sw <= iw, `${sw} > ${iw}`);
+}
+
 // ---- Reduced motion
 await page.emulateMedia({ reducedMotion: "reduce" });
 await page.getByRole("button", { name: /Menu/ }).click();
@@ -246,6 +276,18 @@ if (process.env.MIAS_QA_RESTART && process.env.MIAS_QA_TOKEN2) {
   await page.waitForURL(/\/signin$/);
   check("a reload requires sign-in again (the token was memory-only)", true);
   check("theme preference (non-sensitive) survives the reload", (await page.evaluate(() => document.documentElement.dataset.theme ?? "system")) === "light");
+}
+
+if (!(process.env.MIAS_QA_RESTART && process.env.MIAS_QA_TOKEN2)) {
+  // Without token rotation: a reload alone must require sign-in again (the token was memory-only).
+  await page.reload();
+  await page.waitForURL(/\/signin$/);
+  check("a reload requires sign-in again (the token was memory-only)", true);
+  await shot("desktop-1920-after-reload-signin");
+  await page.getByLabel("Read token").fill(TOKEN);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await h1().waitFor();
+  check("signing in again after the reload works", true);
 }
 
 const csp = await page.evaluate(() => window.__cspViolations);
