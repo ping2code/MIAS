@@ -97,32 +97,34 @@ export function OverviewPage() {
       <section className="card" aria-labelledby="ov-kinds">
         <h2 id="ov-kinds">Artifacts by kind</h2>
         <p className="hint">From the first history entry of each kind. Totals are not shown: the API has no count endpoint.</p>
-        <table className="table">
-          <thead>
-            <tr>
-              <th scope="col">Kind</th>
-              <th scope="col">Has data</th>
-              <th scope="col">Newest as of</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ARTIFACT_FAMILIES.map((family, index) => {
-              const q = heads[index];
-              const first = q?.data?.value.data[0];
-              return (
-                <tr key={family}>
-                  <th scope="row">
-                    <Link to={`/${family}`}>{FAMILY_LABEL[family]}</Link>
-                  </th>
-                  <td>{!q || q.isPending ? "Loading…" : q.data ? (first ? "Yes" : "None yet") : "Unavailable"}</td>
-                  <td>
-                    {first ? <Timestamp iso={first.as_of} /> : q?.isError && !q.data ? <ErrorPanel error={q.error} onRetry={() => void q.refetch()} /> : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">Kind</th>
+                <th scope="col">Has data</th>
+                <th scope="col">Newest as of</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ARTIFACT_FAMILIES.map((family, index) => {
+                const q = heads[index];
+                const first = q?.data?.value.data[0];
+                return (
+                  <tr key={family}>
+                    <th scope="row">
+                      <Link to={`/${family}`}>{FAMILY_LABEL[family]}</Link>
+                    </th>
+                    <td>{!q || q.isPending ? "Loading…" : q.data ? (first ? "Yes" : "None yet") : "Unavailable"}</td>
+                    <td>
+                      {first ? <Timestamp iso={first.as_of} /> : q?.isError && !q.data ? <ErrorPanel error={q.error} onRetry={() => void q.refetch()} /> : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
   );

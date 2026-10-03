@@ -127,29 +127,31 @@ export function StatusPage() {
               {health.readyObs === "unreachable" || health.readyObs === "failed" ? (
                 <p className="notice notice-compact">The latest readiness check did not get an answer; the checks below are from the previous one.</p>
               ) : null}
-              <table className="table table-compact">
-                <caption className="visually-hidden-text">Readiness checks</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Check</th>
-                    <th scope="col">Result</th>
-                    <th scope="col">Meaning</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {readyBody.checks.map((check) => (
-                    <tr key={check.name}>
-                      <th scope="row">
-                        <code className="nowrap">{check.name}</code>
-                      </th>
-                      <td>
-                        <DomainBadge kind="check" value={check.status} label={check.status === "pass" ? "Pass" : "Fail"} />
-                      </td>
-                      <td className="muted">{CHECK_DESCRIPTION[check.name] ?? "—"}</td>
+              <div className="table-wrap">
+                <table className="table table-compact">
+                  <caption className="visually-hidden-text">Readiness checks</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Check</th>
+                      <th scope="col">Result</th>
+                      <th scope="col">Meaning</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {readyBody.checks.map((check) => (
+                      <tr key={check.name}>
+                        <th scope="row">
+                          <code className="nowrap">{check.name}</code>
+                        </th>
+                        <td>
+                          <DomainBadge kind="check" value={check.status} label={check.status === "pass" ? "Pass" : "Fail"} />
+                        </td>
+                        <td className="muted">{CHECK_DESCRIPTION[check.name] ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </DetailSection>
@@ -205,29 +207,31 @@ export function StatusPage() {
           {version.isError && !version.data ? (
             <RequestError error={version.error} onRetry={() => void version.refetch()} />
           ) : version.data ? (
-            <table className="table table-compact">
-              <caption>Analytical formats</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Object</th>
-                  <th scope="col">Format version</th>
-                  <th scope="col">Rules version</th>
-                </tr>
-              </thead>
-              <tbody>
-                {version.data.value.analytical_formats.map((f) => (
-                  <tr key={`${f.object}:${f.format_version}`}>
-                    <th scope="row">{f.object}</th>
-                    <td>
-                      <code>{f.format_version}</code>
-                    </td>
-                    <td>
-                      <code>{f.rules_version}</code>
-                    </td>
+            <div className="table-wrap">
+              <table className="table table-compact">
+                <caption>Analytical formats</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Object</th>
+                    <th scope="col">Format version</th>
+                    <th scope="col">Rules version</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {version.data.value.analytical_formats.map((f) => (
+                    <tr key={`${f.object}:${f.format_version}`}>
+                      <th scope="row">{f.object}</th>
+                      <td>
+                        <code>{f.format_version}</code>
+                      </td>
+                      <td>
+                        <code>{f.rules_version}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <LoadingState label="Loading version…" />
           )}
