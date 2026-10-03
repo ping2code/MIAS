@@ -12,7 +12,7 @@ describe("session store (memory only)", () => {
     expect(s.getSnapshot().status).toBe("authenticating");
     expect(s.getToken()).toBeNull();
     s.authenticated(TEST_TOKEN, VERSION);
-    expect(s.getSnapshot()).toEqual({ status: "authenticated", version: VERSION, endedReason: null });
+    expect(s.getSnapshot()).toEqual({ status: "authenticated", version: VERSION, endedReason: null, locked: false });
     expect(s.getToken()).toBe(TEST_TOKEN);
   });
 

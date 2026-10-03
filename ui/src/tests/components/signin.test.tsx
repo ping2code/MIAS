@@ -98,7 +98,7 @@ describe("global 401 and sign-out", () => {
     );
     const { init } = renderApp("/");
     expect(await screen.findByRole("heading", { name: "Sign in to MIAS" })).toBeInTheDocument();
-    expect(await screen.findByText(/session ended because the read token was rejected/)).toBeInTheDocument();
+    expect(await screen.findByText("Your MIAS session ended. Sign in again to continue.")).toBeInTheDocument();
     expect(init.services.session.getToken()).toBeNull();
     expect(screen.getByTestId("location")).toHaveTextContent("/signin");
     await waitFor(() => {

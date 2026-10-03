@@ -61,13 +61,13 @@ describe("Overview", () => {
     );
     renderApp("/");
     const mi = await screen.findByRole("region", { name: "Latest Market Intelligence" });
-    expect(await within(mi).findByText("No data available yet")).toBeInTheDocument();
+    expect(await within(mi).findByText("No market intelligence is available yet.")).toBeInTheDocument();
     const alert = screen.getByRole("region", { name: "Latest Alert" });
-    expect(await within(alert).findByText("No data available yet")).toBeInTheDocument();
+    expect(await within(alert).findByText("No alerts are available yet.")).toBeInTheDocument();
     const oiRow = screen.getByRole("rowheader", { name: "Options Intelligence" }).closest("tr");
     expect(oiRow).not.toBeNull();
     await waitFor(() => {
-      expect(within(oiRow as HTMLElement).getByText("No data available yet")).toBeInTheDocument();
+      expect(within(oiRow as HTMLElement).getByText("None yet")).toBeInTheDocument();
     });
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -109,7 +109,7 @@ describe("placeholders and navigation", () => {
   it("shows the empty state on a placeholder with no data", async () => {
     server.use(...apiHandlers({ "history_head:trade-setups": emptyHistory() }));
     renderApp("/trade-setups");
-    expect(await screen.findByText("No data available yet")).toBeInTheDocument();
+    expect(await screen.findByText("No trade setups are available yet.")).toBeInTheDocument();
   });
 
   it("renders a 404 page for unknown routes", async () => {
@@ -126,6 +126,10 @@ describe("placeholders and navigation", () => {
     (document.activeElement as HTMLElement | null)?.blur();
     await user.tab();
     expect(screen.getByRole("link", { name: "Skip to main content" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("radio", { name: /System/ })).toHaveFocus(); // the theme radio group is one tab stop
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Lock" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
     await user.tab();

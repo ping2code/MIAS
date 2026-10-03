@@ -36,9 +36,9 @@ describe("isRetryable", () => {
 describe("describeError", () => {
   it("maps codes to safe messages without leaking details", () => {
     expect(describeError(http(409, "ambiguous_latest")).title).toBe("Ambiguous latest");
-    expect(describeError(http(500, "artifact_invalid")).title).toBe("Artifact failed integrity verification");
-    expect(describeError(http(401, "unauthorized")).title).toBe("Authentication required");
-    expect(describeError(new ApiError("timeout")).title).toBe("Request timed out");
+    expect(describeError(http(500, "artifact_invalid")).title).toBe("Integrity check failed");
+    expect(describeError(http(401, "unauthorized")).title).toBe("Session ended");
+    expect(describeError(new ApiError("timeout")).title).toBe("MIAS did not respond in time");
     expect(describeError(new Error("Bearer secret")).detail).not.toContain("secret");
   });
 
