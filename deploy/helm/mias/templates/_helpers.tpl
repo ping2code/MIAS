@@ -30,3 +30,23 @@ capabilities:
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
+
+
+{{- define "mias.collectorImage" -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" .Values.observability.collector.image.digest) -}}
+{{- fail "observability.collector.image.digest must be sha256:<64 hex>" -}}
+{{- end -}}
+{{ .Values.observability.collector.image.repository }}@{{ .Values.observability.collector.image.digest }}
+{{- end -}}
+
+{{- define "mias.otlpEndpoint" -}}
+{{- if .Values.observability.otlp.endpoint -}}
+{{ .Values.observability.otlp.endpoint }}
+{{- else -}}
+http://otel-collector.{{ .Release.Namespace }}.svc:4318
+{{- end -}}
+{{- end -}}
+
+{{- define "mias.collectorActive" -}}
+{{- if and .Values.observability.enabled .Values.observability.collector.enabled -}}true{{- end -}}
+{{- end -}}

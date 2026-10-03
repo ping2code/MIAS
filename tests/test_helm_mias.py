@@ -61,7 +61,11 @@ class HelmChartTests(unittest.TestCase):
             ("ServiceAccount", "mias-api"), ("ServiceAccount", "mias-publisher"), ("ConfigMap", "mias-api-config"),
             ("ConfigMap", "mias-publisher-config"), ("PersistentVolumeClaim", "mias-artifacts"),
             ("Deployment", "mias-api"), ("Deployment", "mias-publisher"), ("Service", "mias-api"),
-            ("Route", "mias-api"), ("NetworkPolicy", "mias-default-deny"), ("NetworkPolicy", "mias-api-allow-router")]))
+            ("Route", "mias-api"), ("NetworkPolicy", "mias-default-deny"), ("NetworkPolicy", "mias-api-allow-router"),
+            # Phase 15 observability (tests/test_helm_observability.py)
+            ("ServiceAccount", "otel-collector"), ("ConfigMap", "otel-collector-config"),
+            ("Deployment", "otel-collector"), ("Service", "otel-collector"), ("ServiceMonitor", "otel-collector"),
+            ("NetworkPolicy", "mias-api-egress-telemetry"), ("NetworkPolicy", "otel-collector-ingress")]))
         for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
                        "SecurityContextConstraints", "Job", "CronJob", "StatefulSet"):
             self.assertNotIn(banned, {k for k, _ in self.objs})
@@ -120,9 +124,10 @@ class HelmChartTests(unittest.TestCase):
                          ["persistentVolumeClaim"], {"claimName": "mias-artifacts"})
 
     def test_configuration_and_secret(self):
-        self.assertEqual(self.objs[("ConfigMap", "mias-api-config")]["data"], {
-            "MIAS_API_HOST": "0.0.0.0", "MIAS_API_PORT": "8080", "MIAS_API_DOCS_ENABLED": "false",
-            "MIAS_ARTIFACT_ROOT": "/var/lib/mias/artifacts"})
+        data = self.objs[("ConfigMap", "mias-api-config")]["data"]
+        self.assertEqual({k: v for k, v in data.items() if not k.startswith(("OTEL_", "MIAS_OBSERVABILITY", "MIAS_LOG"))},
+                         {"MIAS_API_HOST": "0.0.0.0", "MIAS_API_PORT": "8080", "MIAS_API_DOCS_ENABLED": "false",
+                          "MIAS_ARTIFACT_ROOT": "/var/lib/mias/artifacts"})          # Phase 15 keys: observability test
         self.assertEqual(self.objs[("ConfigMap", "mias-publisher-config")]["data"],
                          {"MIAS_ARTIFACT_ROOT": "/var/lib/mias/artifacts"})
         self.assertEqual(self.api_c["env"], [{"name": "MIAS_API_READ_TOKEN", "valueFrom": {
@@ -164,14 +169,17 @@ class HelmChartTests(unittest.TestCase):
             "policy-group.network.openshift.io/ingress": ""}}}], "ports": [{"protocol": "TCP", "port": 8080}]}])
         self.assertNotIn("0.0.0.0/0", self.text)
         self.assertNotIn("ipBlock", self.text)
-        for pod in (self.api, self.pub):                                         # both selected by the default deny
+        for pod in (self.api, self.pub, self.objs[("Deployment", "otel-collector")]):   # all under the default deny
             self.assertEqual(pod["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/part-of"], "mias")
         objs, _ = render("networkPolicy.enabled=false")
         self.assertFalse([k for k in objs if k[0] == "NetworkPolicy"])
+        objs, _ = render("observability.enabled=false")
+        self.assertEqual(sorted(k[1] for k in objs if k[0] == "NetworkPolicy"),
+                         ["mias-api-allow-router", "mias-default-deny"])
 
     def test_adoption_render_matches_raw_baseline(self):
         """With the 14E hardening switched off, the chart reproduces the raw 14C/14D manifests' specs."""
-        objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false")
+        objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false", "observability.enabled=false")
         pairs = {("Deployment", "mias-api"): "base/deployment.yaml", ("Service", "mias-api"): "base/service.yaml",
                  ("Route", "mias-api"): "base/route.yaml", ("ConfigMap", "mias-api-config"): "base/configmap.yaml",
                  ("PersistentVolumeClaim", "mias-artifacts"): "base/pvc.yaml",
@@ -181,7 +189,10 @@ class HelmChartTests(unittest.TestCase):
             with self.subTest(object=key):
                 raw = parse(open(os.path.join(RAW, path), encoding="utf-8").read())
                 field = "data" if key[0] == "ConfigMap" else "spec"
-                self.assertEqual(objs[key][field], raw[field])
+                rendered = objs[key][field]
+                if key[0] == "Deployment":               # Phase 15 adds only Helm's checksum/config bookkeeping
+                    rendered["template"]["metadata"].pop("annotations", None)
+                self.assertEqual(rendered, raw[field])
 
 
 if __name__ == "__main__":

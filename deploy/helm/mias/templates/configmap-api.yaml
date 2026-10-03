@@ -11,3 +11,15 @@ data:
   MIAS_API_PORT: "8080"
   MIAS_API_DOCS_ENABLED: {{ ternary "true" "false" .Values.api.docsEnabled | quote }}
   MIAS_ARTIFACT_ROOT: {{ .Values.artifact.mountPath }}
+  {{- if .Values.observability.enabled }}
+  MIAS_OBSERVABILITY_ENABLED: "true"
+  OTEL_SERVICE_NAME: {{ .Values.observability.serviceName | quote }}
+  OTEL_RESOURCE_ATTRIBUTES: {{ printf "deployment.environment=%s,k8s.namespace.name=%s" .Values.observability.environment .Release.Namespace | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ include "mias.otlpEndpoint" . | quote }}
+  OTEL_EXPORTER_OTLP_PROTOCOL: {{ .Values.observability.otlp.protocol | quote }}
+  OTEL_TRACES_EXPORTER: {{ ternary "otlp" "none" .Values.observability.traces.enabled | quote }}
+  OTEL_METRICS_EXPORTER: {{ ternary "otlp" "none" .Values.observability.metrics.enabled | quote }}
+  OTEL_LOGS_EXPORTER: "none"
+  OTEL_METRIC_EXPORT_INTERVAL: {{ .Values.observability.metrics.exportIntervalMs | quote }}
+  MIAS_LOG_FORMAT: {{ ternary "json" "text" .Values.observability.logging.json | quote }}
+  {{- end }}

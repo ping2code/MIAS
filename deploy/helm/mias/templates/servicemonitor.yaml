@@ -1,0 +1,20 @@
+{{- if and (include "mias.collectorActive" .) .Values.observability.collector.serviceMonitor.enabled }}
+# Scraped by OpenShift User Workload Monitoring (enabled on this cluster; ServiceMonitor CRD present).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: otel-collector
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.observability.collector.serviceMonitor.interval }}
+      scheme: http
+      path: /metrics
+{{- end }}

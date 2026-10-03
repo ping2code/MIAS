@@ -59,3 +59,41 @@ route:
 
 networkPolicy:
   enabled: true                       # default-deny for MIAS pods; the API accepts only router traffic on 8080
+
+observability:
+  # Phase 15: OpenTelemetry traces + metrics from mias-api over OTLP/HTTP to the in-namespace collector, and JSON
+  # logs on stdout. Telemetry is auxiliary: the API keeps serving if the collector is down.
+  enabled: true
+  serviceName: mias-api
+  environment: lab
+  logging:
+    json: true
+  traces:
+    enabled: true
+  metrics:
+    enabled: true
+    exportIntervalMs: 60000
+  otlp:
+    protocol: http/protobuf           # the only protocol the API image ships an exporter for
+    endpoint: ""                       # empty: the in-namespace collector Service (http://otel-collector.<ns>.svc:4318)
+  collector:
+    enabled: true
+    image:
+      # Upstream otel/opentelemetry-collector-contrib 0.161.0 (Docker Hub index sha256:b5cf9836…), mirrored to the
+      # internal registry (amd64 manifest). Digest-pinned like the API image.
+      repository: image-registry.openshift-image-registry.svc:5000/mias/otel-collector-contrib
+      digest: sha256:2d75615700fdecd6981f7b352f155f3f4db74d884d73f5d92049ad4b69b41aef
+      pullPolicy: IfNotPresent
+    # No trace backend exists in the cluster yet: traces end at a low-verbosity debug exporter (one summary line
+    # per sampled batch). Replace with a Tempo/OTLP exporter when a backend is approved.
+    traceDebugVerbosity: basic
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+    serviceMonitor:
+      enabled: true                   # User Workload Monitoring scrapes the collector's Prometheus exporter
+      interval: 30s

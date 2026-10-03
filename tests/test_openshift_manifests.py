@@ -1,7 +1,8 @@
 """Phase 14C: static invariants of the OpenShift baseline manifests (deploy/openshift/base). No cluster access.
 
-The manifests use plain block YAML only (mappings, lists, scalars, comments). A small strict parser is included so no
-YAML dependency is added; anything outside that subset fails the test rather than being misread.
+The manifests use plain block YAML only (mappings, lists, scalars, comments, and `|` literal blocks for ConfigMap
+file content). A small strict parser is included so no YAML dependency is added; anything outside that subset fails
+the test rather than being misread.
 """
 import os
 import re
@@ -56,7 +57,16 @@ def parse(text):
                 raise ValueError(f"expected a mapping entry: {lines[i][1]!r}")
             if key in out:
                 raise ValueError(f"duplicate key {key!r}")
-            if rest.strip():
+            if rest.strip() in ("|", "|-"):
+                # literal block scalar (ConfigMap file content): the more-indented lines, re-indented relatively
+                j = i + 1
+                while j < len(lines) and lines[j][0] > indent:
+                    j += 1
+                body = lines[i + 1:j]
+                base = body[0][0] if body else 0
+                out[key] = "\n".join(" " * (n - base) + t for n, t in body) + ("" if rest.strip() == "|-" else "\n")
+                i = j
+            elif rest.strip():
                 out[key], i = scalar(rest), i + 1
             elif i + 1 < len(lines) and lines[i + 1][0] > indent:
                 out[key], i = block(i + 1, lines[i + 1][0])
@@ -196,7 +206,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(self.deployment["spec"]["selector"]["matchLabels"], {"app.kubernetes.io/name": "mias-api"})
 
     def test_parser_is_strict(self):
-        for bad in ("a: {b: 1}", "a:\n\tb: 1", "a: 1\na: 2", "a: [1, 2]", "a: |\n  x"):
+        for bad in ("a: {b: 1}", "a:\n\tb: 1", "a: 1\na: 2", "a: [1, 2]", "a: >\n  x"):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError):
                     parse(bad)
