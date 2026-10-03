@@ -1,7 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet } from "react-router";
-import { liveQuery, readyQuery } from "../api/queries";
-import { useApiClient, useServices, useSession } from "../app/context";
+import { useServices, useSession } from "../app/context";
+import { API_STATUS_LABEL } from "../lib/apiStatus";
+import { useHealth } from "../pages/status/useHealth";
 import { UI_BUILD } from "../lib/buildInfo";
 import { clearPages } from "../lib/cursorTrail";
 import { StatusBadge, type Health } from "./StatusBadge";
@@ -16,37 +17,30 @@ export const NAV_ITEMS: readonly { to: string; label: string }[] = [
   { to: "/status", label: "System Status" },
 ];
 
+/**
+ * The global API indicator: Checking, Ready, Not ready, Degraded or Offline, derived deterministically from the latest
+ * liveness and readiness observations (lib/apiStatus.ts). "Offline" needs both health endpoints unreachable, each
+ * after the client's own retries, so one transient failure never shows it.
+ */
 function ApiStatus() {
-  const client = useApiClient();
-  const live = useQuery(liveQuery(client));
-  const ready = useQuery(readyQuery(client));
-  let health: Health = "unknown";
-  let text = "API status unknown";
-  if (live.isError) {
-    health = "down";
-    text = "API unreachable";
-  } else if (ready.data) {
-    health = ready.data.value.status === "ready" ? "ok" : "degraded";
-    text = ready.data.value.status === "ready" ? "API ready" : "API not ready";
-  } else if (ready.isError) {
-    health = "down";
-    text = "API readiness unavailable";
-  }
+  const { status } = useHealth();
+  const health: Health = status === "ready" ? "ok" : status === "checking" ? "unknown" : status === "offline" ? "down" : "degraded";
   return (
-    <span aria-live="polite">
-      <StatusBadge health={health} text={text} />
+    <span aria-live="polite" data-api-status={status}>
+      <StatusBadge health={health} text={`API: ${API_STATUS_LABEL[status]}`} />
     </span>
   );
 }
 
 export function AppShell() {
-  const { session } = useServices();
+  const { session, diagnostics } = useServices();
   const queryClient = useQueryClient();
   const snapshot = useSession();
   const signOut = (): void => {
     session.signOut();
     queryClient.clear();
     clearPages();
+    diagnostics.reset();
   };
   return (
     <div className="shell">
