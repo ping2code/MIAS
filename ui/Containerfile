@@ -1,0 +1,56 @@
+# mias-ui container (Phase 16B): the static dashboard plus a same-origin nginx proxy to mias-api.
+#
+#   podman build --build-arg MIAS_UI_BUILD_ID=$(git rev-parse HEAD) \
+#       -t mias-ui:$(git rev-parse --short=12 HEAD) -f ui/Containerfile ui
+#
+# Base images are pinned by digest (Red Hat UBI 9). The builder runs npm ci, typecheck, lint, the Vite build and the
+# bundle audit. The runtime image holds only dist/ and the nginx configuration: no Node, npm, source, tests or
+# source maps, and no token, key or secret of any kind (the browser supplies its own Authorization header).
+
+ARG UBI_NODEJS=registry.access.redhat.com/ubi9/nodejs-22@sha256:f7a0b11c9a55c9e1e05983619c6c4884359ca423fccbc4fa7a04d2fc0ee2d869
+ARG UBI_NGINX=registry.access.redhat.com/ubi9/nginx-124@sha256:dd82c493608da2526d05491c5ada4fb3b333d884dac004268150997bf40e4148
+
+# --- builder ---------------------------------------------------------------------------------------------------------
+FROM ${UBI_NODEJS} AS builder
+ARG MIAS_UI_BUILD_ID=unknown
+USER 0
+WORKDIR /build
+COPY package.json package-lock.json ./
+# Exact lockfile install; no dependency lifecycle scripts.
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts eslint.config.js index.html ./
+COPY public ./public
+COPY scripts ./scripts
+COPY src ./src
+RUN npm run typecheck \
+ && npm run lint \
+ && MIAS_UI_BUILD_ID="${MIAS_UI_BUILD_ID}" npm run build \
+ && node scripts/audit-bundle.mjs dist \
+ && test -z "$(find dist -name '*.map')"
+
+# --- runtime ---------------------------------------------------------------------------------------------------------
+FROM ${UBI_NGINX} AS runtime
+ARG MIAS_UI_BUILD_ID=unknown
+ARG MIAS_SOURCE=https://github.com/ping2code/MIAS
+# root-owned, world-readable, not writable: works for any UID (OpenShift arbitrary UID in group 0).
+COPY --from=builder --chown=0:0 --chmod=0755 /build/dist /opt/mias-ui/html
+COPY --chown=0:0 --chmod=0644 nginx/nginx.conf.template nginx/security-headers.conf nginx/proxy.conf /opt/mias-ui/etc/
+COPY --chown=0:0 --chmod=0755 nginx/entrypoint.sh /usr/local/bin/mias-ui-entrypoint
+USER 0
+RUN find /opt/mias-ui/html -type f -exec chmod 0644 {} + \
+ && rm -rf /opt/app-root/src/nginx-start /opt/app-root/etc/nginx.d/* /opt/app-root/etc/nginx.default.d/*
+LABEL org.opencontainers.image.title="mias-ui" \
+      org.opencontainers.image.description="MIAS read-only dashboard (static UI + same-origin proxy to mias-api)" \
+      org.opencontainers.image.revision="${MIAS_UI_BUILD_ID}" \
+      org.opencontainers.image.source="${MIAS_SOURCE}" \
+      org.opencontainers.image.base.name="registry.access.redhat.com/ubi9/nginx-124"
+ENV MIAS_UI_API_UPSTREAM=mias-api.mias.svc.cluster.local:8080 \
+    MIAS_UI_BUILD_ID=${MIAS_UI_BUILD_ID}
+WORKDIR /opt/mias-ui
+EXPOSE 8080
+# Graceful shutdown: SIGQUIT drains connections; SIGTERM (Kubernetes) is a clean fast stop.
+STOPSIGNAL SIGQUIT
+# Nominal non-root user; OpenShift replaces it with an arbitrary UID (group 0). Nothing depends on this value.
+USER 1001
+ENTRYPOINT ["/usr/local/bin/mias-ui-entrypoint"]
+CMD []

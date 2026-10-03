@@ -1,0 +1,107 @@
+# mias-ui nginx configuration (Phase 16B). Rendered at start-up into /tmp/nginx/nginx.conf by entrypoint.sh, which
+# substitutes only @MIAS_UI_RESOLVER@ and @MIAS_UI_API_UPSTREAM@ (both validated). No token, key or secret exists
+# here: the browser's own Authorization header is passed through unchanged and never logged or injected.
+worker_processes 1;
+pid /tmp/nginx/nginx.pid;
+error_log stderr warn;
+
+events {
+    worker_connections 512;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Writable state lives only under /tmp (read-only root filesystem).
+    client_body_temp_path /tmp/nginx/client_body;
+    proxy_temp_path /tmp/nginx/proxy;
+    fastcgi_temp_path /tmp/nginx/fastcgi;
+    uwsgi_temp_path /tmp/nginx/uwsgi;
+    scgi_temp_path /tmp/nginx/scgi;
+
+    server_tokens off;
+    sendfile on;
+    tcp_nopush on;
+    keepalive_timeout 65;
+    client_max_body_size 16k;
+    charset utf-8;
+    charset_types text/css application/javascript image/svg+xml;
+
+    # Sanitized JSON access log: no headers (no Authorization, no Cookie), no query string, no body.
+    log_format mias_ui escape=json '{"timestamp":"$time_iso8601","service.name":"mias-ui",'
+        '"request_id":"$http_x_request_id","http.request.method":"$request_method","url.path":"$uri",'
+        '"http.response.status_code":$status,"bytes":$body_bytes_sent,"duration_ms":$request_time,'
+        '"upstream_status":"$upstream_status"}';
+    access_log /dev/stdout mias_ui;
+
+    # nginx does not use resolv.conf search domains: the upstream is a fully qualified Service name, resolved at
+    # request time so the UI starts (and /healthz answers) even while the API is unresolvable.
+    resolver @MIAS_UI_RESOLVER@ valid=30s ipv6=off;
+    resolver_timeout 5s;
+
+    gzip on;
+    gzip_types text/css application/javascript image/svg+xml;
+    gzip_min_length 1024;
+
+    server {
+        listen 8080 default_server;
+        server_name _;
+        root /opt/mias-ui/html;
+        index index.html;
+        absolute_redirect off;
+
+        set $mias_api "http://@MIAS_UI_API_UPSTREAM@";
+
+        include /opt/mias-ui/etc/security-headers.conf;
+
+        # Static liveness/readiness for the UI itself (never proxied; independent of the API).
+        location = /healthz {
+            access_log off;
+            default_type text/plain;
+            include /opt/mias-ui/etc/security-headers.conf;
+            add_header Cache-Control "no-store" always;
+            return 200 "ok\n";
+        }
+
+        # Same-origin proxy to mias-api. Request headers (Authorization, X-Request-ID) pass through unchanged;
+        # response status, body and headers (ETag, Cache-Control, X-Request-ID) are preserved; nothing is cached.
+        location /api/v1/ {
+            include /opt/mias-ui/etc/proxy.conf;
+        }
+
+        location /health/ {
+            include /opt/mias-ui/etc/proxy.conf;
+        }
+
+        # No SPA fallback for API-looking paths outside the proxied prefixes.
+        location /api {
+            default_type text/plain;
+            return 404 "not found\n";
+        }
+
+        location = /health {
+            default_type text/plain;
+            return 404 "not found\n";
+        }
+
+        # Content-hashed assets: immutable; a missing asset is a 404, never index.html.
+        location /assets/ {
+            include /opt/mias-ui/etc/security-headers.conf;
+            add_header Cache-Control "public, max-age=31536000, immutable" always;
+            try_files $uri =404;
+        }
+
+        location = /index.html {
+            include /opt/mias-ui/etc/security-headers.conf;
+            add_header Cache-Control "no-store" always;
+        }
+
+        # SPA fallback for client-side routes.
+        location / {
+            include /opt/mias-ui/etc/security-headers.conf;
+            add_header Cache-Control "no-cache" always;
+            try_files $uri /index.html;
+        }
+    }
+}
