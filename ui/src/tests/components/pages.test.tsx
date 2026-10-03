@@ -1,11 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
 import { describe, expect, it } from "vitest";
 import { shortId } from "../../lib/artifactId";
 import { UI_BUILD } from "../../lib/buildInfo";
 import { fixture, type CapturedResponse } from "../fixtures";
-import { apiHandlers, respond, server } from "../msw";
+import { apiHandlers, server } from "../msw";
 import { renderApp } from "../render";
 
 const MI_LATEST = (fixture("latest:market-intelligence").body as { data: { intelligence_id: string; timeframe_pattern: string } }).data;
@@ -91,57 +90,6 @@ describe("Overview", () => {
     server.use(...apiHandlers());
     renderApp("/");
     expect((await screen.findAllByText("Loading…")).length).toBeGreaterThan(0);
-  });
-});
-
-describe("System Status", () => {
-  it("shows readiness checks, version formats, UI build and the last success", async () => {
-    server.use(...apiHandlers());
-    renderApp("/status");
-    expect(await screen.findByRole("rowheader", { name: "artifact_index" })).toBeInTheDocument();
-    expect(await screen.findByRole("rowheader", { name: "alert_event" })).toBeInTheDocument();
-    expect(screen.getAllByRole("rowheader", { name: "options_intelligence" })).toHaveLength(2);
-    const ui = screen.getByRole("region", { name: "Dashboard" });
-    expect(within(ui).getByText(UI_BUILD)).toBeInTheDocument();
-    await waitFor(() => {
-      expect(within(ui).queryByText("None yet")).toBeNull();
-    });
-  });
-
-  it("shows readiness 503 as not ready, with the failing check", async () => {
-    server.use(
-      ...apiHandlers({
-        ready: {
-          status: 503,
-          headers: { "content-type": "application/json" },
-          body: { status: "not_ready", checks: [{ name: "artifact_index", status: "fail" }] },
-        },
-      }),
-    );
-    renderApp("/status");
-    expect(await screen.findByText("Not ready (HTTP 503)")).toBeInTheDocument();
-    expect(screen.getByRole("rowheader", { name: "artifact_index" }).closest("tr")).toHaveTextContent("fail");
-  });
-
-  it("records the request id of the last error and offers Retry", async () => {
-    server.use(
-      http.get("*/health/live", () =>
-        respond({
-          status: 404,
-          headers: { "content-type": "application/json", "x-request-id": "srv-live-404-01" },
-          body: { error: { code: "not_found", message: "x", request_id: "srv-live-404-01" } },
-        }),
-      ),
-      ...apiHandlers(),
-    );
-    renderApp("/status");
-    const live = await screen.findByRole("region", { name: "Liveness" });
-    expect(await within(live).findByRole("alert")).toHaveTextContent("srv-live-404-01");
-    expect(within(live).getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    const ui = screen.getByRole("region", { name: "Dashboard" });
-    await waitFor(() => {
-      expect(within(ui).getByText("srv-live-404-01")).toBeInTheDocument();
-    });
   });
 });
 

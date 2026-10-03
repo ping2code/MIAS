@@ -106,6 +106,18 @@ def main():
         tie = {"market-intelligence": [ts.market_intelligence("all_bullish"), ts.market_intelligence("all_bearish")]}
         with TestClient(app_for(tmp, tie)) as client:
             capture(client, out, "market-intelligence:latest_ambiguous", "/api/v1/market-intelligence/latest?symbol=META")
+    with tempfile.TemporaryDirectory() as tmp:                         # health endpoints: ready, and a real 503
+        with TestClient(app_for(tmp, objects)) as client:
+            capture(client, out, "health:live", "/health/live")
+            capture(client, out, "health:ready", "/health/ready")
+            capture(client, out, "version", "/api/v1/version")
+    with tempfile.TemporaryDirectory() as tmp:                         # receipt_root configured but gone: a real 503
+        receipts = os.path.join(tmp, "receipts")
+        os.mkdir(receipts)
+        app = app_for(tmp, objects, receipts)                          # settings require the directory at load time
+        os.rmdir(receipts)
+        with TestClient(app) as client:
+            capture(client, out, "health:ready_not_ready", "/health/ready")
     json.dump(out, sys.stdout, indent=1, sort_keys=True)
     sys.stdout.write("\n")
 

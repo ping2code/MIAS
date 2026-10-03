@@ -37,6 +37,8 @@ const CHECKS = [
   [/document\.cookie/, "document.cookie"],
   [/fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg\.com|cdnjs|googletagmanager|google-analytics|segment\.io|sentry/i, "CDN/analytics host"],
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "private key"],
+  // Phase 16D: the browser must never call infrastructure APIs directly.
+  [/\/api\/v1\/query(_range)?\b|thanos-querier|:9090\b|:9091\b|:4317\b|:4318\b|:8889\b|\/apis\/[a-z.]+\/v1|openshift-monitoring|\/v1\/traces|\/v1\/metrics/, "infrastructure endpoint"],
   [/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./, "JWT-like string"],
 ];
 

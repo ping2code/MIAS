@@ -771,6 +771,71 @@
   "request": "/api/v1/alerts?as_of_from=2026-09-24T00:00:00Z&as_of_to=2026-09-25T23:59:59Z",
   "status": 200
  },
+ "health:live": {
+  "body": {
+   "status": "live"
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/health/live",
+  "status": 200
+ },
+ "health:ready": {
+  "body": {
+   "checks": [
+    {
+     "name": "settings",
+     "status": "pass"
+    },
+    {
+     "name": "artifact_root",
+     "status": "pass"
+    },
+    {
+     "name": "artifact_index",
+     "status": "pass"
+    }
+   ],
+   "status": "ready"
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/health/ready",
+  "status": 200
+ },
+ "health:ready_not_ready": {
+  "body": {
+   "checks": [
+    {
+     "name": "settings",
+     "status": "pass"
+    },
+    {
+     "name": "artifact_root",
+     "status": "pass"
+    },
+    {
+     "name": "artifact_index",
+     "status": "pass"
+    },
+    {
+     "name": "receipt_root",
+     "status": "fail"
+    }
+   ],
+   "status": "not_ready"
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/health/ready",
+  "status": 503
+ },
  "market-intelligence:bad_cursor": {
   "body": {
    "error": {
@@ -1777,6 +1842,51 @@
    "x-request-id": "ui-000000000000000000000001"
   },
   "request": "/api/v1/market-intelligence?as_of_from=2026-09-24T00:00:00Z&as_of_to=2026-09-25T23:59:59Z",
+  "status": 200
+ },
+ "version": {
+  "body": {
+   "analytical_formats": [
+    {
+     "format_version": "phase8-v1",
+     "object": "market_intelligence",
+     "rules_version": "phase8-rules-v1"
+    },
+    {
+     "format_version": "phase9-v1",
+     "object": "options_intelligence",
+     "rules_version": "phase9-rules-v1"
+    },
+    {
+     "format_version": "phase9-v2",
+     "object": "options_intelligence",
+     "rules_version": "phase9-rules-v2"
+    },
+    {
+     "format_version": "phase10-v1",
+     "object": "trade_setup_assessment",
+     "rules_version": "phase10-rules-v1"
+    },
+    {
+     "format_version": "phase10-invalidation-v1",
+     "object": "invalidation_check",
+     "rules_version": "phase10-invalidation-rules-v1"
+    },
+    {
+     "format_version": "phase12-v1",
+     "object": "alert_event",
+     "rules_version": "phase12-rules-v1"
+    }
+   ],
+   "api_version": "v1",
+   "build": "phase13e-test",
+   "service": "mias-api"
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/version",
   "status": 200
  }
 }
