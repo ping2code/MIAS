@@ -1,11 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useId, useState, type SubmitEvent } from "react";
+import { useEffect, useId, useRef, useState, type SubmitEvent } from "react";
 import { Navigate, useLocation } from "react-router";
 import { ApiError } from "../api/errors";
 import { queryKeys } from "../api/queries";
 import { useApiClient, useServices, useSession } from "../app/context";
 import { PageHeading } from "../components/PageHeading";
-import { safeReturnPath } from "./RequireAuth";
+import { safeReturnPath } from "./returnPath";
 
 type Problem = { kind: "invalid" } | { kind: "backend"; requestId: string | null } | { kind: "empty" };
 
@@ -21,8 +21,13 @@ export function SignInPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [token, setToken] = useState("");
   const [problem, setProblem] = useState<Problem | null>(null);
+  useEffect(() => {
+    // After a failed attempt, return focus to the field; the alert is announced and linked via aria-describedby.
+    if (problem) inputRef.current?.focus();
+  }, [problem]);
   const from = safeReturnPath((location.state as { from?: unknown } | null)?.from);
 
   if (snapshot.status === "authenticated") return <Navigate to={from} replace />;
@@ -60,9 +65,12 @@ export function SignInPage() {
       <form className="signin-card" onSubmit={(e) => void submit(e)} noValidate>
         <PageHeading title="Sign in to MIAS" />
         {snapshot.endedReason === "expired" ? (
-          <p className="notice" role="status">
-            Your session ended because the read token was rejected. Sign in again.
-          </p>
+          <div className="notice notice-session" role="alert">
+            <p>
+              <strong>Your MIAS session ended. Sign in again to continue.</strong>
+            </p>
+            {from !== "/" ? <p className="hint">You will return to the page you were on.</p> : null}
+          </div>
         ) : null}
         {snapshot.endedReason === "signed_out" ? (
           <p className="notice" role="status">
@@ -71,6 +79,7 @@ export function SignInPage() {
         ) : null}
         <label htmlFor={inputId}>Read token</label>
         <input
+          ref={inputRef}
           id={inputId}
           name="mias-read-token"
           type="password"
@@ -80,7 +89,7 @@ export function SignInPage() {
           value={token}
           disabled={busy}
           aria-invalid={problem?.kind === "invalid" || problem?.kind === "empty"}
-          aria-describedby={`${inputId}-help`}
+          aria-describedby={problem ? `${inputId}-help ${inputId}-problem` : `${inputId}-help`}
           onChange={(e) => {
             setToken(e.target.value);
           }}
@@ -89,12 +98,12 @@ export function SignInPage() {
           The token is kept in memory for this tab only. Refreshing the page signs you out.
         </p>
         {problem ? (
-          <div className="state state-error" role="alert">
+          <div className="state state-error" role="alert" id={`${inputId}-problem`}>
             {problem.kind === "invalid" ? <p>Invalid or expired read token</p> : null}
             {problem.kind === "empty" ? <p>Enter the read token.</p> : null}
             {problem.kind === "backend" ? (
               <>
-                <p>The MIAS API is temporarily unavailable. Your token was not rejected; try again shortly.</p>
+                <p>MIAS is temporarily unavailable. Your token was not rejected — try again shortly.</p>
                 {problem.requestId ? (
                   <p>
                     Request id <code>{problem.requestId}</code>
