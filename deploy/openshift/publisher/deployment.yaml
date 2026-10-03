@@ -1,0 +1,85 @@
+# mias-publisher: an operator toolbox, scaled to zero by default. It runs an inert process; the operator copies a
+# sealed artifact into /tmp with `oc cp` and publishes it with `python -m artifact_store.runner publish`, the only
+# writer to the store. Same image (digest) as mias-api. mias-artifacts is RWO, so the pod must run on the API pod's
+# node: required podAffinity on the API's stable label and the hostname topology (no hard-coded node).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mias-publisher
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-publisher
+    app.kubernetes.io/part-of: mias
+    app.kubernetes.io/component: publisher
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mias-publisher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mias-publisher
+        app.kubernetes.io/part-of: mias
+        app.kubernetes.io/component: publisher
+        app.kubernetes.io/version: f14ecd722428
+    spec:
+      serviceAccountName: mias-publisher
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 5
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: mias-api
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mias-publisher
+          # Same immutable digest as mias-api (mias-api:f14ecd722428).
+          image: image-registry.openshift-image-registry.svc:5000/mias/mias-api@sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a
+          imagePullPolicy: IfNotPresent
+          # Inert: no API, collector, scheduler or delivery process. Publishing happens only through `oc exec`.
+          command:
+            - sleep
+            - infinity
+          envFrom:
+            - configMapRef:
+                name: mias-publisher-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: artifacts
+              mountPath: /var/lib/mias/artifacts
+              readOnly: false
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: mias-artifacts
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

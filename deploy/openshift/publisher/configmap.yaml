@@ -1,0 +1,11 @@
+# The publisher needs only the artifact root. No API settings, tokens, receipts or provider configuration.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mias-publisher-config
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-publisher
+    app.kubernetes.io/part-of: mias
+data:
+  MIAS_ARTIFACT_ROOT: /var/lib/mias/artifacts
