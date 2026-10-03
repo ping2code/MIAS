@@ -31,7 +31,6 @@ const CHECKS = [
   [/Bearer\s+[A-Za-z0-9._~+\/=-]{16,}/, "literal bearer token"],
   [/MIAS_API_(READ|OPERATOR)_TOKEN/, "API token variable name"],
   [/VITE_[A-Z0-9_]+/, "Vite env variable"],
-  [/\blocalStorage\b/, "localStorage"],
   [/\bsessionStorage\b/, "sessionStorage"],
   [/\bindexedDB\b/, "indexedDB"],
   [/document\.cookie/, "document.cookie"],
@@ -49,6 +48,14 @@ for (const file of files) {
   const text = readFileSync(file, "utf8");
   for (const [pattern, label] of CHECKS) {
     if (pattern.test(text)) findings.push(`${rel}: ${label}`);
+  }
+  // localStorage is allowed for exactly one purpose: the non-sensitive theme preference under the literal key
+  // "mias-ui-theme" (Phase 16E). Every other use — any other key, a computed key, or a bare reference — fails.
+  if (rel.endsWith(".js")) {
+    for (const m of text.matchAll(/localStorage/g)) {
+      const after = text.slice(m.index + "localStorage".length, m.index + "localStorage".length + 40);
+      if (!/^\.(getItem|setItem|removeItem)\(["'`]mias-ui-theme["'`]/.test(after)) findings.push(`${rel}: localStorage use other than the theme key`);
+    }
   }
   for (const match of text.matchAll(/https?:\/\/[^\s"'`)<>\\]+/g)) {
     const url = match[0];
@@ -77,4 +84,4 @@ if (findings.length > 0) {
   for (const f of findings) console.log(`  - ${f}`);
   process.exit(1);
 }
-console.log("PASS: no source maps, tokens, storage APIs, inline scripts/styles, CDN/analytics or unexpected external URLs");
+console.log("PASS: no source maps, tokens, auth/session storage (localStorage only for the theme key), inline scripts/styles, CDN/analytics, infrastructure endpoints or unexpected external URLs");
