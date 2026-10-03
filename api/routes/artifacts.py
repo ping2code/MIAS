@@ -15,6 +15,7 @@ For each kind (``market-intelligence``, ``options-intelligence``, ``trade-setups
 
 Handlers only parse, call the store and project; they hold no analytical logic.
 """
+from contextlib import nullcontext
 import json
 import os
 
@@ -52,6 +53,12 @@ def _checked_id(artifact_id):
     return artifact_id
 
 
+def _span(request, kind, operation):
+    """The Phase 15 artifact-lookup span (kind, operation, closed result); a no-op without telemetry."""
+    telemetry = getattr(request.app.state, "telemetry", None)
+    return telemetry.artifact_span(kind, operation) if telemetry is not None else nullcontext()
+
+
 def _view(store, kind, entry):
     return PROJECTIONS[kind](json.loads(store.read_bytes(entry)))
 
@@ -62,7 +69,7 @@ def _register(router, path, kind, item_model, list_model):
     def history(request: Request):
         params = query(request, ("symbol", "as_of_from", "as_of_to", "limit", "cursor"))
         store = store_for(request)
-        with store_errors():
+        with _span(request, kind, "history"), store_errors():
             limit = query_limit(limit_param(params.get("limit")))
             entries, cursor = store.snapshot().history(
                 kind, symbol=params.get("symbol"), as_of_from=params.get("as_of_from"),
@@ -73,21 +80,21 @@ def _register(router, path, kind, item_model, list_model):
     def latest(request: Request):
         params = query(request, ("symbol", "as_of"), required=("symbol",))
         store = store_for(request)
-        with store_errors():
+        with _span(request, kind, "latest"), store_errors():
             entry = store.snapshot().latest(kind, params["symbol"], params.get("as_of"))
             return {"data": _view(store, kind, entry), "meta": _meta(request, view_name)}
 
     def get(request: Request, artifact_id: str):
         query(request, ())
         store = store_for(request)
-        with store_errors():
+        with _span(request, kind, "get"), store_errors():
             entry = store.snapshot().get(kind, _checked_id(artifact_id))
             return {"data": _view(store, kind, entry), "meta": _meta(request, view_name)}
 
     def canonical(request: Request, artifact_id: str):
         query(request, ())
         store = store_for(request)
-        with store_errors():
+        with _span(request, kind, "canonical"), store_errors():
             entry = store.snapshot().get(kind, _checked_id(artifact_id))
             raw = store.read_bytes(entry)
         return Response(content=raw, media_type="application/json",

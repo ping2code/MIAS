@@ -11,6 +11,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import threading
+import time
 
 from artifact_store.errors import (AmbiguousLatest, ArtifactInvalid, ArtifactStoreError, InvalidQuery, NotFound,
                                    StoreUnavailable)
@@ -64,22 +65,33 @@ def store_for(request):
 
 
 class Refresher:
-    """Periodic background refresh (daemon thread); stopped at shutdown. No filesystem watcher."""
+    """Periodic background refresh (daemon thread); stopped at shutdown. No filesystem watcher. Each refresh is
+    reported to telemetry (counter, span, and a log line on failure or change); telemetry never affects the refresh."""
 
-    def __init__(self, store, interval):
-        self.store, self.interval = store, interval
+    def __init__(self, store, interval, telemetry=None):
+        self.store, self.interval, self.telemetry = store, interval, telemetry
+        self.last_success = None              # time.monotonic() of the last successful refresh
         self._stop = threading.Event()
         self._thread = None
 
+    def refresh(self):
+        started = time.time_ns()
+        ok = self.store.refresh()
+        if ok:
+            self.last_success = time.monotonic()
+        if self.telemetry is not None:
+            self.telemetry.record_refresh(ok, started)
+        return ok
+
     def start(self):
-        self.store.refresh()
+        self.refresh()
         if self.interval and self.interval > 0:
             self._thread = threading.Thread(target=self._run, name="mias-artifact-refresh", daemon=True)
             self._thread.start()
 
     def _run(self):
         while not self._stop.wait(self.interval):
-            self.store.refresh()
+            self.refresh()
 
     def stop(self):
         self._stop.set()

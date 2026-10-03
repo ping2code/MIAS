@@ -24,3 +24,16 @@ opentelemetry-api==1.45.0
 anyio==4.15.1
 h11==0.16.0
 click==8.5.0
+#
+# Observability (Phase 15): OpenTelemetry SDK + OTLP/HTTP exporter. Imported lazily, only when
+# MIAS_OBSERVABILITY_ENABLED=true. No grpcio, no requests, no contrib instrumentations.
+opentelemetry-sdk==1.45.0
+opentelemetry-exporter-otlp-proto-http==1.45.0
+opentelemetry-exporter-otlp-proto-common==1.45.0
+opentelemetry-exporter-otlp-common==0.66b0
+opentelemetry-exporter-http-transport==0.66b0
+opentelemetry-proto==1.45.0
+opentelemetry-semantic-conventions==0.66b0
+googleapis-common-protos==1.75.5
+protobuf==7.36.2
+urllib3==2.8.0

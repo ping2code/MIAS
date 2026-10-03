@@ -11,7 +11,8 @@ starts: then it builds the index once and refreshes it every ``refresh_interval`
 - ``/docs`` and ``/openapi.json`` only when ``docs_enabled`` (ReDoc is off).
 
 Debug is off and there's no CORS middleware. ``readiness_checks`` replaces the default checks. ``clock`` supplies
-the runtime ``served_at`` of views (API metadata only).
+the runtime ``served_at`` of views (API metadata only). ``telemetry`` (Phase 15, ``api.observability.Telemetry``)
+defaults to a disabled instance: OpenTelemetry API no-ops, nothing exported.
 """
 from contextlib import asynccontextmanager
 
@@ -20,6 +21,7 @@ from fastapi import Depends, FastAPI
 from api.artifacts import REFRESH_INTERVAL_SECONDS, Refresher, utc_now
 from api.auth import require_read
 from api.errors import install_error_handlers
+from api.observability import Telemetry
 from api.readiness import ReadinessCheck, default_checks
 from api.request_context import RequestContextMiddleware
 from api.routes import artifacts, health, meta
@@ -31,7 +33,7 @@ TITLE = "MIAS API"
 
 
 def create_app(settings, *, readiness_checks=None, artifact_store=None, clock=None,
-               refresh_interval=REFRESH_INTERVAL_SECONDS):
+               refresh_interval=REFRESH_INTERVAL_SECONDS, telemetry=None):
     if not isinstance(settings, ApiSettings):
         raise TypeError("create_app needs validated ApiSettings")
     if artifact_store is None and settings.artifact_root is not None:
@@ -42,9 +44,12 @@ def create_app(settings, *, readiness_checks=None, artifact_store=None, clock=No
     if not all(isinstance(c, ReadinessCheck) for c in checks) or len({c.name for c in checks}) != len(checks):
         raise ValueError("readiness checks must be uniquely named ReadinessCheck objects")
 
+    telemetry = telemetry if telemetry is not None else Telemetry(service_version=settings.build_id)
+
     @asynccontextmanager
     async def lifespan(app):
-        refresher = Refresher(artifact_store, refresh_interval) if artifact_store is not None else None
+        refresher = Refresher(artifact_store, refresh_interval, telemetry) if artifact_store is not None else None
+        telemetry.start(artifact_store, refresher)
         if refresher is not None:
             refresher.start()
         try:
@@ -52,6 +57,7 @@ def create_app(settings, *, readiness_checks=None, artifact_store=None, clock=No
         finally:
             if refresher is not None:
                 refresher.stop()
+            telemetry.shutdown()
 
     app = FastAPI(title=TITLE, version=meta.API_VERSION, debug=False, lifespan=lifespan,
                   docs_url="/docs" if settings.docs_enabled else None, redoc_url=None,
@@ -61,6 +67,7 @@ def create_app(settings, *, readiness_checks=None, artifact_store=None, clock=No
     app.state.readiness_checks = checks
     app.state.artifact_store = artifact_store
     app.state.clock = clock or utc_now
+    app.state.telemetry = telemetry
     install_error_handlers(app)
     app.include_router(health.router)
     app.include_router(meta.router, dependencies=[Depends(require_read)])
