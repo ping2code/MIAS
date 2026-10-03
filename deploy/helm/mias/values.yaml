@@ -98,6 +98,12 @@ observability:
       enabled: true                   # User Workload Monitoring scrapes the collector's Prometheus exporter
       interval: 30s
 
+monitoring:
+  alerts:
+    # Hardening Task 1: the mias-alerts PrometheusRule for User Workload Monitoring (Thanos Ruler). Additive; no
+    # workload change. Thresholds are fixed in templates/prometheusrule.yaml (documented in docs/hardening-uwm-alerting.md).
+    enabled: true
+
 ui:
   # Phase 16B: the read-only dashboard (static files + a same-origin nginx proxy to the in-namespace mias-api
   # Service). Deployed in Phase 16F. There is no token anywhere in the chart: each browser user enters the read

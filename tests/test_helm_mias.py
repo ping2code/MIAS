@@ -71,7 +71,9 @@ class HelmChartTests(unittest.TestCase):
             # Phase 16F: the dashboard, enabled by default (tests/test_helm_ui.py)
             ("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
             ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
-            ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui")]))
+            ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
+            # Hardening Task 1: alert rules for User Workload Monitoring (tests/test_helm_alerts.py)
+            ("PrometheusRule", "mias-alerts")]))
         for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
                        "SecurityContextConstraints", "Job", "CronJob", "StatefulSet"):
             self.assertNotIn(banned, {k for k, _ in self.objs})

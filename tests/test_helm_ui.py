@@ -22,6 +22,13 @@ PHASE15_RENDER = {
     ("networkPolicy.enabled=false",): "91c7caf038cd1f59",
     ("route.enabled=false",): "947b64a95a4e94d3",
 }
+ALERTS = ("PrometheusRule", "mias-alerts")
+
+
+def alert_names(objs):
+    return {r["alert"] for g in objs[ALERTS]["spec"]["groups"] for r in g["rules"]}
+
+
 DNS_RULE = {"to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "openshift-dns"}},
                     "podSelector": {"matchLabels": {"dns.operator.openshift.io/daemonset-dns": "default"}}}],
             "ports": [{"protocol": "UDP", "port": 5353}, {"protocol": "TCP", "port": 5353}]}
@@ -56,11 +63,11 @@ class HelmUiDisabledTests(unittest.TestCase):
     def test_disabled_render_equals_phase15(self):
         # The rollback render (ui.enabled=false) is Phase 15 byte for byte, except the chart version label.
         for sets, prefix in PHASE15_RENDER.items():
-            out = raw_render(*sets, "ui.enabled=false")
+            out = raw_render(*sets, "ui.enabled=false", "monitoring.alerts.enabled=false")
             self.assertEqual(out.returncode, 0, out.stderr)
             self.assertIn("helm.sh/chart: mias-0.3.0", out.stdout)
             self.assertNotIn("mias-0.2.0", out.stdout)
-            normalised = as_phase15_label(out.stdout, *sets, "ui.enabled=false")
+            normalised = as_phase15_label(out.stdout, *sets, "ui.enabled=false", "monitoring.alerts.enabled=false")
             self.assertEqual(hashlib.sha256(normalised.encode()).hexdigest()[:16], prefix, sets)
 
     def test_default_deploys_the_pinned_ui_image(self):
@@ -71,9 +78,12 @@ class HelmUiDisabledTests(unittest.TestCase):
                          f"image-registry.openshift-image-registry.svc:5000/mias/mias-ui@{DEPLOYED_UI_DIGEST}")
         self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "90effc1778a7")
         disabled, _ = render("ui.enabled=false")
-        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS)   # rollback removes exactly the UI objects
+        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS)   # rollback removes exactly the UI objects (alerts stay)
         for key, obj in disabled.items():
+            if key == ALERTS:
+                continue                                            # the UI alert follows ui.enabled (below)
             self.assertEqual(objs[key], obj, key)                   # and leaves every other object identical
+        self.assertEqual(alert_names(objs) - alert_names(disabled), {"MiasUiUnavailable"})
 
     def test_disabled_renders_no_ui_object(self):
         objs, text = render("ui.enabled=false")
@@ -105,6 +115,8 @@ class HelmUiEnabledTests(unittest.TestCase):
         base, _ = render("ui.enabled=false")
         self.assertEqual(set(self.objs) - set(base), UI_OBJECTS)
         for key, obj in base.items():
+            if key == ALERTS:
+                continue                                          # the UI alert follows ui.enabled
             self.assertEqual(self.objs[key], obj, key)            # every Phase 15 object is byte-for-byte the same
         self.assertTrue(self.objs[("Deployment", "mias-api")]["spec"]["template"]["spec"]["containers"][0]["image"]
                         .endswith(DIGEST))

@@ -1,0 +1,168 @@
+{{- if .Values.monitoring.alerts.enabled }}
+# MIAS alerts for OpenShift User Workload Monitoring (Hardening Task 1). Evaluated by the UWM Thanos Ruler (no
+# leaf-prometheus scope), so platform kube-state-metrics/kubelet series for this namespace are available alongside the
+# mias-api metrics that reach UWM through the collector's Prometheus exporter (job="otel-collector",
+# exported_job="mias/mias-api"). Additive only: no workload, ConfigMap, Route or NetworkPolicy is involved.
+# Notifications go to the platform Alertmanager; receiver delivery is configured outside this chart.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mias-alerts
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-alerts
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: mias.availability
+      rules:
+        - alert: MiasApiUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}",deployment="mias-api"} < 1
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+            part_of: mias
+          annotations:
+            summary: MIAS API has no available replicas
+            description: mias-api has reported zero available replicas for at least 5 minutes.
+            runbook_hint: Check the deployment rollout, pod events, readiness and recent Helm changes.
+        - alert: MiasApiNotReady
+          # Pods exist but none is Ready. With no API pod at all the series is absent and MiasApiUnavailable fires.
+          expr: max(kube_pod_status_ready{namespace="{{ .Release.Namespace }}",pod=~"mias-api-.*",condition="true"}) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+            part_of: mias
+          annotations:
+            summary: No MIAS API pod is Ready
+            description: mias-api pods exist but none has passed its readiness check (/health/ready) for at least 5 minutes.
+            runbook_hint: Check /health/ready checks (settings, artifact_root, artifact_index), the artifact volume mount and API logs.
+        {{- if .Values.ui.enabled }}
+        - alert: MiasUiUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}",deployment="mias-ui"} < 1
+          for: 5m
+          labels:
+            severity: warning
+            component: ui
+            part_of: mias
+          annotations:
+            summary: MIAS dashboard has no available replicas
+            description: mias-ui has reported zero available replicas for at least 5 minutes; the API itself may still be serving.
+            runbook_hint: Check the mias-ui rollout, pod events and /healthz; the API Route is independent of the UI.
+        {{- end }}
+        - alert: MiasCollectorDown
+          # Collector self-metrics are disabled, so this uses the scrape target (up / its absence) and the deployment.
+          expr: |
+            (up{namespace="{{ .Release.Namespace }}",job="otel-collector"} == 0)
+            or (absent(up{namespace="{{ .Release.Namespace }}",job="otel-collector"}) == 1)
+            or (kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}",deployment="otel-collector"} < 1)
+          for: 10m
+          labels:
+            severity: warning
+            component: collector
+            part_of: mias
+          annotations:
+            summary: MIAS OpenTelemetry collector is down or not scrapeable
+            description: The otel-collector scrape target has been down, missing, or the deployment unavailable for at least 10 minutes. API serving is unaffected; telemetry is lost.
+            runbook_hint: Check the otel-collector pod, its health endpoint, the ServiceMonitor and the otel-collector-ingress NetworkPolicy.
+        - alert: MiasPodRestarting
+          # New pods from an upgrade start new series at 0, so a rollout does not trip this.
+          expr: |
+            (increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}"}[30m]) > 2)
+            or (max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{namespace="{{ .Release.Namespace }}",reason="CrashLoopBackOff"}) == 1)
+          for: 10m
+          labels:
+            severity: warning
+            component: workload
+            part_of: mias
+          annotations:
+            summary: A MIAS container is restarting repeatedly
+            description: A container in the MIAS namespace restarted more than twice in 30 minutes or is in CrashLoopBackOff.
+            runbook_hint: Check the container's previous logs, probe failures, OOM kills and recent configuration or image changes.
+        - alert: MiasPublisherLeftRunning
+          expr: kube_deployment_spec_replicas{namespace="{{ .Release.Namespace }}",deployment="mias-publisher"} > 0
+          for: 2h
+          labels:
+            severity: info
+            component: publisher
+            part_of: mias
+          annotations:
+            summary: MIAS publisher toolbox left running
+            description: mias-publisher has been scaled above zero for more than 2 hours; it is an operator toolbox meant to run only while publishing.
+            runbook_hint: Confirm no publish is in progress, then scale mias-publisher back to 0.
+    - name: mias.artifacts
+      rules:
+        - alert: MiasArtifactIndexUnhealthy
+          expr: mias_artifact_index_healthy{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            component: artifact-index
+            part_of: mias
+          annotations:
+            summary: MIAS artifact index reports unhealthy
+            description: mias-api reports its artifact index as unhealthy for at least 10 minutes; artifact reads and readiness are affected.
+            runbook_hint: Check API logs for index refresh failures and inspect recently published artifacts for corruption.
+        - alert: MiasArtifactIndexStale
+          # The index refreshes every 30 s; 300 s means about 10 consecutive refreshes have not succeeded.
+          expr: mias_artifact_index_last_success_age_seconds{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api"} > 300
+          for: 10m
+          labels:
+            severity: warning
+            component: artifact-index
+            part_of: mias
+          annotations:
+            summary: MIAS artifact index has not refreshed recently
+            description: The last successful artifact index refresh is more than 5 minutes old and has stayed so for 10 minutes.
+            runbook_hint: Check API logs for refresh errors and the artifact volume mount; compare with MiasArtifactIndexUnhealthy.
+        - alert: MiasArtifactPvcFilling
+          expr: |
+            kubelet_volume_stats_used_bytes{namespace="{{ .Release.Namespace }}",persistentvolumeclaim="mias-artifacts"}
+              / kubelet_volume_stats_capacity_bytes{namespace="{{ .Release.Namespace }}",persistentvolumeclaim="mias-artifacts"} > 0.80
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            part_of: mias
+          annotations:
+            summary: MIAS artifact volume is above 80% full
+            description: The mias-artifacts volume has been more than 80% full for 30 minutes; publishing will fail when it is full.
+            runbook_hint: Review artifact growth and plan a PVC expansion (thin-csi allows expansion); never delete artifacts to free space.
+    - name: mias.telemetry
+      rules:
+        - alert: MiasApi5xxRatio
+          # Excludes /health/* and the expected deliveries 503 (dependency_unavailable: no receipt store in this
+          # deployment). Fires only above 5% with more than 0.05 req/s of non-health traffic.
+          expr: |
+            (
+              (
+                sum(rate(http_server_request_duration_seconds_count{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api",http_route!~"/health/.*",http_response_status_code=~"5.."}[10m]))
+                - (sum(rate(http_server_request_duration_seconds_count{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api",http_route="/api/v1/alerts/{artifact_id}/deliveries",http_response_status_code="503"}[10m])) or vector(0))
+              )
+              / sum(rate(http_server_request_duration_seconds_count{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api",http_route!~"/health/.*"}[10m]))
+            ) > 0.05
+            and sum(rate(http_server_request_duration_seconds_count{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api",http_route!~"/health/.*"}[10m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: api
+            part_of: mias
+          annotations:
+            summary: MIAS API is returning elevated server errors
+            description: More than 5% of non-health API requests returned 5xx over 10 minutes, with meaningful traffic.
+            runbook_hint: Check API logs by request_id and http.route, artifact integrity errors and recent deployments.
+        - alert: MiasTelemetryPipelineStalled
+          # Overlaps API-down scenarios (no API means no metrics). Alertmanager inhibition could suppress the duplicate
+          # later; inhibition is not configured here.
+          expr: absent_over_time(mias_artifact_index_healthy{namespace="{{ .Release.Namespace }}",exported_job="mias/mias-api"}[15m]) == 1
+          labels:
+            severity: warning
+            component: telemetry
+            part_of: mias
+          annotations:
+            summary: MIAS API telemetry has stopped arriving
+            description: No mias-api metrics have reached User Workload Monitoring for 15 minutes (API down, collector down, or export broken).
+            runbook_hint: Check MiasApiUnavailable and MiasCollectorDown first, then API logs for OTLP export errors and the mias-api-egress-telemetry NetworkPolicy.
+{{- end }}
