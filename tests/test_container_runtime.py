@@ -135,13 +135,14 @@ class ContainerRuntimeTests(unittest.TestCase):
         inspect_text = json.dumps(info)
         for secret in ("TOKEN=", "PASSWORD", "SECRET=", "API_KEY", ".env", "BEGIN PRIVATE KEY", "ghp_", "Authorization"):
             self.assertNotIn(secret, history + inspect_text)
-        listing = self.exec_sh("ls -a /opt/mias/app; ls /opt/mias; command -v pip pip3 gcc cc pytest || true; "
-                               "ls /var/cache/yum /var/cache/dnf 2>/dev/null | wc -l").stdout.split()
-        self.assertEqual(sorted(x for x in listing[:12] if x not in (".", "..")),
-                         ["alert_engine", "api", "artifact_store", "evidence_synthesis", "market_data",
-                          "market_intelligence", "options_intelligence", "trade_setup"])
-        for absent in ("tests", "scripts", ".env", ".git", "pip", "pip3", "gcc", "pytest", "evidence"):
-            self.assertNotIn(absent, listing[:-1])
+        app = self.exec_sh("ls -A /opt/mias/app").stdout.split()
+        self.assertEqual(app, ["alert_engine", "api", "artifact_store", "evidence_synthesis", "market_data",
+                               "market_intelligence", "options_intelligence", "trade_setup"])
+        self.assertEqual(self.exec_sh("ls -A /opt/mias").stdout.split(), ["app", "venv"])
+        tools = self.exec_sh("for t in pip pip3 gcc cc pytest python; do command -v $t || true; done").stdout.split()
+        self.assertEqual(tools, ["/opt/mias/venv/bin/python"])           # no pip, compiler or test runner
+        caches = self.exec_sh("ls -A /var/cache/yum /var/cache/dnf /root/.cache 2>/dev/null | wc -l").stdout.strip()
+        self.assertEqual(caches, "0")
 
     def test_02_runtime_imports_tz_tar_identity(self):
         out = self.exec_sh(
@@ -159,7 +160,8 @@ class ContainerRuntimeTests(unittest.TestCase):
                   "find / -xdev -writable -type d 2>/dev/null | grep -v '^/proc' | sort")
         out = self.exec_sh(script).stdout.split()
         self.assertEqual([x for x in out if x.startswith("W:")], ["W:/tmp"])
-        self.assertEqual([x for x in out if not x.startswith("W:")], [])   # nothing writable on the root filesystem
+        # Only the /tmp tmpfs mount point is writable; nothing on the read-only root filesystem.
+        self.assertEqual([x for x in out if not x.startswith("W:")], ["/tmp"])
 
     def test_04_non_loopback_without_token_refuses_to_start(self):
         result = podman("run", "--rm", *USER, *HARDENED, "-e", "MIAS_API_HOST=0.0.0.0", IMAGE, check=False)
