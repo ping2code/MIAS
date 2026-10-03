@@ -302,9 +302,9 @@ https://mias-api.apps.ngc.sirii.org ─(router, edge TLS)─▶ mias-api :8080 �
 
 | | State |
 |---|---|
-| Helm | `mias` revision **19**, chart **0.3.0**, appVersion 259236684a74, deployed |
+| Helm | `mias` revision **20** (19 before the provenance reconciliation), chart **0.3.0**, appVersion 259236684a74, deployed |
 | mias-api | 1/1 Ready, `sha256:634c5372…` |
-| mias-ui | 1/1 Ready, **`sha256:03782545…ce36`** |
+| mias-ui | 1/1 Ready, **`sha256:8c4e9341…8cd0`** (built from merged main `90effc1778a7`; earlier `sha256:03782545…ce36`) |
 | otel-collector | 1/1 Ready |
 | mias-publisher | 0 |
 | Routes | `mias-api` (unchanged spec), `mias-ui` (edge with Redirect) |
@@ -350,6 +350,62 @@ https://mias-api.apps.ngc.sirii.org ─(router, edge TLS)─▶ mias-api :8080 �
   live API, and token rotation was not run live.
 - **Housekeeping:** the superseded ImageStream tag `mias-ui:71dbb3de09d9` remains, and can be pruned.
 
+## Final provenance reconciliation
+
+After the 16F branch was merged, the live image was rebuilt from the **exact merged main commit** and redeployed. This
+makes the running UI provably originate from main.
+
+| | Value |
+|---|---|
+| A. Merged `main` | `90effc1778a7612e8a708194644b46b79db09641` |
+| Rebuilt image (local ID) | `9443160dcfa7a9d3d708f002aa72c17f7d6bcec485d58e41cc4ce4cefae6bd59` (local digest `sha256:08d38242…9505`) |
+| B. Image config OCI revision | `90effc1778a7612e8a708194644b46b79db09641` |
+| C. Immutable registry digest | `sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0` (ImageStream tag `mias-ui:90effc1778a7`; registry config ID equals the local image ID) |
+| Chart pin (`ui.image.digest`) | the same digest; `versionLabel: 90effc1778a7` (commit `0453f33`: digest and test constant only) |
+| Helm revision | **20** (`helm upgrade --reset-values --wait`; server dry run showed no ownership conflicts, so no `--force-conflicts`) |
+| D. Deployment `mias-ui` image | `…/mias/mias-ui@sha256:8c4e9341…8cd0` |
+| E. Running pod imageID | `…/mias/mias-ui@sha256:8c4e9341…8cd0` |
+
+**Result: A = B and C = D = E.**
+
+**Build gates:**
+- in-build: typecheck, lint, Vite build, bundle audit PASS;
+- Podman matrix 71/71 and end-to-end against the real API image 22/22 (local random tokens);
+- frontend tests 303/303 on 3 reruns. The first run had one transient failure: the 16E session-ended test's synchronous
+  `toHaveFocus()` assertion is timing-sensitive. It was not changed here (no functional changes allowed); wrapping it in
+  `waitFor` is a test-hardening follow-up.
+
+**Focused live checks (revision 20), all passed:**
+- **Pods:** mias-ui 1/1 Ready, 0 restarts; mias-api and the collector Ready, 0 restarts, **not restarted by this
+  upgrade** (same pod UIDs); publisher 0.
+- **Storage:** PVC Bound (same UID, `keep`); PV Retain.
+- **Route:** `mias-ui` admitted, edge with Redirect; HTTPS 200; HTTP 302 to HTTPS.
+- **Health:** `/healthz` returns `ok`; `/health/live` and `/health/ready` return 200 through the proxy.
+- **Headers:** all six security headers present with the exact CSP; `Server: nginx`.
+- **Policies:** 7 NetworkPolicies. The 3 UI policies are at generation 1 with specs equal to the chart render; the 4
+  baseline specs equal the recorded baseline.
+- **Cleanup:** no temporary resources remain.
+- **Artifacts:** both artifacts byte-identical to the 16F baseline, mode 0444.
+- **Telemetry:** UWM `up=1`, index healthy `=1`, request metrics flowing; collector 0 restarts; 0 API export errors.
+
+**Secrets:** **no Secret value was read** during this reconciliation. Only unauthenticated endpoints were exercised,
+plus `oc` metadata and the user's own `oc whoami -t` piped into a temporary registry login that was deleted after the
+push.
+
+The `oc` session expired mid-task (`Unauthorized`). The user re-authenticated as `mias-admin` before the push; no other
+identity was used.
+
+**Browser QA:** authenticated browser QA was **not repeated**, because no externally supplied token was available and
+reading the cluster Secret was out of scope. Coverage relies on the completed revision-19 live QA:
+- 51/51, twice;
+- Copy and Download Canonical proven over HTTPS;
+- visual sweep 32/32;
+- rollback proven.
+
+The rebuilt image comes from the same source as the revision-19 image, plus documentation and chart pins only.
+
+The superseded ImageStream tags `71dbb3de09d9` and `7c344762fbdd` remain for audit, and can be pruned.
+
 ## Phase 16 closure statement
 
 Phase 16 (16A–16F) delivered a read-only MIAS dashboard from architecture to live deployment:
@@ -360,7 +416,8 @@ Phase 16 (16A–16F) delivered a read-only MIAS dashboard from architecture to l
 - a digest-pinned, restricted, policy-isolated OpenShift deployment, validated in a real browser over HTTPS, with
   rollback proven live.
 
-All 16F closure criteria are met. **Phase 16 is complete.**
+All 16F closure criteria are met, and the live deployment provably runs the image built from merged main
+`90effc1778a7` (Helm revision 20). **Phase 16 is complete.**
 
 ## Final integration and hardening handoff
 
