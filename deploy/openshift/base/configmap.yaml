@@ -1,0 +1,16 @@
+# Non-secret mias-api settings (Phase 13 contract). The read token comes from the mias-api-auth Secret, created out
+# of band (see docs/phase14c-openshift-baseline.md). MIAS_BUILD_ID comes from the image. Deliberately absent:
+# MIAS_RECEIPT_ROOT (no receipts in Phase 14 v1), MIAS_API_OPERATOR_TOKEN and MIAS_API_ACTIONS_ENABLED (13D deferred).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mias-api-config
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-api
+    app.kubernetes.io/part-of: mias
+data:
+  MIAS_API_HOST: "0.0.0.0"
+  MIAS_API_PORT: "8080"
+  MIAS_API_DOCS_ENABLED: "false"
+  MIAS_ARTIFACT_ROOT: /var/lib/mias/artifacts

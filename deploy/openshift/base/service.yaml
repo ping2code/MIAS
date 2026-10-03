@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mias-api
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-api
+    app.kubernetes.io/part-of: mias
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mias-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

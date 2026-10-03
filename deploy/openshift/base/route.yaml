@@ -1,0 +1,22 @@
+# Edge TLS at the router (the default *.apps certificate); HTTP is redirected to HTTPS. Router-to-pod traffic is
+# plain HTTP inside the cluster network (re-encrypt is a later hardening option).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mias-api
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-api
+    app.kubernetes.io/part-of: mias
+spec:
+  host: mias-api.apps.ngc.sirii.org
+  to:
+    kind: Service
+    name: mias-api
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

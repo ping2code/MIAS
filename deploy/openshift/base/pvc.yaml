@@ -1,0 +1,17 @@
+# The artifact store (artifact-store-v1). thin-csi is vSphere block storage: ReadWriteOnce, WaitForFirstConsumer
+# (stays Pending until the pod is scheduled), reclaim policy Delete (deleting this PVC deletes the artifacts).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mias-artifacts
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-api
+    app.kubernetes.io/part-of: mias
+spec:
+  storageClassName: thin-csi
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

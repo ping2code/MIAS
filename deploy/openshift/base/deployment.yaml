@@ -1,0 +1,107 @@
+# mias-api: one replica, Recreate (an RWO volume can't be shared across a rolling update on different nodes).
+# Runs under restricted-v2 with an arbitrary UID: no runAsUser/fsGroup is set here; the SCC assigns them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mias-api
+  namespace: mias
+  labels:
+    app.kubernetes.io/name: mias-api
+    app.kubernetes.io/part-of: mias
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mias-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mias-api
+        app.kubernetes.io/part-of: mias
+        app.kubernetes.io/component: api
+        app.kubernetes.io/version: f14ecd722428
+    spec:
+      serviceAccountName: mias-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mias-api
+          # Immutable digest of mias-api:f14ecd722428 (git f14ecd722428ba70b896eb9e3fbda613c84cfe9a).
+          image: image-registry.openshift-image-registry.svc:5000/mias/mias-api@sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: mias-api-config
+          env:
+            - name: MIAS_API_READ_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mias-api-auth
+                  key: MIAS_API_READ_TOKEN
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          volumeMounts:
+            - name: artifacts
+              mountPath: /var/lib/mias/artifacts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The claim itself is attached read-write so the kubelet can apply the pod's SELinux label and fsGroup on
+        # attach (a read-only claim keeps the fresh volume's context, which restricted-v2 cannot read). The container
+        # mount above is readOnly: true, so mias-api still cannot write to the store.
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: mias-artifacts
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
