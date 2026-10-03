@@ -105,10 +105,11 @@ ui:
   # Rollback: --set ui.enabled=false removes every mias-ui object (and the mias-api-allow-ui policy) only.
   enabled: true
   image:
-    # Built from git 71dbb3de09d9b4888887d89d60217c260bc0e806 (OCI revision label); pushed to the internal registry.
+    # Built from git 7c344762fbdd78f829cc7c58b05ad2dab825c368 (OCI revision label); pushed to the internal registry.
+    # (The first 16F image, 71dbb3de09d9 / sha256:b311627d…, was replaced after live QA found phone-width overflow.)
     repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-    digest: sha256:b311627d841358fbdafb4abbdc486e09100925b8c7392886c807bac1d94e896d
-    versionLabel: 71dbb3de09d9          # app.kubernetes.io/version only; never used to pull
+    digest: sha256:03782545d6b876dd178a8a59e308593215e7c9326a67d71d8ecd81eed754ce36
+    versionLabel: 7c344762fbdd          # app.kubernetes.io/version only; never used to pull
     pullPolicy: IfNotPresent
   replicaCount: 1
   api:
