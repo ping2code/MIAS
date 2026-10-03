@@ -1,0 +1,68 @@
+# Operator toolbox: inert, scaled to zero by default; publishing happens only through `oc exec ... artifact_store.runner`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mias-publisher
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-publisher
+    app.kubernetes.io/component: publisher
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.publisher.replicaCount }}
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mias-publisher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mias-publisher
+        app.kubernetes.io/part-of: mias
+        app.kubernetes.io/component: publisher
+        app.kubernetes.io/version: {{ .Values.image.versionLabel | quote }}
+    spec:
+      serviceAccountName: mias-publisher
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 5
+      {{- if .Values.publisher.sameNodeAsApi }}
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: mias-api
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      securityContext:
+        {{- include "mias.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: mias-publisher
+          image: {{ include "mias.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sleep
+            - infinity
+          envFrom:
+            - configMapRef:
+                name: mias-publisher-config
+          securityContext:
+            {{- include "mias.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.publisher.resources | nindent 12 }}
+          volumeMounts:
+            - name: artifacts
+              mountPath: {{ .Values.artifact.mountPath }}
+              readOnly: false
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.pvc.name }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.tmp.sizeLimit }}

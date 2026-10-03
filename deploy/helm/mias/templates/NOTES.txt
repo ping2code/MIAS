@@ -1,0 +1,11 @@
+MIAS release {{ .Release.Name }} in namespace {{ .Release.Namespace }} (revision {{ .Release.Revision }}).
+
+Image: {{ include "mias.image" . }}
+API replicas: {{ .Values.api.replicaCount }}; publisher replicas: {{ .Values.publisher.replicaCount }} (scale to 1 only to publish).
+Route: https://{{ .Values.route.host }} (bearer token from Secret {{ .Values.existingSecret.name }}; never printed here).
+
+Publish (operator):
+  oc scale deployment/mias-publisher --replicas=1 -n {{ .Release.Namespace }}
+  oc cp ./ARTIFACT.json {{ .Release.Namespace }}/<publisher-pod>:/tmp/ARTIFACT.json
+  oc exec -n {{ .Release.Namespace }} <publisher-pod> -- python -m artifact_store.runner publish --kind <kind> --file /tmp/ARTIFACT.json
+  oc scale deployment/mias-publisher --replicas=0 -n {{ .Release.Namespace }}

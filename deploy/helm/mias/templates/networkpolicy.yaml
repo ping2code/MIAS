@@ -1,0 +1,44 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default deny for every MIAS pod: no ingress, no egress. Neither workload makes outbound calls (the API serves from
+# the mounted store; the publisher runs a local CLI). Image pulls, probes, oc exec and oc cp are not pod-network
+# traffic from these pods and are unaffected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mias-default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: mias
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# The API accepts only the OpenShift router, on 8080. The routers run on the host network, so they are matched by the
+# OpenShift ingress policy group (labelled on openshift-ingress and openshift-host-network).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mias-api-allow-router
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-api
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mias-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/ingress: ""
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}

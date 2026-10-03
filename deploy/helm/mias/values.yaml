@@ -1,0 +1,61 @@
+# Defaults reproduce the validated Phase 14C/14D deployment plus the Phase 14E hardening. No secret values belong
+# here: the read token lives in an externally managed Secret (existingSecret).
+
+image:
+  # Exact digest pinning: the API and the publisher always run this same image. No tags, no "latest".
+  repository: image-registry.openshift-image-registry.svc:5000/mias/mias-api
+  digest: sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a
+  versionLabel: f14ecd722428          # app.kubernetes.io/version only; never used to pull
+  pullPolicy: IfNotPresent
+
+existingSecret:
+  # Created out of band (see docs/phase14c-openshift-baseline.md); the chart only references it.
+  name: mias-api-auth
+  key: MIAS_API_READ_TOKEN
+
+api:
+  replicaCount: 1                     # RWO storage: one replica, Recreate strategy
+  docsEnabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+publisher:
+  replicaCount: 0                     # operator toolbox: scale to 1 only while publishing
+  sameNodeAsApi: true                 # required podAffinity to the mias-api pod's node (RWO volume)
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+artifact:
+  mountPath: /var/lib/mias/artifacts
+
+persistence:
+  enabled: true                       # true: the chart manages the PVC (kept on uninstall); false: use an existing claim
+  pvc:
+    name: mias-artifacts
+    size: 1Gi
+    storageClass: thin-csi
+
+podSecurity:
+  # OnRootMismatch: the kubelet re-applies fsGroup ownership/permissions only if the volume root does not already
+  # match, instead of recursively on every mount (which turned published 0444 artifacts into 0664). "" omits it.
+  fsGroupChangePolicy: OnRootMismatch
+
+tmp:
+  sizeLimit: 64Mi
+
+route:
+  enabled: true
+  host: mias-api.apps.ngc.sirii.org
+
+networkPolicy:
+  enabled: true                       # default-deny for MIAS pods; the API accepts only router traffic on 8080

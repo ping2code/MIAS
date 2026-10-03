@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mias-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-api
+    app.kubernetes.io/component: api
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mias-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mias-api
+        app.kubernetes.io/part-of: mias
+        app.kubernetes.io/component: api
+        app.kubernetes.io/version: {{ .Values.image.versionLabel | quote }}
+    spec:
+      serviceAccountName: mias-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- include "mias.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: mias-api
+          image: {{ include "mias.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: mias-api-config
+          env:
+            - name: MIAS_API_READ_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret.name is required" .Values.existingSecret.name }}
+                  key: {{ .Values.existingSecret.key }}
+          securityContext:
+            {{- include "mias.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          volumeMounts:
+            - name: artifacts
+              mountPath: {{ .Values.artifact.mountPath }}
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The claim is attached read-write (so the kubelet can apply SELinux labels and fsGroup); the container
+        # mount above is readOnly: true, so mias-api cannot write to the store.
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.pvc.name }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.tmp.sizeLimit }}

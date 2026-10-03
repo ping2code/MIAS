@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mias-api-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-api
+    {{- include "mias.labels" . | nindent 4 }}
+data:
+  MIAS_API_HOST: "0.0.0.0"
+  MIAS_API_PORT: "8080"
+  MIAS_API_DOCS_ENABLED: {{ ternary "true" "false" .Values.api.docsEnabled | quote }}
+  MIAS_ARTIFACT_ROOT: {{ .Values.artifact.mountPath }}

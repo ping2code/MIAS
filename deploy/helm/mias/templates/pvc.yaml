@@ -1,0 +1,21 @@
+{{- if .Values.persistence.enabled }}
+# The artifact store. Kept on `helm uninstall` (resource-policy keep): the store must never be deleted by a release
+# operation.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.persistence.pvc.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-api
+    {{- include "mias.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  storageClassName: {{ .Values.persistence.pvc.storageClass }}
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.pvc.size }}
+{{- end }}

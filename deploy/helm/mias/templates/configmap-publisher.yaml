@@ -1,0 +1,11 @@
+# The publisher needs only the artifact root.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mias-publisher-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-publisher
+    {{- include "mias.labels" . | nindent 4 }}
+data:
+  MIAS_ARTIFACT_ROOT: {{ .Values.artifact.mountPath }}

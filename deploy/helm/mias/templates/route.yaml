@@ -1,0 +1,23 @@
+{{- if .Values.route.enabled }}
+# Edge TLS at the router; HTTP redirected to HTTPS. The router's default session cookie is retained (see the 14E doc).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mias-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-api
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  host: {{ .Values.route.host }}
+  to:
+    kind: Service
+    name: mias-api
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}
