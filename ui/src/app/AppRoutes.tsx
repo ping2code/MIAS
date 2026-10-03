@@ -4,6 +4,8 @@ import { SignInPage } from "../auth/SignInPage";
 import { AppShell } from "../components/AppShell";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { OverviewPage } from "../pages/OverviewPage";
+import { AlertDetailPage } from "../pages/alerts/AlertDetailPage";
+import { AlertListPage } from "../pages/alerts/AlertListPage";
 import { MarketIntelligenceDetailPage } from "../pages/market-intelligence/MarketIntelligenceDetailPage";
 import { MarketIntelligenceListPage } from "../pages/market-intelligence/MarketIntelligenceListPage";
 import { PlaceholderPage } from "../pages/PlaceholderPage";
@@ -25,7 +27,8 @@ export function AppRoutes() {
         <Route index element={<OverviewPage />} />
         <Route path="market-intelligence" element={<MarketIntelligenceListPage />} />
         <Route path="market-intelligence/:id" element={<MarketIntelligenceDetailPage />} />
-        <Route path="alerts" element={<PlaceholderPage family="alerts" note="Detailed view arrives in Phase 16C" />} />
+        <Route path="alerts" element={<AlertListPage />} />
+        <Route path="alerts/:id" element={<AlertDetailPage />} />
         <Route path="options-intelligence" element={<PlaceholderPage family="options-intelligence" note={LATER} />} />
         <Route path="trade-setups" element={<PlaceholderPage family="trade-setups" note={LATER} />} />
         <Route path="invalidation-checks" element={<PlaceholderPage family="invalidation-checks" note={LATER} />} />
