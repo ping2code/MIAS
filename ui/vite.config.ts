@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -8,9 +9,13 @@ if (!/^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(buildId)) {
   throw new Error("MIAS_UI_BUILD_ID must be 1-64 characters of [A-Za-z0-9._+-]");
 }
 
+// The package version from package.json (non-secret, informational).
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version?: unknown };
+const uiVersion = typeof pkg.version === "string" && /^\d+\.\d+\.\d+$/.test(pkg.version) ? pkg.version : "0.0.0";
+
 export default defineConfig({
   plugins: [react()],
-  define: { __MIAS_UI_BUILD__: JSON.stringify(buildId) },
+  define: { __MIAS_UI_BUILD__: JSON.stringify(buildId), __MIAS_UI_VERSION__: JSON.stringify(uiVersion) },
   build: {
     sourcemap: false,
     assetsInlineLimit: 0, // no data: URIs for scripts/styles; everything is a same-origin file

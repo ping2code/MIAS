@@ -12,6 +12,7 @@
  */
 import { ApiError, isApiErrorCode, isRetryable } from "./errors";
 import { newRequestId, type RandomFill } from "./requestId";
+import { outcomeFor, type RequestSummary } from "./requestSummary";
 import {
   ID_FIELD,
   type ApiResult,
@@ -38,6 +39,12 @@ export interface ClientOptions {
   backoffMs?: readonly number[];
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   random?: RandomFill;
+  /** Called once per logical request (after all attempts) with a safe summary. Must not throw. */
+  onRequest?: (summary: RequestSummary) => void;
+  /** Called before each backoff wait, with the route template and the attempt that just failed. */
+  onRetry?: (info: { route: string; attempt: number; delayMs: number }) => void;
+  /** Clock for diagnostics (epoch ms). */
+  now?: () => number;
 }
 
 export interface CallOptions {
@@ -50,6 +57,8 @@ type Validator<T> = (value: unknown) => value is T;
 
 interface RequestSpec<T> {
   path: string;
+  /** The route template recorded in diagnostics: no query string and no ids. */
+  route: string;
   auth: boolean;
   body: "json" | "text";
   validate?: Validator<T>;
@@ -228,31 +237,76 @@ export function createApiClient(options: ClientOptions) {
     }
   }
 
+  const now = options.now ?? (() => Date.now());
+
+  function report<T>(
+    spec: RequestSpec<T>,
+    startedAt: number,
+    attempts: number,
+    status: number | null,
+    requestId: string | null,
+    error?: unknown,
+    note: RequestSummary["note"] = null,
+  ): void {
+    if (!options.onRequest) return;
+    try {
+      options.onRequest({
+        startedAt,
+        method: "GET",
+        route: spec.route,
+        status,
+        outcome: outcomeFor(status, error),
+        durationMs: Math.max(0, now() - startedAt),
+        attempts,
+        requestId,
+        note,
+      });
+    } catch {
+      // Diagnostics never affect the request.
+    }
+  }
+
   async function request<T>(spec: RequestSpec<T>, call: CallOptions = {}): Promise<ApiResult<T>> {
+    const startedAt = now();
     for (let index = 0; ; index += 1) {
       try {
-        return await attempt(spec, call);
+        const result = await attempt(spec, call);
+        const notReady = result.status === 503 && spec.route === "/health/ready";
+        report(spec, startedAt, index + 1, result.status, result.requestId, undefined, notReady ? "not_ready" : null);
+        return result;
       } catch (error: unknown) {
         const delay = backoff[index];
         const terminal = error instanceof ApiError && error.code !== null && (spec.terminalCodes ?? []).includes(error.code);
         if (!(error instanceof ApiError) || terminal || !isRetryable(error) || delay === undefined || call.signal?.aborted) {
+          const api = error instanceof ApiError ? error : null;
+          report(spec, startedAt, index + 1, api?.status ?? null, api?.requestId ?? null, error, terminal ? "capability_unavailable" : null);
           throw error;
         }
-        await sleep(delay, call.signal);
+        try {
+          options.onRetry?.({ route: spec.route, attempt: index + 1, delayMs: delay });
+        } catch {
+          // Diagnostics never affect the request.
+        }
+        try {
+          await sleep(delay, call.signal);
+        } catch (sleepError: unknown) {
+          report(spec, startedAt, index + 1, null, null, sleepError);
+          throw sleepError;
+        }
       }
     }
   }
 
   return {
     live: (call?: CallOptions) =>
-      request<LivenessView>({ path: "/health/live", auth: false, body: "json", validate: isLiveness }, call),
+      request<LivenessView>({ path: "/health/live", route: "/health/live", auth: false, body: "json", validate: isLiveness }, call),
     ready: (call?: CallOptions) =>
       request<ReadinessView>(
-        { path: "/health/ready", auth: false, body: "json", validate: isReadiness, acceptStatuses: [503] },
+        { path: "/health/ready", route: "/health/ready", auth: false, body: "json", validate: isReadiness, acceptStatuses: [503] },
         call,
       ),
     version: (call?: CallOptions) =>
-      request<VersionView>({ path: "/api/v1/version", auth: true, body: "json", validate: isVersion }, call),
+      request<VersionView>({ path: "/api/v1/version", route: "/api/v1/version", auth: true, body: "json", validate: isVersion }, call),
     history: <F extends ArtifactFamily>(family: F, params: HistoryParams = {}, call?: CallOptions) => {
       const query = new URLSearchParams();
       if (params.symbol !== undefined) query.set("symbol", params.symbol);
@@ -262,7 +316,7 @@ export function createApiClient(options: ClientOptions) {
       if (params.cursor !== undefined) query.set("cursor", params.cursor);
       const suffix = query.size > 0 ? `?${query.toString()}` : "";
       return request<ListResponse<FamilyViews[F]>>(
-        { path: `/api/v1/${family}${suffix}`, auth: true, body: "json", validate: listValidator(family) },
+        { path: `/api/v1/${family}${suffix}`, route: `/api/v1/${family}`, auth: true, body: "json", validate: listValidator(family) },
         call,
       );
     },
@@ -270,13 +324,13 @@ export function createApiClient(options: ClientOptions) {
       const query = new URLSearchParams({ symbol });
       if (asOf !== undefined) query.set("as_of", asOf);
       return request<ItemResponse<FamilyViews[F]>>(
-        { path: `/api/v1/${family}/latest?${query.toString()}`, auth: true, body: "json", validate: itemValidator(family) },
+        { path: `/api/v1/${family}/latest?${query.toString()}`, route: `/api/v1/${family}/latest`, auth: true, body: "json", validate: itemValidator(family) },
         call,
       );
     },
     detail: <F extends ArtifactFamily>(family: F, id: string, call?: CallOptions) =>
       request<ItemResponse<FamilyViews[F]>>(
-        { path: artifactPath(family, id), auth: true, body: "json", validate: itemValidator(family) },
+        { path: artifactPath(family, id), route: `/api/v1/${family}/{id}`, auth: true, body: "json", validate: itemValidator(family) },
         call,
       ),
     /**
@@ -287,6 +341,7 @@ export function createApiClient(options: ClientOptions) {
       request<DeliveryListResponse>(
         {
           path: artifactPath("alerts", id, "/deliveries"),
+          route: "/api/v1/alerts/{id}/deliveries",
           auth: true,
           body: "json",
           validate: isDeliveryList,
@@ -295,7 +350,7 @@ export function createApiClient(options: ClientOptions) {
         call,
       ),
     canonical: (family: ArtifactFamily, id: string, call?: CallOptions) =>
-      request<CanonicalArtifact>({ path: artifactPath(family, id, "/canonical"), auth: true, body: "text" }, call),
+      request<CanonicalArtifact>({ path: artifactPath(family, id, "/canonical"), route: `/api/v1/${family}/{id}/canonical`, auth: true, body: "text" }, call),
   };
 }
 

@@ -18,7 +18,10 @@ export type BadgeKind =
   | "alert_code"
   | "attention_category"
   | "delivery_status"
-  | "subject_kind";
+  | "subject_kind"
+  | "health"
+  | "outcome"
+  | "check";
 
 /** Badge tone for a (kind, value) pair. Unknown values fall back to neutral. */
 export function toneFor(kind: BadgeKind, value: string): Tone {
@@ -38,6 +41,20 @@ export function toneFor(kind: BadgeKind, value: string): Tone {
     case "delivery_status":
       if (value === "delivered") return "positive";
       if (value === "failed") return "negative";
+      return "neutral";
+    case "health":
+      if (value === "healthy") return "positive";
+      if (value === "degraded") return "changed";
+      if (value === "unavailable") return "negative";
+      return "neutral";
+    case "outcome":
+      if (value === "success") return "positive";
+      if (value === "client_error") return "changed";
+      if (value === "server_error" || value === "network_error" || value === "timeout") return "negative";
+      return "neutral";
+    case "check":
+      if (value === "pass") return "positive";
+      if (value === "fail") return "negative";
       return "neutral";
     case "timeframe_pattern":
     case "subject_kind":

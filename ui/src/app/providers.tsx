@@ -1,12 +1,14 @@
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, type Query } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { createApiClient, type ClientOptions } from "../api/client";
-import { ApiError, describeError } from "../api/errors";
-import type { ApiResult } from "../api/types";
+import { ApiError } from "../api/errors";
+import { queryKeys } from "../api/queries";
+import type { ApiResult, ReadinessView } from "../api/types";
 import { createSessionStore, type SessionStore } from "../auth/session";
+import { isUnreachable } from "../lib/apiStatus";
 import { clearPages } from "../lib/cursorTrail";
 import { ServicesContext, type AppServices } from "./context";
-import { createDiagnosticsStore } from "./diagnostics";
+import { createDiagnosticsStore, type DiagnosticsStore } from "./diagnostics";
 
 function isApiResult(value: unknown): value is ApiResult<unknown> {
   return typeof value === "object" && value !== null && "requestId" in value && "status" in value;
@@ -16,7 +18,9 @@ function isApiResult(value: unknown): value is ApiResult<unknown> {
  * React Query never retries: the API client owns the retry contract (at most 2, transient errors only).
  * Polling intervals live on the individual queries (src/api/queries.ts).
  */
-export function createQueryClient(onSuccess?: (data: unknown) => void, onError?: (error: unknown) => void): QueryClient {
+type QueryEvent<T> = (value: T, query: Query<unknown, unknown, unknown>) => void;
+
+export function createQueryClient(onSuccess?: QueryEvent<unknown>, onError?: QueryEvent<unknown>): QueryClient {
   return new QueryClient({
     queryCache: new QueryCache({
       ...(onSuccess ? { onSuccess } : {}),
@@ -44,21 +48,52 @@ export interface ServicesInit {
  * Wires the session, client, diagnostics and query cache together. A 401 from any protected call clears the token
  * and every cached query; the route guard then sends the user to /signin (no navigation from inside the client).
  */
-export function createServices(overrides: Partial<Pick<ClientOptions, "fetchImpl" | "sleep" | "timeoutMs" | "backoffMs">> & {
-  session?: SessionStore;
-} = {}): ServicesInit {
+const READY_KEY = JSON.stringify(queryKeys.ready);
+
+/** One readiness sample per completed readiness query (each already includes the client's retries). */
+function recordReadiness(diagnostics: DiagnosticsStore, now: () => number) {
+  return {
+    onSuccess: (data: unknown, query: Query<unknown, unknown, unknown>) => {
+      if (JSON.stringify(query.queryKey) !== READY_KEY || !isApiResult(data)) return;
+      const value = data.value as ReadinessView;
+      diagnostics.recordReadiness({
+        at: now(),
+        result: value.status === "ready" ? "ready" : "not_ready",
+        status: data.status,
+        checks: value.checks,
+        requestId: data.requestId,
+      });
+    },
+    onError: (error: unknown, query: Query<unknown, unknown, unknown>) => {
+      if (JSON.stringify(query.queryKey) !== READY_KEY) return;
+      if (error instanceof ApiError && error.kind === "aborted") return;
+      diagnostics.recordReadiness({
+        at: now(),
+        result: isUnreachable(error) ? "unreachable" : "failed",
+        status: error instanceof ApiError ? error.status : null,
+        checks: [],
+        requestId: error instanceof ApiError ? error.requestId : null,
+      });
+    },
+  };
+}
+
+export function createServices(
+  overrides: Partial<Pick<ClientOptions, "fetchImpl" | "sleep" | "timeoutMs" | "backoffMs" | "now">> & {
+    session?: SessionStore;
+  } = {},
+): ServicesInit {
   const session = overrides.session ?? createSessionStore();
   const diagnostics = createDiagnosticsStore();
-  const queryClient = createQueryClient(
-    (data) => {
-      if (isApiResult(data)) diagnostics.recordSuccess(data.requestId);
-    },
-    (error) => {
-      if (error instanceof ApiError && error.kind === "aborted") return;
-      diagnostics.recordError(error instanceof ApiError ? error.requestId : null, describeError(error).title);
-    },
-  );
+  const now = overrides.now ?? (() => Date.now());
+  const readiness = recordReadiness(diagnostics, now);
+  const queryClient = createQueryClient(readiness.onSuccess, readiness.onError);
   const client = createApiClient({
+    onRequest: diagnostics.recordRequest,
+    onRetry: (info) => {
+      diagnostics.recordRetry(info, now());
+    },
+    now,
     getToken: session.getToken,
     onUnauthorized: () => {
       session.expire();
