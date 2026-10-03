@@ -18,6 +18,7 @@ export function CanonicalPanel({ family, id }: { family: ArtifactFamily; id: str
   const client = useApiClient();
   const query = useQuery(canonicalQuery(client, family, id));
   const [mode, setMode] = useState<"canonical" | "formatted">("canonical");
+  const [downloaded, setDownloaded] = useState(false);
   const groupId = useId();
 
   if (query.isPending) {
@@ -28,7 +29,7 @@ export function CanonicalPanel({ family, id }: { family: ArtifactFamily; id: str
     );
   }
   if (query.isError) {
-    return <RequestError error={query.error} onRetry={() => void query.refetch()} notFound={<p>This artifact was not found.</p>} />;
+    return <RequestError error={query.error} onRetry={() => void query.refetch()} notFound={<p>That artifact could not be found.</p>} />;
   }
 
   const { text, etag, cacheControl } = query.data.value;
@@ -101,16 +102,20 @@ export function CanonicalPanel({ family, id }: { family: ArtifactFamily; id: str
           </button>
         </div>
         <div className="canonical-actions">
-          <CopyButton text={text} label="Copy canonical text" />
+          <CopyButton text={text} label="Copy canonical text" fallback="Copy unavailable — select the canonical text manually." />
           <button
             type="button"
             className="button button-quiet button-small"
             onClick={() => {
               downloadText(text, canonicalFileName(id));
+              setDownloaded(true);
             }}
           >
             <span aria-hidden="true">⤓</span> Download canonical
           </button>
+          <span className="copy-status" role="status" aria-live="polite">
+            {downloaded ? `Saved as ${canonicalFileName(id)}` : ""}
+          </span>
         </div>
       </div>
       {mode === "formatted" ? (

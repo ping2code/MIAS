@@ -82,7 +82,7 @@ export function ArtifactDetailFrame<F extends DetailFamily>({
           notFound={
             <>
               <p>
-                <strong>Not found.</strong> No {noun.toLowerCase()} with this id exists in the artifact store.
+                <strong>That artifact could not be found.</strong> No {noun.toLowerCase()} with this id exists in the artifact store.
               </p>
               <p>
                 <Link to={listPath}>Back to {listLabel}</Link>

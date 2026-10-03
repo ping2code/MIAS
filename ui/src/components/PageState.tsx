@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { ApiError, describeError } from "../api/errors";
 
 /** The four explicit data states (Phase 16A §9): loading, empty, error, loaded. No blank regions. */
@@ -13,7 +13,7 @@ export function LoadingState({ label = "Loading…" }: { label?: string }) {
   );
 }
 
-export function EmptyState({ message = "No data available yet" }: { message?: string }) {
+export function EmptyState({ message = "Nothing is available yet." }: { message?: string }) {
   return (
     <div className="state state-empty" role="status">
       <p>{message}</p>
@@ -24,10 +24,20 @@ export function EmptyState({ message = "No data available yet" }: { message?: st
 /** The error panel: a safe message, the API error code, the request id, and Retry when it can help. */
 export function ErrorPanel({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const view = describeError(error);
+  const panel = useRef<HTMLDivElement>(null);
+  const retry = (): void => {
+    // The panel is replaced by a loading state: move focus to the enclosing region's heading so it is not lost.
+    const heading = panel.current?.closest("section, main")?.querySelector<HTMLElement>("h1, h2");
+    if (heading) {
+      if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+      heading.focus();
+    }
+    onRetry?.();
+  };
   const code = error instanceof ApiError ? (error.code ?? (error.status !== null ? `HTTP ${String(error.status)}` : error.kind)) : null;
   const requestId = error instanceof ApiError ? error.requestId : null;
   return (
-    <div className="state state-error" role="alert">
+    <div className="state state-error" role="alert" ref={panel}>
       <p className="error-title">
         <span aria-hidden="true">⚠ </span>
         {view.title}
@@ -51,8 +61,8 @@ export function ErrorPanel({ error, onRetry }: { error: unknown; onRetry?: () =>
           </>
         ) : null}
       </dl>
-      {onRetry ? (
-        <button type="button" className="button" onClick={onRetry}>
+      {onRetry && view.retryable ? (
+        <button type="button" className="button" onClick={retry}>
           Retry
         </button>
       ) : null}

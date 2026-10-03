@@ -59,49 +59,49 @@ export interface ErrorPresentation {
   retryable: boolean;
 }
 
-/** User-facing wording for an error, by class. */
+/** User-facing wording for an error, by class (reviewed in Phase 16E: concise, actionable, never technical). */
 export function describeError(error: unknown): ErrorPresentation {
   if (!(error instanceof ApiError)) {
-    return { title: "Unexpected error", detail: "Something went wrong in the dashboard.", retryable: true };
+    return { title: "Something went wrong", detail: "The dashboard hit an unexpected problem. Try again.", retryable: true };
   }
   switch (error.kind) {
     case "timeout":
-      return { title: "Request timed out", detail: "The MIAS API did not answer in time.", retryable: true };
+      return { title: "MIAS did not respond in time", detail: "MIAS is temporarily unreachable. Try again.", retryable: true };
     case "network":
-      return { title: "MIAS API unreachable", detail: "A temporary connectivity problem occurred.", retryable: true };
+      return { title: "MIAS is unreachable", detail: "MIAS is temporarily unreachable. Try again.", retryable: true };
     case "aborted":
-      return { title: "Request cancelled", detail: "The request was cancelled.", retryable: true };
+      return { title: "Request cancelled", detail: "The request was cancelled before it finished.", retryable: true };
     case "invalid_response":
-      return { title: "Unexpected response", detail: "The API response was not in the expected format.", retryable: false };
+      return { title: "Unexpected response", detail: "MIAS returned a response the dashboard could not read. Try again later.", retryable: false };
     case "http":
       break;
   }
   switch (error.code) {
     case "unauthorized":
-      return { title: "Authentication required", detail: "Your read token is missing, invalid or expired.", retryable: false };
+      return { title: "Session ended", detail: "Your session ended. Sign in again.", retryable: false };
     case "not_found":
-      return { title: "Not found", detail: "The requested artifact was not found.", retryable: false };
+      return { title: "Not found", detail: "That artifact could not be found.", retryable: false };
     case "ambiguous_latest":
       return {
         title: "Ambiguous latest",
-        detail: "More than one artifact shares the latest time; see the history instead.",
+        detail: "More than one artifact matches the latest timestamp. MIAS will not choose between them.",
         retryable: false,
       };
     case "invalid_request":
-      return { title: "Request not accepted", detail: "The request parameters were not accepted.", retryable: false };
+      return { title: "Request not accepted", detail: "MIAS did not accept the request. Check the filters and try again.", retryable: false };
     case "artifact_invalid":
       return {
-        title: "Artifact failed integrity verification",
-        detail: "The stored artifact did not verify. Report the request id.",
+        title: "Integrity check failed",
+        detail: "This artifact failed its integrity check, so it is not shown. Report the request id.",
         retryable: false,
       };
     case "dependency_unavailable":
-      return { title: "Service temporarily unavailable", detail: "A dependency of the MIAS API is unavailable.", retryable: true };
+      return { title: "Temporarily unavailable", detail: "MIAS is temporarily unavailable.", retryable: true };
     default:
       break;
   }
   if (error.status !== null && error.status >= 500) {
-    return { title: "MIAS API error", detail: "The MIAS API is temporarily unavailable.", retryable: isRetryable(error) };
+    return { title: "Temporarily unavailable", detail: "MIAS is temporarily unavailable.", retryable: isRetryable(error) };
   }
-  return { title: "Request failed", detail: "The request could not be completed.", retryable: false };
+  return { title: "Request failed", detail: "The request could not be completed. Try again.", retryable: false };
 }

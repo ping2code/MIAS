@@ -114,7 +114,7 @@ export function OverviewPage() {
                   <th scope="row">
                     <Link to={`/${family}`}>{FAMILY_LABEL[family]}</Link>
                   </th>
-                  <td>{!q || q.isPending ? "Loading…" : q.data ? (first ? "Yes" : "No data available yet") : "Unavailable"}</td>
+                  <td>{!q || q.isPending ? "Loading…" : q.data ? (first ? "Yes" : "None yet") : "Unavailable"}</td>
                   <td>
                     {first ? <Timestamp iso={first.as_of} /> : q?.isError && !q.data ? <ErrorPanel error={q.error} onRetry={() => void q.refetch()} /> : "—"}
                   </td>
@@ -152,7 +152,8 @@ function LatestCard({
   let body: React.ReactNode;
   if (headPending) body = <LoadingState />;
   else if (headError && headSymbol === null) body = <ErrorPanel error={headError} onRetry={retryHead} />;
-  else if (headSymbol === null) body = <EmptyState />;
+  else if (headSymbol === null)
+    body = <EmptyState message={family === "alerts" ? "No alerts are available yet." : "No market intelligence is available yet."} />;
   else
     body = (
       <>
