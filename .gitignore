@@ -26,3 +26,6 @@ Thumbs.db
 # Logs
 *.log
 .env
+
+# MIAS runtime state (artifact store, receipts); operator data, never committed
+/runtime/
