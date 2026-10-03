@@ -59,7 +59,11 @@ def create_app(settings, *, readiness_checks=None, artifact_store=None, clock=No
                 refresher.stop()
             telemetry.shutdown()
 
+    # FastAPI's native telemetry is off: it would read OTEL_* itself, install *global* SDK providers and instrument
+    # requests with attributes MIAS does not control. MIAS instruments explicitly (api.observability).
     app = FastAPI(title=TITLE, version=meta.API_VERSION, debug=False, lifespan=lifespan,
+                  telemetry={"tracing": False, "metrics": False, "logs": False, "operation_spans": False,
+                             "auto_configure": False},
                   docs_url="/docs" if settings.docs_enabled else None, redoc_url=None,
                   openapi_url="/openapi.json" if settings.docs_enabled else None,
                   responses={"default": {"model": ErrorView}})

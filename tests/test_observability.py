@@ -123,6 +123,24 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual((kwargs["access_log"], kwargs["log_config"], kwargs["server_header"]), (False, None, False))
 
 
+class NativeFastApiTelemetryTests(ObsCase):
+    def test_fastapi_native_telemetry_is_off_and_no_global_providers(self):
+        """FastAPI 0.142 auto-configures global OTel providers from OTEL_*; MIAS disables that explicitly."""
+        code = ("import os, sys, tempfile\n"
+                "os.environ.update(OTEL_EXPORTER_OTLP_ENDPOINT='http://127.0.0.1:1', OTEL_TRACES_EXPORTER='otlp',"
+                " OTEL_METRICS_EXPORTER='otlp')\n"
+                "from fastapi.testclient import TestClient\nfrom api.app import create_app\n"
+                "from api.settings import ApiSettings\nfrom opentelemetry import trace, metrics\n"
+                "app = create_app(ApiSettings(artifact_root=tempfile.mkdtemp()), refresh_interval=0)\n"
+                "with TestClient(app) as c:\n    c.get('/health/live')\n"
+                "print(type(trace.get_tracer_provider()).__name__, type(metrics.get_meter_provider()).__name__,"
+                " app._telemetry['auto_configure'], app._telemetry['tracing'], app._telemetry['metrics'])")
+        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=120,
+                                env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(result.stdout.strip().splitlines()[-1],
+                         "ProxyTracerProvider _ProxyMeterProvider False False False", result.stderr[-400:])
+
+
 class DisabledTests(ObsCase):
     def test_disabled_loads_no_sdk_or_exporter(self):
         code = ("import sys\nfrom fastapi.testclient import TestClient\nfrom api.app import create_app\n"
