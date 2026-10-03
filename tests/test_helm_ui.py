@@ -1,5 +1,6 @@
-"""Phase 16B: the mias-ui part of the mias Helm chart (ui.*). Renders with the local `helm` binary (skipped if
-absent); no cluster access. With ui.enabled=false (the default) the chart must render exactly the Phase 15 objects."""
+"""Phase 16B/16F: the mias-ui part of the mias Helm chart (ui.*). Renders with the local `helm` binary (skipped if
+absent); no cluster access. Since 16F the UI is enabled by default with the deployed digest pinned; with
+ui.enabled=false the chart must render exactly the Phase 15 objects, apart from the chart version label (0.3.0)."""
 import hashlib
 import subprocess
 import unittest
@@ -7,7 +8,9 @@ import unittest
 from tests.test_helm_mias import CHART, DIGEST, HELM, render
 from tests.test_openshift_manifests import walk
 
-UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder; no UI image is pushed in 16B
+UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder for render-only tests
+# Phase 16F: the deployed mias-ui image (git 71dbb3de09d9b4888887d89d60217c260bc0e806), pinned in values.yaml.
+DEPLOYED_UI_DIGEST = "sha256:b311627d841358fbdafb4abbdc486e09100925b8c7392886c807bac1d94e896d"
 UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}")
 UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
               ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
@@ -31,17 +34,49 @@ def raw_render(*sets):
     return subprocess.run(args, capture_output=True, text=True, timeout=60)
 
 
+def as_phase15_label(text, *sets):
+    """The render with the 16F chart version (0.3.0) put back to Phase 15's (0.2.0), so the bytes can be compared.
+
+    The chart version reaches two places: the helm.sh/chart label, and mias-api's checksum/config annotation, which
+    is the sha256 of the rendered mias-api ConfigMap (labels included). Both are recomputed from the label alone, so
+    any other difference still fails the comparison. (One consequence: the 0.3.0 upgrade restarts mias-api once.)
+    """
+    args = [HELM, "template", "mias", CHART, "--namespace", "mias", "--show-only", "templates/configmap-api.yaml"]
+    for item in sets:
+        args += ["--set", item]
+    cm = subprocess.run(args, capture_output=True, text=True, timeout=60, check=True).stdout.split("\n", 2)[2]
+    new_sum = hashlib.sha256(cm.encode()).hexdigest()
+    old_sum = hashlib.sha256(cm.replace("mias-0.3.0", "mias-0.2.0").encode()).hexdigest()
+    return text.replace(f"checksum/config: {new_sum}", f"checksum/config: {old_sum}").replace(
+        "helm.sh/chart: mias-0.3.0", "helm.sh/chart: mias-0.2.0")
+
+
 @unittest.skipUnless(HELM, "helm binary not available")
 class HelmUiDisabledTests(unittest.TestCase):
     def test_disabled_render_equals_phase15(self):
+        # The rollback render (ui.enabled=false) is Phase 15 byte for byte, except the chart version label.
         for sets, prefix in PHASE15_RENDER.items():
-            for extra in ((), ("ui.enabled=false",)):
-                out = raw_render(*sets, *extra)
-                self.assertEqual(out.returncode, 0, out.stderr)
-                self.assertEqual(hashlib.sha256(out.stdout.encode()).hexdigest()[:16], prefix, (sets, extra))
+            out = raw_render(*sets, "ui.enabled=false")
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertIn("helm.sh/chart: mias-0.3.0", out.stdout)
+            self.assertNotIn("mias-0.2.0", out.stdout)
+            normalised = as_phase15_label(out.stdout, *sets, "ui.enabled=false")
+            self.assertEqual(hashlib.sha256(normalised.encode()).hexdigest()[:16], prefix, sets)
+
+    def test_default_deploys_the_pinned_ui_image(self):
+        objs, _ = render()
+        self.assertTrue(UI_OBJECTS <= set(objs))
+        dep = objs[("Deployment", "mias-ui")]
+        self.assertEqual(dep["spec"]["template"]["spec"]["containers"][0]["image"],
+                         f"image-registry.openshift-image-registry.svc:5000/mias/mias-ui@{DEPLOYED_UI_DIGEST}")
+        self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "71dbb3de09d9")
+        disabled, _ = render("ui.enabled=false")
+        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS)   # rollback removes exactly the UI objects
+        for key, obj in disabled.items():
+            self.assertEqual(objs[key], obj, key)                   # and leaves every other object identical
 
     def test_disabled_renders_no_ui_object(self):
-        objs, text = render()
+        objs, text = render("ui.enabled=false")
         self.assertFalse(UI_OBJECTS & set(objs))
         self.assertNotIn("mias-ui", text)
 
@@ -67,7 +102,7 @@ class HelmUiEnabledTests(unittest.TestCase):
 
     def test_objects_and_phase15_untouched(self):
         self.assertTrue(UI_OBJECTS <= set(self.objs))
-        base, _ = render()
+        base, _ = render("ui.enabled=false")
         self.assertEqual(set(self.objs) - set(base), UI_OBJECTS)
         for key, obj in base.items():
             self.assertEqual(self.objs[key], obj, key)            # every Phase 15 object is byte-for-byte the same

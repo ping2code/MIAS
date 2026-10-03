@@ -56,7 +56,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
         self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
-                         ("v2", "mias", "application", "0.2.0", "259236684a74"))
+                         ("v2", "mias", "application", "0.3.0", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -67,7 +67,11 @@ class HelmChartTests(unittest.TestCase):
             # Phase 15 observability (tests/test_helm_observability.py)
             ("ServiceAccount", "otel-collector"), ("ConfigMap", "otel-collector-config"),
             ("Deployment", "otel-collector"), ("Service", "otel-collector"), ("ServiceMonitor", "otel-collector"),
-            ("NetworkPolicy", "mias-api-egress-telemetry"), ("NetworkPolicy", "otel-collector-ingress")]))
+            ("NetworkPolicy", "mias-api-egress-telemetry"), ("NetworkPolicy", "otel-collector-ingress"),
+            # Phase 16F: the dashboard, enabled by default (tests/test_helm_ui.py)
+            ("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
+            ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
+            ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui")]))
         for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
                        "SecurityContextConstraints", "Job", "CronJob", "StatefulSet"):
             self.assertNotIn(banned, {k for k, _ in self.objs})
@@ -175,7 +179,7 @@ class HelmChartTests(unittest.TestCase):
             self.assertEqual(pod["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/part-of"], "mias")
         objs, _ = render("networkPolicy.enabled=false")
         self.assertFalse([k for k in objs if k[0] == "NetworkPolicy"])
-        objs, _ = render("observability.enabled=false")
+        objs, _ = render("observability.enabled=false", "ui.enabled=false")
         self.assertEqual(sorted(k[1] for k in objs if k[0] == "NetworkPolicy"),
                          ["mias-api-allow-router", "mias-default-deny"])
 

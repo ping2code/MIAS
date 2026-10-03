@@ -100,14 +100,15 @@ observability:
 
 ui:
   # Phase 16B: the read-only dashboard (static files + a same-origin nginx proxy to the in-namespace mias-api
-  # Service). Off until a mias-ui image is built, pushed and its digest set here. There is no token anywhere in the
-  # chart: each browser user enters the read token, held only in that tab's memory, and nginx passes the browser's
-  # own Authorization header through.
-  enabled: false
+  # Service). Deployed in Phase 16F. There is no token anywhere in the chart: each browser user enters the read
+  # token, held only in that tab's memory, and nginx passes the browser's own Authorization header through.
+  # Rollback: --set ui.enabled=false removes every mias-ui object (and the mias-api-allow-ui policy) only.
+  enabled: true
   image:
+    # Built from git 71dbb3de09d9b4888887d89d60217c260bc0e806 (OCI revision label); pushed to the internal registry.
     repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-    digest: ""                        # required when enabled: sha256:<64 hex>
-    versionLabel: ""                  # app.kubernetes.io/version only; never used to pull
+    digest: sha256:b311627d841358fbdafb4abbdc486e09100925b8c7392886c807bac1d94e896d
+    versionLabel: 71dbb3de09d9          # app.kubernetes.io/version only; never used to pull
     pullPolicy: IfNotPresent
   replicaCount: 1
   api:
