@@ -1,0 +1,7 @@
+# Test runner for the Containerfile `validation` target only (never installed in the production image).
+# Installed together with requirements.txt; pinned to the versions used for the MIAS regression on the host.
+pytest==9.1.1
+pluggy==1.6.0
+iniconfig==2.3.0
+packaging==26.3
+pygments==2.21.0

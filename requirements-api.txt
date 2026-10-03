@@ -1,0 +1,26 @@
+# MIAS API / artifact-store runtime dependencies (Phase 14B container image).
+#
+# The production image installs exactly this list with `pip install --no-deps` and then runs `pip check`, so every
+# transitive dependency is pinned here explicitly (no resolver choices at build time). Direct pins that also appear
+# in requirements.txt must match it exactly; tests/test_container_build.py enforces that (drift guard).
+#
+# Direct (also pinned in requirements.txt):
+fastapi==0.142.2
+starlette==1.7.0
+pydantic==2.13.5
+uvicorn==0.54.0
+idna==3.19
+# Zone data for zoneinfo: UBI minimal ships tzdata without /usr/share/zoneinfo, and evidence_synthesis.rules /
+# market_data.models call ZoneInfo("America/New_York") at import.
+tzdata==2026.4
+#
+# Transitive (pinned to the versions verified with the pins above):
+pydantic-core==2.46.5
+annotated-types==0.8.0
+typing-inspection==0.4.4
+typing-extensions==4.16.0
+annotated-doc==0.0.5
+opentelemetry-api==1.45.0
+anyio==4.15.1
+h11==0.16.0
+click==8.5.0
