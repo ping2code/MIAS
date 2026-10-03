@@ -14,7 +14,8 @@ from tests.test_openshift_manifests import IMAGE, parse, walk
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHART = os.path.join(ROOT, "deploy", "helm", "mias")
 RAW = os.path.join(ROOT, "deploy", "openshift")
-DIGEST = "sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a"
+DIGEST = "sha256:634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196"      # Phase 15 image (git 259236684a74)
+RAW_DIGEST = "sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a"  # 14C/14D reference manifests
 HELM = shutil.which("helm")
 
 
@@ -54,7 +55,8 @@ class HelmChartTests(unittest.TestCase):
         result = subprocess.run([HELM, "lint", CHART, "--namespace", "mias"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
-        self.assertEqual((chart["apiVersion"], chart["name"], chart["type"]), ("v2", "mias", "application"))
+        self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
+                         ("v2", "mias", "application", "0.2.0", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -76,7 +78,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(self.pub_c["image"], self.api_c["image"])
         self.assertRegex(self.api_c["image"], IMAGE)
         raw_api = parse(open(os.path.join(RAW, "base", "deployment.yaml"), encoding="utf-8").read())
-        self.assertEqual(raw_api["spec"]["template"]["spec"]["containers"][0]["image"], self.api_c["image"])
+        self.assertTrue(raw_api["spec"]["template"]["spec"]["containers"][0]["image"].endswith(RAW_DIGEST))
         with self.assertRaises(AssertionError):                                  # a tag or bad digest is refused
             render("image.digest=latest")
         self.assertNotIn(":latest", self.text)
@@ -179,7 +181,8 @@ class HelmChartTests(unittest.TestCase):
 
     def test_adoption_render_matches_raw_baseline(self):
         """With the 14E hardening switched off, the chart reproduces the raw 14C/14D manifests' specs."""
-        objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false", "observability.enabled=false")
+        objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false", "observability.enabled=false",
+                         f"image.digest={RAW_DIGEST}", "image.versionLabel=f14ecd722428")
         pairs = {("Deployment", "mias-api"): "base/deployment.yaml", ("Service", "mias-api"): "base/service.yaml",
                  ("Route", "mias-api"): "base/route.yaml", ("ConfigMap", "mias-api-config"): "base/configmap.yaml",
                  ("PersistentVolumeClaim", "mias-artifacts"): "base/pvc.yaml",

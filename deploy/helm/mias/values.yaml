@@ -4,8 +4,8 @@
 image:
   # Exact digest pinning: the API and the publisher always run this same image. No tags, no "latest".
   repository: image-registry.openshift-image-registry.svc:5000/mias/mias-api
-  digest: sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a
-  versionLabel: f14ecd722428          # app.kubernetes.io/version only; never used to pull
+  digest: sha256:634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196
+  versionLabel: 259236684a74          # app.kubernetes.io/version only; never used to pull (git 259236684a74…)
   pullPolicy: IfNotPresent
 
 existingSecret:
