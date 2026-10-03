@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { describe, expect, it } from "vitest";
+import { shortId } from "../../lib/artifactId";
 import { UI_BUILD } from "../../lib/buildInfo";
 import { fixture, type CapturedResponse } from "../fixtures";
 import { apiHandlers, respond, server } from "../msw";
@@ -30,11 +31,12 @@ describe("Overview", () => {
     expect(within(api).getByText(UI_BUILD)).toBeInTheDocument();
 
     const mi = screen.getByRole("region", { name: "Latest Market Intelligence" });
-    expect(await within(mi).findByText(MI_LATEST.intelligence_id)).toBeInTheDocument();
+    expect(await within(mi).findByText(shortId(MI_LATEST.intelligence_id))).toBeInTheDocument();
     expect(within(mi).getByText(MI_LATEST.timeframe_pattern)).toBeInTheDocument();
+    expect(within(mi).getByRole("link", { name: `Open ${MI_LATEST.intelligence_id}` })).toHaveAttribute("href", `/market-intelligence/${MI_LATEST.intelligence_id}`);
     expect(within(mi).getByText(/taken from the newest history entry/)).toBeInTheDocument();
     const alert = screen.getByRole("region", { name: "Latest Alert" });
-    expect(await within(alert).findByText(ALERT_LATEST.alert_id)).toBeInTheDocument();
+    expect(await within(alert).findByText(shortId(ALERT_LATEST.alert_id))).toBeInTheDocument();
     expect(within(alert).getByText(ALERT_LATEST.alert_code)).toBeInTheDocument();
 
     const kinds = screen.getByRole("region", { name: "Artifacts by kind" });
@@ -145,8 +147,6 @@ describe("System Status", () => {
 
 describe("placeholders and navigation", () => {
   it.each([
-    ["/market-intelligence", "Market Intelligence", "Detailed view arrives in Phase 16C"],
-    ["/alerts", "Alerts", "Detailed view arrives in Phase 16C"],
     ["/options-intelligence", "Options Intelligence", "Detailed view arrives in a later Phase 16 step"],
     ["/trade-setups", "Trade Setups", "Detailed view arrives in a later Phase 16 step"],
     ["/invalidation-checks", "Invalidation Checks", "Detailed view arrives in a later Phase 16 step"],

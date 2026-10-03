@@ -1,0 +1,1782 @@
+{
+ "alerts:bad_cursor": {
+  "body": {
+   "error": {
+    "code": "invalid_request",
+    "message": "the request is invalid",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?cursor=bogus",
+  "status": 400
+ },
+ "alerts:bad_instant": {
+  "body": {
+   "error": {
+    "code": "invalid_request",
+    "message": "the request is invalid",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?as_of_from=2026-09-24T00:00:00",
+  "status": 400
+ },
+ "alerts:canonical:0": {
+  "headers": {
+   "cache-control": "private, max-age=31536000, immutable",
+   "content-type": "application/json",
+   "etag": "\"sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877\"",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877/canonical",
+  "status": 200,
+  "text": "{\"alert_code\":\"setup_available\",\"alert_format_version\":\"phase12-v1\",\"alert_id\":\"sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877\",\"as_of\":\"2026-09-30T14:45:00+00:00\",\"decision_trace\":[{\"pointers\":[\"assessment:assessment_id\"],\"result\":\"pass\",\"rule\":\"input_valid\",\"step\":1},{\"pointers\":[\"assessment:outcome.status\"],\"result\":\"pass\",\"rule\":\"outcome_setup_candidates\",\"step\":2}],\"facts\":{\"candidate_count\":5,\"eligible_side\":\"call\",\"market_bias\":\"bullish\",\"symbol\":\"META\"},\"provenance\":{\"pointer_version\":\"phase12-pointer-v1\",\"rules_version\":\"phase12-rules-v1\",\"source_ids\":[\"sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c\"]},\"rules_version\":\"phase12-rules-v1\",\"source_refs\":[{\"as_of\":\"2026-09-30T14:45:00+00:00\",\"format_version\":\"phase10-v1\",\"id\":\"sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c\",\"object_kind\":\"trade_setup_assessment\",\"role\":\"current\",\"rules_version\":\"phase10-rules-v1\"}],\"subject\":{\"assessment_id\":\"sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c\",\"kind\":\"setup\",\"symbol\":\"META\"},\"transition\":null}\n"
+ },
+ "alerts:canonical:1": {
+  "headers": {
+   "cache-control": "private, max-age=31536000, immutable",
+   "content-type": "application/json",
+   "etag": "\"sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6\"",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6/canonical",
+  "status": 200,
+  "text": "{\"alert_code\":\"setup_invalidated\",\"alert_format_version\":\"phase12-v1\",\"alert_id\":\"sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6\",\"as_of\":\"2026-09-24T20:05:00+00:00\",\"decision_trace\":[{\"pointers\":[\"check:invalidation_id\"],\"result\":\"pass\",\"rule\":\"input_valid\",\"step\":1},{\"pointers\":[\"check:reason\",\"check:result\"],\"result\":\"pass\",\"rule\":\"result_invalidated\",\"step\":2}],\"facts\":{\"observed_pattern\":\"all_bearish\",\"observed_technical_status\":\"available\",\"required_pattern\":\"all_bullish\",\"side\":\"call\",\"symbol\":\"META\"},\"provenance\":{\"pointer_version\":\"phase12-pointer-v1\",\"rules_version\":\"phase12-rules-v1\",\"source_ids\":[\"sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7\",\"sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c\"]},\"rules_version\":\"phase12-rules-v1\",\"source_refs\":[{\"as_of\":\"2026-09-24T20:05:00+00:00\",\"format_version\":\"phase10-invalidation-v1\",\"id\":\"sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7\",\"object_kind\":\"invalidation_check\",\"role\":\"current\",\"rules_version\":\"phase10-invalidation-rules-v1\"},{\"as_of\":\"2026-09-30T14:45:00+00:00\",\"format_version\":\"phase10-v1\",\"id\":\"sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c\",\"object_kind\":\"trade_setup_assessment\",\"role\":\"setup\",\"rules_version\":\"phase10-rules-v1\"}],\"subject\":{\"assessment_id\":\"sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c\",\"kind\":\"setup\",\"symbol\":\"META\"},\"transition\":null}\n"
+ },
+ "alerts:canonical:2": {
+  "headers": {
+   "cache-control": "private, max-age=31536000, immutable",
+   "content-type": "application/json",
+   "etag": "\"sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51\"",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51/canonical",
+  "status": 200,
+  "text": "{\"alert_code\":\"market_pattern_changed\",\"alert_format_version\":\"phase12-v1\",\"alert_id\":\"sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51\",\"as_of\":\"2026-09-24T20:05:00+00:00\",\"decision_trace\":[{\"pointers\":[\"current:intelligence_id\",\"previous:intelligence_id\"],\"result\":\"pass\",\"rule\":\"inputs_valid\",\"step\":1},{\"pointers\":[\"current:synthesis_ref.symbol\",\"previous:synthesis_ref.symbol\"],\"result\":\"pass\",\"rule\":\"same_symbol\",\"step\":2},{\"pointers\":[\"current:synthesis_ref.as_of\",\"previous:synthesis_ref.as_of\"],\"result\":\"pass\",\"rule\":\"as_of_ordered\",\"step\":3},{\"pointers\":[\"current:synthesis_ref.synthesis_format_version\",\"current:synthesis_ref.synthesis_rules_version\",\"previous:synthesis_ref.synthesis_format_version\",\"previous:synthesis_ref.synthesis_rules_version\"],\"result\":\"pass\",\"rule\":\"comparable\",\"step\":4},{\"pointers\":[\"current:timeframe_structure.pattern\",\"previous:timeframe_structure.pattern\"],\"result\":\"pass\",\"rule\":\"pattern_changed\",\"step\":5}],\"facts\":{\"elapsed_seconds\":86400,\"symbol\":\"META\"},\"provenance\":{\"pointer_version\":\"phase12-pointer-v1\",\"rules_version\":\"phase12-rules-v1\",\"source_ids\":[\"sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516\",\"sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415\"]},\"rules_version\":\"phase12-rules-v1\",\"source_refs\":[{\"as_of\":\"2026-09-24T20:05:00+00:00\",\"format_version\":\"phase8-v1\",\"id\":\"sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516\",\"object_kind\":\"market_intelligence\",\"role\":\"current\",\"rules_version\":\"phase8-rules-v1\"},{\"as_of\":\"2026-09-23T20:05:00+00:00\",\"format_version\":\"phase8-v1\",\"id\":\"sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415\",\"object_kind\":\"market_intelligence\",\"role\":\"previous\",\"rules_version\":\"phase8-rules-v1\"}],\"subject\":{\"assessment_id\":null,\"kind\":\"symbol\",\"symbol\":\"META\"},\"transition\":{\"current\":\"opposed\",\"previous\":\"all_bullish\"}}\n"
+ },
+ "alerts:deliveries": {
+  "body": {
+   "data": [
+    {
+     "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+     "attempted_at": "2026-10-02T13:30:00.000000+00:00",
+     "attempts": 3,
+     "channel": "telegram",
+     "completed_at": "2026-10-02T13:30:00.000000+00:00",
+     "delivery_contract_version": "phase12-delivery-v1",
+     "provider_message_id": null,
+     "render_version": "phase12-render-v1",
+     "safe_error_code": "timeout",
+     "sequence": 1,
+     "status": "failed"
+    },
+    {
+     "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+     "attempted_at": "2026-10-02T13:30:00.000000+00:00",
+     "attempts": 1,
+     "channel": "telegram",
+     "completed_at": "2026-10-02T13:30:00.000000+00:00",
+     "delivery_contract_version": "phase12-delivery-v1",
+     "provider_message_id": "777",
+     "render_version": "phase12-render-v1",
+     "safe_error_code": null,
+     "sequence": 2,
+     "status": "delivered"
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-deliveries-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877/deliveries",
+  "status": 200
+ },
+ "alerts:deliveries_empty": {
+  "body": {
+   "data": [],
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-deliveries-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6/deliveries",
+  "status": 200
+ },
+ "alerts:deliveries_unavailable": {
+  "body": {
+   "error": {
+    "code": "dependency_unavailable",
+    "message": "a required dependency is unavailable",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877/deliveries",
+  "status": 503
+ },
+ "alerts:detail:0": {
+  "body": {
+   "data": {
+    "alert_code": "setup_available",
+    "alert_format_version": "phase12-v1",
+    "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+    "as_of": "2026-09-30T14:45:00+00:00",
+    "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+    "facts": {
+     "candidate_count": 5,
+     "eligible_side": "call",
+     "market_bias": "bullish",
+     "symbol": "META"
+    },
+    "rules_version": "phase12-rules-v1",
+    "source_refs": [
+     {
+      "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+      "object_kind": "trade_setup_assessment",
+      "role": "current"
+     }
+    ],
+    "subject_kind": "setup",
+    "symbol": "META",
+    "transition": null
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+  "status": 200
+ },
+ "alerts:detail:1": {
+  "body": {
+   "data": {
+    "alert_code": "setup_invalidated",
+    "alert_format_version": "phase12-v1",
+    "alert_id": "sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6",
+    "as_of": "2026-09-24T20:05:00+00:00",
+    "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+    "facts": {
+     "observed_pattern": "all_bearish",
+     "observed_technical_status": "available",
+     "required_pattern": "all_bullish",
+     "side": "call",
+     "symbol": "META"
+    },
+    "rules_version": "phase12-rules-v1",
+    "source_refs": [
+     {
+      "id": "sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7",
+      "object_kind": "invalidation_check",
+      "role": "current"
+     },
+     {
+      "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+      "object_kind": "trade_setup_assessment",
+      "role": "setup"
+     }
+    ],
+    "subject_kind": "setup",
+    "symbol": "META",
+    "transition": null
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6",
+  "status": 200
+ },
+ "alerts:detail:2": {
+  "body": {
+   "data": {
+    "alert_code": "market_pattern_changed",
+    "alert_format_version": "phase12-v1",
+    "alert_id": "sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51",
+    "as_of": "2026-09-24T20:05:00+00:00",
+    "assessment_id": null,
+    "facts": {
+     "elapsed_seconds": 86400,
+     "symbol": "META"
+    },
+    "rules_version": "phase12-rules-v1",
+    "source_refs": [
+     {
+      "id": "sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516",
+      "object_kind": "market_intelligence",
+      "role": "current"
+     },
+     {
+      "id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+      "object_kind": "market_intelligence",
+      "role": "previous"
+     }
+    ],
+    "subject_kind": "symbol",
+    "symbol": "META",
+    "transition": {
+     "current": "opposed",
+     "previous": "all_bullish"
+    }
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51",
+  "status": 200
+ },
+ "alerts:empty": {
+  "body": {
+   "data": [],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?symbol=ZZZZ",
+  "status": 200
+ },
+ "alerts:history": {
+  "body": {
+   "data": [
+    {
+     "alert_code": "setup_available",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+     "as_of": "2026-09-30T14:45:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "candidate_count": 5,
+      "eligible_side": "call",
+      "market_bias": "bullish",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "current"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    },
+    {
+     "alert_code": "setup_invalidated",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "observed_pattern": "all_bearish",
+      "observed_technical_status": "available",
+      "required_pattern": "all_bullish",
+      "side": "call",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7",
+       "object_kind": "invalidation_check",
+       "role": "current"
+      },
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "setup"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    },
+    {
+     "alert_code": "market_pattern_changed",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": null,
+     "facts": {
+      "elapsed_seconds": 86400,
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516",
+       "object_kind": "market_intelligence",
+       "role": "current"
+      },
+      {
+       "id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+       "object_kind": "market_intelligence",
+       "role": "previous"
+      }
+     ],
+     "subject_kind": "symbol",
+     "symbol": "META",
+     "transition": {
+      "current": "opposed",
+      "previous": "all_bullish"
+     }
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts",
+  "status": 200
+ },
+ "alerts:latest": {
+  "body": {
+   "data": {
+    "alert_code": "setup_available",
+    "alert_format_version": "phase12-v1",
+    "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+    "as_of": "2026-09-30T14:45:00+00:00",
+    "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+    "facts": {
+     "candidate_count": 5,
+     "eligible_side": "call",
+     "market_bias": "bullish",
+     "symbol": "META"
+    },
+    "rules_version": "phase12-rules-v1",
+    "source_refs": [
+     {
+      "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+      "object_kind": "trade_setup_assessment",
+      "role": "current"
+     }
+    ],
+    "subject_kind": "setup",
+    "symbol": "META",
+    "transition": null
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/latest?symbol=META",
+  "status": 200
+ },
+ "alerts:latest_none": {
+  "body": {
+   "error": {
+    "code": "not_found",
+    "message": "the requested resource was not found",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/latest?symbol=ZZZZ",
+  "status": 404
+ },
+ "alerts:not_found": {
+  "body": {
+   "error": {
+    "code": "not_found",
+    "message": "the requested resource was not found",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts/sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "status": 404
+ },
+ "alerts:page1": {
+  "body": {
+   "data": [
+    {
+     "alert_code": "setup_available",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+     "as_of": "2026-09-30T14:45:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "candidate_count": 5,
+      "eligible_side": "call",
+      "market_bias": "bullish",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "current"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    },
+    {
+     "alert_code": "setup_invalidated",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "observed_pattern": "all_bearish",
+      "observed_technical_status": "available",
+      "required_pattern": "all_bullish",
+      "side": "call",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7",
+       "object_kind": "invalidation_check",
+       "role": "current"
+      },
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "setup"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 2,
+    "next_cursor": "eyJpIjoic2hhMjU2OjA3MTM5NWQzZTNhZDc4ZWY2NTVkY2Q1MTc1NTU2Yzc5YmEzOTlkN2IyOTE3YjA0ZDNjMWMwZjMzMDBjNjMzYjYiLCJzIjoiNjhmMDc4MTE3NWI5NDExNCIsInQiOiIyMDI2LTA5LTI0VDIwOjA1OjAwLjAwMDAwMCswMDowMCIsInYiOjF9",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?limit=2",
+  "status": 200
+ },
+ "alerts:page2": {
+  "body": {
+   "data": [
+    {
+     "alert_code": "market_pattern_changed",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": null,
+     "facts": {
+      "elapsed_seconds": 86400,
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516",
+       "object_kind": "market_intelligence",
+       "role": "current"
+      },
+      {
+       "id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+       "object_kind": "market_intelligence",
+       "role": "previous"
+      }
+     ],
+     "subject_kind": "symbol",
+     "symbol": "META",
+     "transition": {
+      "current": "opposed",
+      "previous": "all_bullish"
+     }
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 2,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?limit=2&cursor=eyJpIjoic2hhMjU2OjA3MTM5NWQzZTNhZDc4ZWY2NTVkY2Q1MTc1NTU2Yzc5YmEzOTlkN2IyOTE3YjA0ZDNjMWMwZjMzMDBjNjMzYjYiLCJzIjoiNjhmMDc4MTE3NWI5NDExNCIsInQiOiIyMDI2LTA5LTI0VDIwOjA1OjAwLjAwMDAwMCswMDowMCIsInYiOjF9",
+  "status": 200
+ },
+ "alerts:symbol": {
+  "body": {
+   "data": [
+    {
+     "alert_code": "setup_available",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:767998d5e92120b71a7c7d89dd61f5c8038a5988c4efd2061151dec494539877",
+     "as_of": "2026-09-30T14:45:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "candidate_count": 5,
+      "eligible_side": "call",
+      "market_bias": "bullish",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "current"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    },
+    {
+     "alert_code": "setup_invalidated",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "observed_pattern": "all_bearish",
+      "observed_technical_status": "available",
+      "required_pattern": "all_bullish",
+      "side": "call",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7",
+       "object_kind": "invalidation_check",
+       "role": "current"
+      },
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "setup"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    },
+    {
+     "alert_code": "market_pattern_changed",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": null,
+     "facts": {
+      "elapsed_seconds": 86400,
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516",
+       "object_kind": "market_intelligence",
+       "role": "current"
+      },
+      {
+       "id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+       "object_kind": "market_intelligence",
+       "role": "previous"
+      }
+     ],
+     "subject_kind": "symbol",
+     "symbol": "META",
+     "transition": {
+      "current": "opposed",
+      "previous": "all_bullish"
+     }
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?symbol=META",
+  "status": 200
+ },
+ "alerts:window": {
+  "body": {
+   "data": [
+    {
+     "alert_code": "setup_invalidated",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:071395d3e3ad78ef655dcd5175556c79ba399d7b2917b04d3c1c0f3300c633b6",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+     "facts": {
+      "observed_pattern": "all_bearish",
+      "observed_technical_status": "available",
+      "required_pattern": "all_bullish",
+      "side": "call",
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:8f49c8e6d3e33965ee7c273492fc36c9970a5c6d3c05a818dae2f7dea620bdb7",
+       "object_kind": "invalidation_check",
+       "role": "current"
+      },
+      {
+       "id": "sha256:b78e8f7a75cc03ae2e7bca6d68865b06eeb4c9b04e521b0408710c4112f56c8c",
+       "object_kind": "trade_setup_assessment",
+       "role": "setup"
+      }
+     ],
+     "subject_kind": "setup",
+     "symbol": "META",
+     "transition": null
+    },
+    {
+     "alert_code": "market_pattern_changed",
+     "alert_format_version": "phase12-v1",
+     "alert_id": "sha256:4bd0845d97ee3d69bfaae0bb0ea016dd28e98d06babfbac488c7180627bd1c51",
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "assessment_id": null,
+     "facts": {
+      "elapsed_seconds": 86400,
+      "symbol": "META"
+     },
+     "rules_version": "phase12-rules-v1",
+     "source_refs": [
+      {
+       "id": "sha256:54869154d214e99785b6f35b7e5e9edfc43d73b83fae019f177bd77666d4f516",
+       "object_kind": "market_intelligence",
+       "role": "current"
+      },
+      {
+       "id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+       "object_kind": "market_intelligence",
+       "role": "previous"
+      }
+     ],
+     "subject_kind": "symbol",
+     "symbol": "META",
+     "transition": {
+      "current": "opposed",
+      "previous": "all_bullish"
+     }
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "alert-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/alerts?as_of_from=2026-09-24T00:00:00Z&as_of_to=2026-09-25T23:59:59Z",
+  "status": 200
+ },
+ "market-intelligence:bad_cursor": {
+  "body": {
+   "error": {
+    "code": "invalid_request",
+    "message": "the request is invalid",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?cursor=bogus",
+  "status": 400
+ },
+ "market-intelligence:bad_instant": {
+  "body": {
+   "error": {
+    "code": "invalid_request",
+    "message": "the request is invalid",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?as_of_from=2026-09-24T00:00:00",
+  "status": 400
+ },
+ "market-intelligence:canonical:0": {
+  "headers": {
+   "cache-control": "private, max-age=31536000, immutable",
+   "content-type": "application/json",
+   "etag": "\"sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415\"",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415/canonical",
+  "status": 200,
+  "text": "{\"attention\":[{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.1d.row.technical_state\"],\"subjects\":[\"1d\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:1d,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:1d,self,open]\",\"contradictions[market_context_opposes_timeframe:1d,self,prev_close]\"]},{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.1h.row.technical_state\"],\"subjects\":[\"1h\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:1h,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:1h,self,open]\",\"contradictions[market_context_opposes_timeframe:1h,self,prev_close]\"]},{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.5m.row.technical_state\"],\"subjects\":[\"5m\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:5m,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:5m,self,open]\",\"contradictions[market_context_opposes_timeframe:5m,self,prev_close]\"]},{\"category\":\"gap\",\"code\":\"market_context_not_current\",\"packet_pointers\":[],\"subjects\":[\"market_context\",\"lagging\"],\"synthesis_pointers\":[\"market_context.freshness_status\"]},{\"category\":\"presence\",\"code\":\"sec_filing_present\",\"packet_pointers\":[\"news.items[sec-v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]\"],\"subjects\":[\"sec\"],\"synthesis_pointers\":[\"news.counts_by_family[sec]\"]}],\"comparison\":null,\"conflicts\":[{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"1d\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,open]\",\"market_context.relations[1d:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"1d\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,prev_close]\",\"market_context.relations[1d:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"1d\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,self,open]\",\"market_context.relations[1d:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"1d\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,self,prev_close]\",\"market_context.relations[1d:self:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"1h\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,open]\",\"market_context.relations[1h:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"1h\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,prev_close]\",\"market_context.relations[1h:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"1h\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,self,open]\",\"market_context.relations[1h:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"1h\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,self,prev_close]\",\"market_context.relations[1h:self:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"5m\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,QQQ,open]\",\"market_context.relations[5m:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"5m\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,QQQ,prev_close]\",\"market_context.relations[5m:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"5m\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,self,open]\",\"market_context.relations[5m:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"5m\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,self,prev_close]\",\"market_context.relations[5m:self:prev_close].relation\"]}],\"event_presence\":{\"counts_by_family\":[{\"count\":1,\"key\":\"news\"},{\"count\":1,\"key\":\"sec\"}],\"counts_by_relevance\":[{\"count\":2,\"key\":\"direct\"},{\"count\":0,\"key\":\"related_only\"}],\"exclusion_counts\":[],\"item_count\":2,\"newest_age_seconds\":25200,\"newest_date_age_days\":1,\"newest_publication\":{\"date\":\"2026-09-22\",\"timestamp\":\"2026-09-23T13:05:00+00:00\"},\"news_state\":\"available\",\"oldest_age_seconds\":25200,\"oldest_publication\":{\"date\":\"2026-09-22\",\"timestamp\":\"2026-09-23T13:05:00+00:00\"},\"packet_pointers\":[\"news.items[news-url-v1:66ecc86a0dce6be298e360e601e27853c3a5ff824a2265afa5dc9d11cfb9b747]\",\"news.items[sec-v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]\"],\"synthesis_pointers\":[\"news.availability\",\"news.item_count\",\"news.counts_by_family\",\"news.direct_relevance_count\",\"news.related_relevance_count\",\"news.upstream_alert_decision_counts\",\"news.upstream_impact_level_counts\",\"news.newest_publication_timestamp\",\"news.oldest_publication_timestamp\",\"news.newest_publication_date\",\"news.oldest_publication_date\",\"news.exclusion_counts\"],\"upstream_alert_decision_counts\":[{\"count\":1,\"key\":\"ALERT\"},{\"count\":1,\"key\":\"DISPLAY_ONLY\"}],\"upstream_impact_level_counts\":[{\"count\":1,\"key\":\"HIGH\"},{\"count\":1,\"key\":\"MEDIUM\"}]},\"evidence_coverage\":{\"available_intervals\":[\"1d\",\"1h\",\"5m\"],\"available_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"insufficient_data_intervals\":[],\"market_context_status\":\"available\",\"news_state\":\"available\",\"packet_pointers\":[\"technical.1d.bar_end\",\"technical.1d.row.breakout_state\",\"technical.1d.row.confidence\",\"technical.1d.row.ema_alignment\",\"technical.1d.row.momentum\",\"technical.1d.row.technical_state\",\"technical.1d.row.trend\",\"technical.1d.row.vwap_position\",\"technical.1h.bar_end\",\"technical.1h.row.breakout_state\",\"technical.1h.row.confidence\",\"technical.1h.row.ema_alignment\",\"technical.1h.row.momentum\",\"technical.1h.row.technical_state\",\"technical.1h.row.trend\",\"technical.1h.row.vwap_position\",\"technical.5m.bar_end\",\"technical.5m.row.breakout_state\",\"technical.5m.row.confidence\",\"technical.5m.row.ema_alignment\",\"technical.5m.row.momentum\",\"technical.5m.row.technical_state\",\"technical.5m.row.trend\",\"technical.5m.row.vwap_position\"],\"status_reasons\":{\"market_context\":[],\"news\":[],\"technical\":[]},\"synthesis_pointers\":[\"completeness\",\"timeframes[1d].available\",\"timeframes[1h].available\",\"timeframes[5m].available\",\"timeframes[1d].state\",\"timeframes[1h].state\",\"timeframes[5m].state\",\"market_context.references[self:prev_close].value_sign\",\"market_context.references[self:open].value_sign\",\"market_context.references[QQQ:prev_close].value_sign\",\"market_context.references[QQQ:open].value_sign\"],\"technical_status\":\"available\",\"unavailable_intervals\":[],\"unavailable_references\":[]},\"intelligence_format_version\":\"phase8-v1\",\"intelligence_id\":\"sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415\",\"market_context_alignment\":{\"available\":true,\"by_interval\":[{\"agree_count\":0,\"interval\":\"1d\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[1d:self:prev_close].relation\",\"market_context.relations[1d:self:open].relation\",\"market_context.relations[1d:QQQ:prev_close].relation\",\"market_context.relations[1d:QQQ:open].relation\"],\"unavailable_count\":0},{\"agree_count\":0,\"interval\":\"1h\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[1h:self:prev_close].relation\",\"market_context.relations[1h:self:open].relation\",\"market_context.relations[1h:QQQ:prev_close].relation\",\"market_context.relations[1h:QQQ:open].relation\"],\"unavailable_count\":0},{\"agree_count\":0,\"interval\":\"5m\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[5m:self:prev_close].relation\",\"market_context.relations[5m:self:open].relation\",\"market_context.relations[5m:QQQ:prev_close].relation\",\"market_context.relations[5m:QQQ:open].relation\"],\"unavailable_count\":0}],\"context_age_seconds\":0,\"freshness_status\":\"lagging\",\"own_return_profile\":\"all_negative\",\"own_return_signs\":[{\"basis\":\"prev_close\",\"reference\":\"self\",\"value_sign\":\"negative\"},{\"basis\":\"open\",\"reference\":\"self\",\"value_sign\":\"negative\"}],\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\"],\"relative_return_profile\":\"all_negative\",\"relative_return_signs\":[{\"basis\":\"prev_close\",\"reference\":\"QQQ\",\"value_sign\":\"negative\"},{\"basis\":\"open\",\"reference\":\"QQQ\",\"value_sign\":\"negative\"}],\"synthesis_pointers\":[\"market_context.freshness_status\",\"market_context.context_age_seconds\",\"market_context.references[self:prev_close].value_sign\",\"market_context.references[self:open].value_sign\",\"market_context.references[QQQ:prev_close].value_sign\",\"market_context.references[QQQ:open].value_sign\"]},\"provenance\":{\"domains_used\":[\"market_context\",\"technical\",\"news\"],\"packet_id\":\"sha256:afbd9d0335a744b58173558ac3ec16257881087b90bc1bd8be7986fdbda5d969\",\"synthesis_format_version\":\"phase7g-v1\",\"synthesis_id\":\"sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206\",\"synthesis_rules_version\":\"phase7g-rules-v1\"},\"rules_version\":\"phase8-rules-v1\",\"synthesis_ref\":{\"as_of\":\"2026-09-23T20:05:00+00:00\",\"packet_id\":\"sha256:afbd9d0335a744b58173558ac3ec16257881087b90bc1bd8be7986fdbda5d969\",\"symbol\":\"META\",\"synthesis_format_version\":\"phase7g-v1\",\"synthesis_id\":\"sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206\",\"synthesis_rules_version\":\"phase7g-rules-v1\"},\"timeframe_structure\":{\"directional_intervals\":[\"1d\",\"1h\",\"5m\"],\"isolated_interval\":null,\"non_directional_intervals\":[],\"opposing_pairs\":[],\"opposition_shape\":\"none\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"technical.1h.row.technical_state\",\"technical.5m.row.technical_state\"],\"pattern\":\"all_bullish\",\"synthesis_pointers\":[\"timeframe_alignment.pattern\",\"timeframes[1d].state_direction\",\"timeframes[1h].state_direction\",\"timeframes[5m].state_direction\",\"timeframe_relations[1d:1h].relation\",\"timeframe_relations[1h:5m].relation\",\"timeframe_relations[1d:5m].relation\"],\"unavailable_intervals\":[]},\"transitions\":[]}\n"
+ },
+ "market-intelligence:canonical:1": {
+  "headers": {
+   "cache-control": "private, max-age=31536000, immutable",
+   "content-type": "application/json",
+   "etag": "\"sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626\"",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626/canonical",
+  "status": 200,
+  "text": "{\"attention\":[{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.1d.row.technical_state\"],\"subjects\":[\"1d\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:1d,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:1d,self,open]\",\"contradictions[market_context_opposes_timeframe:1d,self,prev_close]\"]},{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.1h.row.technical_state\"],\"subjects\":[\"1h\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:1h,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:1h,self,open]\",\"contradictions[market_context_opposes_timeframe:1h,self,prev_close]\"]},{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.5m.row.technical_state\"],\"subjects\":[\"5m\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:5m,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:5m,self,open]\",\"contradictions[market_context_opposes_timeframe:5m,self,prev_close]\"]},{\"category\":\"gap\",\"code\":\"market_context_not_current\",\"packet_pointers\":[],\"subjects\":[\"market_context\",\"lagging\"],\"synthesis_pointers\":[\"market_context.freshness_status\"]},{\"category\":\"presence\",\"code\":\"sec_filing_present\",\"packet_pointers\":[\"news.items[sec-v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]\"],\"subjects\":[\"sec\"],\"synthesis_pointers\":[\"news.counts_by_family[sec]\"]}],\"comparison\":null,\"conflicts\":[{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"1d\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,open]\",\"market_context.relations[1d:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"1d\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,prev_close]\",\"market_context.relations[1d:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"1d\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,self,open]\",\"market_context.relations[1d:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"1d\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,self,prev_close]\",\"market_context.relations[1d:self:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"1h\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,open]\",\"market_context.relations[1h:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"1h\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,prev_close]\",\"market_context.relations[1h:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"1h\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,self,open]\",\"market_context.relations[1h:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"1h\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,self,prev_close]\",\"market_context.relations[1h:self:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"5m\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,QQQ,open]\",\"market_context.relations[5m:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"5m\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,QQQ,prev_close]\",\"market_context.relations[5m:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"5m\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,self,open]\",\"market_context.relations[5m:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.5m.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"5m\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:5m,self,prev_close]\",\"market_context.relations[5m:self:prev_close].relation\"]}],\"event_presence\":{\"counts_by_family\":[{\"count\":1,\"key\":\"news\"},{\"count\":1,\"key\":\"sec\"}],\"counts_by_relevance\":[{\"count\":2,\"key\":\"direct\"},{\"count\":0,\"key\":\"related_only\"}],\"exclusion_counts\":[],\"item_count\":2,\"newest_age_seconds\":25200,\"newest_date_age_days\":1,\"newest_publication\":{\"date\":\"2026-09-22\",\"timestamp\":\"2026-09-23T13:05:00+00:00\"},\"news_state\":\"available\",\"oldest_age_seconds\":25200,\"oldest_publication\":{\"date\":\"2026-09-22\",\"timestamp\":\"2026-09-23T13:05:00+00:00\"},\"packet_pointers\":[\"news.items[news-url-v1:66ecc86a0dce6be298e360e601e27853c3a5ff824a2265afa5dc9d11cfb9b747]\",\"news.items[sec-v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]\"],\"synthesis_pointers\":[\"news.availability\",\"news.item_count\",\"news.counts_by_family\",\"news.direct_relevance_count\",\"news.related_relevance_count\",\"news.upstream_alert_decision_counts\",\"news.upstream_impact_level_counts\",\"news.newest_publication_timestamp\",\"news.oldest_publication_timestamp\",\"news.newest_publication_date\",\"news.oldest_publication_date\",\"news.exclusion_counts\"],\"upstream_alert_decision_counts\":[{\"count\":1,\"key\":\"ALERT\"},{\"count\":1,\"key\":\"DISPLAY_ONLY\"}],\"upstream_impact_level_counts\":[{\"count\":1,\"key\":\"HIGH\"},{\"count\":1,\"key\":\"MEDIUM\"}]},\"evidence_coverage\":{\"available_intervals\":[\"1d\",\"1h\",\"5m\"],\"available_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"insufficient_data_intervals\":[],\"market_context_status\":\"available\",\"news_state\":\"available\",\"packet_pointers\":[\"technical.1d.bar_end\",\"technical.1d.row.breakout_state\",\"technical.1d.row.confidence\",\"technical.1d.row.ema_alignment\",\"technical.1d.row.momentum\",\"technical.1d.row.technical_state\",\"technical.1d.row.trend\",\"technical.1d.row.vwap_position\",\"technical.1h.bar_end\",\"technical.1h.row.breakout_state\",\"technical.1h.row.confidence\",\"technical.1h.row.ema_alignment\",\"technical.1h.row.momentum\",\"technical.1h.row.technical_state\",\"technical.1h.row.trend\",\"technical.1h.row.vwap_position\",\"technical.5m.bar_end\",\"technical.5m.row.breakout_state\",\"technical.5m.row.confidence\",\"technical.5m.row.ema_alignment\",\"technical.5m.row.momentum\",\"technical.5m.row.technical_state\",\"technical.5m.row.trend\",\"technical.5m.row.vwap_position\"],\"status_reasons\":{\"market_context\":[],\"news\":[],\"technical\":[]},\"synthesis_pointers\":[\"completeness\",\"timeframes[1d].available\",\"timeframes[1h].available\",\"timeframes[5m].available\",\"timeframes[1d].state\",\"timeframes[1h].state\",\"timeframes[5m].state\",\"market_context.references[self:prev_close].value_sign\",\"market_context.references[self:open].value_sign\",\"market_context.references[QQQ:prev_close].value_sign\",\"market_context.references[QQQ:open].value_sign\"],\"technical_status\":\"available\",\"unavailable_intervals\":[],\"unavailable_references\":[]},\"intelligence_format_version\":\"phase8-v1\",\"intelligence_id\":\"sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626\",\"market_context_alignment\":{\"available\":true,\"by_interval\":[{\"agree_count\":0,\"interval\":\"1d\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[1d:self:prev_close].relation\",\"market_context.relations[1d:self:open].relation\",\"market_context.relations[1d:QQQ:prev_close].relation\",\"market_context.relations[1d:QQQ:open].relation\"],\"unavailable_count\":0},{\"agree_count\":0,\"interval\":\"1h\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[1h:self:prev_close].relation\",\"market_context.relations[1h:self:open].relation\",\"market_context.relations[1h:QQQ:prev_close].relation\",\"market_context.relations[1h:QQQ:open].relation\"],\"unavailable_count\":0},{\"agree_count\":0,\"interval\":\"5m\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[5m:self:prev_close].relation\",\"market_context.relations[5m:self:open].relation\",\"market_context.relations[5m:QQQ:prev_close].relation\",\"market_context.relations[5m:QQQ:open].relation\"],\"unavailable_count\":0}],\"context_age_seconds\":0,\"freshness_status\":\"lagging\",\"own_return_profile\":\"all_negative\",\"own_return_signs\":[{\"basis\":\"prev_close\",\"reference\":\"self\",\"value_sign\":\"negative\"},{\"basis\":\"open\",\"reference\":\"self\",\"value_sign\":\"negative\"}],\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\"],\"relative_return_profile\":\"all_negative\",\"relative_return_signs\":[{\"basis\":\"prev_close\",\"reference\":\"QQQ\",\"value_sign\":\"negative\"},{\"basis\":\"open\",\"reference\":\"QQQ\",\"value_sign\":\"negative\"}],\"synthesis_pointers\":[\"market_context.freshness_status\",\"market_context.context_age_seconds\",\"market_context.references[self:prev_close].value_sign\",\"market_context.references[self:open].value_sign\",\"market_context.references[QQQ:prev_close].value_sign\",\"market_context.references[QQQ:open].value_sign\"]},\"provenance\":{\"domains_used\":[\"market_context\",\"technical\",\"news\"],\"packet_id\":\"sha256:afbd9d0335a744b58173558ac3ec16257881087b90bc1bd8be7986fdbda5d969\",\"synthesis_format_version\":\"phase7g-v1\",\"synthesis_id\":\"sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206\",\"synthesis_rules_version\":\"phase7g-rules-v1\"},\"rules_version\":\"phase8-rules-v1\",\"synthesis_ref\":{\"as_of\":\"2026-09-24T20:05:00+00:00\",\"packet_id\":\"sha256:afbd9d0335a744b58173558ac3ec16257881087b90bc1bd8be7986fdbda5d969\",\"symbol\":\"META\",\"synthesis_format_version\":\"phase7g-v1\",\"synthesis_id\":\"sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206\",\"synthesis_rules_version\":\"phase7g-rules-v1\"},\"timeframe_structure\":{\"directional_intervals\":[\"1d\",\"1h\",\"5m\"],\"isolated_interval\":null,\"non_directional_intervals\":[],\"opposing_pairs\":[],\"opposition_shape\":\"none\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"technical.1h.row.technical_state\",\"technical.5m.row.technical_state\"],\"pattern\":\"all_bullish\",\"synthesis_pointers\":[\"timeframe_alignment.pattern\",\"timeframes[1d].state_direction\",\"timeframes[1h].state_direction\",\"timeframes[5m].state_direction\",\"timeframe_relations[1d:1h].relation\",\"timeframe_relations[1h:5m].relation\",\"timeframe_relations[1d:5m].relation\"],\"unavailable_intervals\":[]},\"transitions\":[]}\n"
+ },
+ "market-intelligence:canonical:2": {
+  "headers": {
+   "cache-control": "private, max-age=31536000, immutable",
+   "content-type": "application/json",
+   "etag": "\"sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71\"",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71/canonical",
+  "status": 200,
+  "text": "{\"attention\":[{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.1d.row.technical_state\"],\"subjects\":[\"1d\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:1d,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:1d,self,open]\",\"contradictions[market_context_opposes_timeframe:1d,self,prev_close]\"]},{\"category\":\"conflict\",\"code\":\"market_context_opposition_present\",\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\",\"technical.1h.row.technical_state\"],\"subjects\":[\"1h\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,open]\",\"contradictions[market_context_opposes_timeframe:1h,QQQ,prev_close]\",\"contradictions[market_context_opposes_timeframe:1h,self,open]\",\"contradictions[market_context_opposes_timeframe:1h,self,prev_close]\"]},{\"category\":\"conflict\",\"code\":\"timeframe_opposition_present\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"technical.5m.row.technical_state\"],\"subjects\":[\"1d\",\"5m\"],\"synthesis_pointers\":[\"contradictions[timeframe_opposition:1d,5m]\"]},{\"category\":\"conflict\",\"code\":\"timeframe_opposition_present\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"technical.5m.row.technical_state\"],\"subjects\":[\"1h\",\"5m\"],\"synthesis_pointers\":[\"contradictions[timeframe_opposition:1h,5m]\"]},{\"category\":\"gap\",\"code\":\"market_context_not_current\",\"packet_pointers\":[],\"subjects\":[\"market_context\",\"lagging\"],\"synthesis_pointers\":[\"market_context.freshness_status\"]},{\"category\":\"presence\",\"code\":\"sec_filing_present\",\"packet_pointers\":[\"news.items[sec-v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]\"],\"subjects\":[\"sec\"],\"synthesis_pointers\":[\"news.counts_by_family[sec]\"]}],\"comparison\":null,\"conflicts\":[{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"1d\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,open]\",\"market_context.relations[1d:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"1d\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,QQQ,prev_close]\",\"market_context.relations[1d:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"1d\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,self,open]\",\"market_context.relations[1d:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"1d\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1d,self,prev_close]\",\"market_context.relations[1d:self:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.comparisons[QQQ:open].relative_return\"],\"subjects\":[\"1h\",\"QQQ\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,open]\",\"market_context.relations[1h:QQQ:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\"],\"subjects\":[\"1h\",\"QQQ\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,QQQ,prev_close]\",\"market_context.relations[1h:QQQ:prev_close].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.symbol_context.return_since_open\"],\"subjects\":[\"1h\",\"self\",\"open\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,self,open]\",\"market_context.relations[1h:self:open].relation\"]},{\"code\":\"market_context_opposes_timeframe\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"market_context.context.symbol_context.return_since_prev_close\"],\"subjects\":[\"1h\",\"self\",\"prev_close\"],\"synthesis_pointers\":[\"contradictions[market_context_opposes_timeframe:1h,self,prev_close]\",\"market_context.relations[1h:self:prev_close].relation\"]},{\"code\":\"timeframe_opposition\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"technical.5m.row.technical_state\"],\"subjects\":[\"1d\",\"5m\"],\"synthesis_pointers\":[\"contradictions[timeframe_opposition:1d,5m]\",\"timeframe_relations[1d:5m].relation\"]},{\"code\":\"timeframe_opposition\",\"packet_pointers\":[\"technical.1h.row.technical_state\",\"technical.5m.row.technical_state\"],\"subjects\":[\"1h\",\"5m\"],\"synthesis_pointers\":[\"contradictions[timeframe_opposition:1h,5m]\",\"timeframe_relations[1h:5m].relation\"]}],\"event_presence\":{\"counts_by_family\":[{\"count\":1,\"key\":\"news\"},{\"count\":1,\"key\":\"sec\"}],\"counts_by_relevance\":[{\"count\":2,\"key\":\"direct\"},{\"count\":0,\"key\":\"related_only\"}],\"exclusion_counts\":[],\"item_count\":2,\"newest_age_seconds\":25200,\"newest_date_age_days\":1,\"newest_publication\":{\"date\":\"2026-09-22\",\"timestamp\":\"2026-09-23T13:05:00+00:00\"},\"news_state\":\"available\",\"oldest_age_seconds\":25200,\"oldest_publication\":{\"date\":\"2026-09-22\",\"timestamp\":\"2026-09-23T13:05:00+00:00\"},\"packet_pointers\":[\"news.items[news-url-v1:66ecc86a0dce6be298e360e601e27853c3a5ff824a2265afa5dc9d11cfb9b747]\",\"news.items[sec-v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]\"],\"synthesis_pointers\":[\"news.availability\",\"news.item_count\",\"news.counts_by_family\",\"news.direct_relevance_count\",\"news.related_relevance_count\",\"news.upstream_alert_decision_counts\",\"news.upstream_impact_level_counts\",\"news.newest_publication_timestamp\",\"news.oldest_publication_timestamp\",\"news.newest_publication_date\",\"news.oldest_publication_date\",\"news.exclusion_counts\"],\"upstream_alert_decision_counts\":[{\"count\":1,\"key\":\"ALERT\"},{\"count\":1,\"key\":\"DISPLAY_ONLY\"}],\"upstream_impact_level_counts\":[{\"count\":1,\"key\":\"HIGH\"},{\"count\":1,\"key\":\"MEDIUM\"}]},\"evidence_coverage\":{\"available_intervals\":[\"1d\",\"1h\",\"5m\"],\"available_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"insufficient_data_intervals\":[],\"market_context_status\":\"available\",\"news_state\":\"available\",\"packet_pointers\":[\"technical.1d.bar_end\",\"technical.1d.row.breakout_state\",\"technical.1d.row.confidence\",\"technical.1d.row.ema_alignment\",\"technical.1d.row.momentum\",\"technical.1d.row.technical_state\",\"technical.1d.row.trend\",\"technical.1d.row.vwap_position\",\"technical.1h.bar_end\",\"technical.1h.row.breakout_state\",\"technical.1h.row.confidence\",\"technical.1h.row.ema_alignment\",\"technical.1h.row.momentum\",\"technical.1h.row.technical_state\",\"technical.1h.row.trend\",\"technical.1h.row.vwap_position\",\"technical.5m.bar_end\",\"technical.5m.row.breakout_state\",\"technical.5m.row.confidence\",\"technical.5m.row.ema_alignment\",\"technical.5m.row.momentum\",\"technical.5m.row.technical_state\",\"technical.5m.row.trend\",\"technical.5m.row.vwap_position\"],\"status_reasons\":{\"market_context\":[],\"news\":[],\"technical\":[]},\"synthesis_pointers\":[\"completeness\",\"timeframes[1d].available\",\"timeframes[1h].available\",\"timeframes[5m].available\",\"timeframes[1d].state\",\"timeframes[1h].state\",\"timeframes[5m].state\",\"market_context.references[self:prev_close].value_sign\",\"market_context.references[self:open].value_sign\",\"market_context.references[QQQ:prev_close].value_sign\",\"market_context.references[QQQ:open].value_sign\"],\"technical_status\":\"available\",\"unavailable_intervals\":[],\"unavailable_references\":[]},\"intelligence_format_version\":\"phase8-v1\",\"intelligence_id\":\"sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71\",\"market_context_alignment\":{\"available\":true,\"by_interval\":[{\"agree_count\":0,\"interval\":\"1d\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[1d:self:prev_close].relation\",\"market_context.relations[1d:self:open].relation\",\"market_context.relations[1d:QQQ:prev_close].relation\",\"market_context.relations[1d:QQQ:open].relation\"],\"unavailable_count\":0},{\"agree_count\":0,\"interval\":\"1h\",\"non_directional_count\":0,\"oppose_count\":4,\"opposing_references\":[{\"basis\":\"prev_close\",\"reference\":\"self\"},{\"basis\":\"open\",\"reference\":\"self\"},{\"basis\":\"prev_close\",\"reference\":\"QQQ\"},{\"basis\":\"open\",\"reference\":\"QQQ\"}],\"synthesis_pointers\":[\"market_context.relations[1h:self:prev_close].relation\",\"market_context.relations[1h:self:open].relation\",\"market_context.relations[1h:QQQ:prev_close].relation\",\"market_context.relations[1h:QQQ:open].relation\"],\"unavailable_count\":0},{\"agree_count\":4,\"interval\":\"5m\",\"non_directional_count\":0,\"oppose_count\":0,\"opposing_references\":[],\"synthesis_pointers\":[\"market_context.relations[5m:self:prev_close].relation\",\"market_context.relations[5m:self:open].relation\",\"market_context.relations[5m:QQQ:prev_close].relation\",\"market_context.relations[5m:QQQ:open].relation\"],\"unavailable_count\":0}],\"context_age_seconds\":0,\"freshness_status\":\"lagging\",\"own_return_profile\":\"all_negative\",\"own_return_signs\":[{\"basis\":\"prev_close\",\"reference\":\"self\",\"value_sign\":\"negative\"},{\"basis\":\"open\",\"reference\":\"self\",\"value_sign\":\"negative\"}],\"packet_pointers\":[\"market_context.context.comparisons[QQQ:open].relative_return\",\"market_context.context.comparisons[QQQ:prev_close].relative_return\",\"market_context.context.symbol_context.return_since_open\",\"market_context.context.symbol_context.return_since_prev_close\"],\"relative_return_profile\":\"all_negative\",\"relative_return_signs\":[{\"basis\":\"prev_close\",\"reference\":\"QQQ\",\"value_sign\":\"negative\"},{\"basis\":\"open\",\"reference\":\"QQQ\",\"value_sign\":\"negative\"}],\"synthesis_pointers\":[\"market_context.freshness_status\",\"market_context.context_age_seconds\",\"market_context.references[self:prev_close].value_sign\",\"market_context.references[self:open].value_sign\",\"market_context.references[QQQ:prev_close].value_sign\",\"market_context.references[QQQ:open].value_sign\"]},\"provenance\":{\"domains_used\":[\"market_context\",\"technical\",\"news\"],\"packet_id\":\"sha256:9267045737c0d912acd90b9eb9fd5c1333ba9d671f8e5e46026f401587f8db64\",\"synthesis_format_version\":\"phase7g-v1\",\"synthesis_id\":\"sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169\",\"synthesis_rules_version\":\"phase7g-rules-v1\"},\"rules_version\":\"phase8-rules-v1\",\"synthesis_ref\":{\"as_of\":\"2026-09-25T20:05:00+00:00\",\"packet_id\":\"sha256:9267045737c0d912acd90b9eb9fd5c1333ba9d671f8e5e46026f401587f8db64\",\"symbol\":\"META\",\"synthesis_format_version\":\"phase7g-v1\",\"synthesis_id\":\"sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169\",\"synthesis_rules_version\":\"phase7g-rules-v1\"},\"timeframe_structure\":{\"directional_intervals\":[\"1d\",\"1h\",\"5m\"],\"isolated_interval\":\"5m\",\"non_directional_intervals\":[],\"opposing_pairs\":[[\"1h\",\"5m\"],[\"1d\",\"5m\"]],\"opposition_shape\":\"isolated_interval\",\"packet_pointers\":[\"technical.1d.row.technical_state\",\"technical.1h.row.technical_state\",\"technical.5m.row.technical_state\"],\"pattern\":\"opposed\",\"synthesis_pointers\":[\"timeframe_alignment.pattern\",\"timeframes[1d].state_direction\",\"timeframes[1h].state_direction\",\"timeframes[5m].state_direction\",\"timeframe_relations[1d:1h].relation\",\"timeframe_relations[1h:5m].relation\",\"timeframe_relations[1d:5m].relation\"],\"unavailable_intervals\":[]},\"transitions\":[]}\n"
+ },
+ "market-intelligence:detail:0": {
+  "body": {
+   "data": {
+    "as_of": "2026-09-23T20:05:00+00:00",
+    "attention": [
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "gap",
+      "code": "market_context_not_current"
+     },
+     {
+      "category": "presence",
+      "code": "sec_filing_present"
+     }
+    ],
+    "conflict_codes": [
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe"
+    ],
+    "intelligence_format_version": "phase8-v1",
+    "intelligence_id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+    "market_context_available": true,
+    "rules_version": "phase8-rules-v1",
+    "symbol": "META",
+    "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+    "technical_status": "available",
+    "timeframe_pattern": "all_bullish"
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+  "status": 200
+ },
+ "market-intelligence:detail:1": {
+  "body": {
+   "data": {
+    "as_of": "2026-09-24T20:05:00+00:00",
+    "attention": [
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "gap",
+      "code": "market_context_not_current"
+     },
+     {
+      "category": "presence",
+      "code": "sec_filing_present"
+     }
+    ],
+    "conflict_codes": [
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe"
+    ],
+    "intelligence_format_version": "phase8-v1",
+    "intelligence_id": "sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626",
+    "market_context_available": true,
+    "rules_version": "phase8-rules-v1",
+    "symbol": "META",
+    "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+    "technical_status": "available",
+    "timeframe_pattern": "all_bullish"
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626",
+  "status": 200
+ },
+ "market-intelligence:detail:2": {
+  "body": {
+   "data": {
+    "as_of": "2026-09-25T20:05:00+00:00",
+    "attention": [
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "timeframe_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "timeframe_opposition_present"
+     },
+     {
+      "category": "gap",
+      "code": "market_context_not_current"
+     },
+     {
+      "category": "presence",
+      "code": "sec_filing_present"
+     }
+    ],
+    "conflict_codes": [
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "timeframe_opposition",
+     "timeframe_opposition"
+    ],
+    "intelligence_format_version": "phase8-v1",
+    "intelligence_id": "sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+    "market_context_available": true,
+    "rules_version": "phase8-rules-v1",
+    "symbol": "META",
+    "synthesis_id": "sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169",
+    "technical_status": "available",
+    "timeframe_pattern": "opposed"
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+  "status": 200
+ },
+ "market-intelligence:empty": {
+  "body": {
+   "data": [],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?symbol=ZZZZ",
+  "status": 200
+ },
+ "market-intelligence:history": {
+  "body": {
+   "data": [
+    {
+     "as_of": "2026-09-25T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "timeframe_opposition",
+      "timeframe_opposition"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169",
+     "technical_status": "available",
+     "timeframe_pattern": "opposed"
+    },
+    {
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    },
+    {
+     "as_of": "2026-09-23T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence",
+  "status": 200
+ },
+ "market-intelligence:latest": {
+  "body": {
+   "data": {
+    "as_of": "2026-09-25T20:05:00+00:00",
+    "attention": [
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "market_context_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "timeframe_opposition_present"
+     },
+     {
+      "category": "conflict",
+      "code": "timeframe_opposition_present"
+     },
+     {
+      "category": "gap",
+      "code": "market_context_not_current"
+     },
+     {
+      "category": "presence",
+      "code": "sec_filing_present"
+     }
+    ],
+    "conflict_codes": [
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "market_context_opposes_timeframe",
+     "timeframe_opposition",
+     "timeframe_opposition"
+    ],
+    "intelligence_format_version": "phase8-v1",
+    "intelligence_id": "sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+    "market_context_available": true,
+    "rules_version": "phase8-rules-v1",
+    "symbol": "META",
+    "synthesis_id": "sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169",
+    "technical_status": "available",
+    "timeframe_pattern": "opposed"
+   },
+   "meta": {
+    "api_version": "v1",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/latest?symbol=META",
+  "status": 200
+ },
+ "market-intelligence:latest_ambiguous": {
+  "body": {
+   "error": {
+    "code": "ambiguous_latest",
+    "message": "more than one object matches the latest request",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/latest?symbol=META",
+  "status": 409
+ },
+ "market-intelligence:latest_none": {
+  "body": {
+   "error": {
+    "code": "not_found",
+    "message": "the requested resource was not found",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/latest?symbol=ZZZZ",
+  "status": 404
+ },
+ "market-intelligence:not_found": {
+  "body": {
+   "error": {
+    "code": "not_found",
+    "message": "the requested resource was not found",
+    "request_id": "ui-000000000000000000000001"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence/sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "status": 404
+ },
+ "market-intelligence:page1": {
+  "body": {
+   "data": [
+    {
+     "as_of": "2026-09-25T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "timeframe_opposition",
+      "timeframe_opposition"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169",
+     "technical_status": "available",
+     "timeframe_pattern": "opposed"
+    },
+    {
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 2,
+    "next_cursor": "eyJpIjoic2hhMjU2Ojc3NjU0NzNhZTIxYTE3M2FiYWNhYmQyMjNmM2I0Y2M2ZmI0ZjY5ZTFiZjRkOTdlODFlNGI5MDc1OTkyYWU2MjYiLCJzIjoiOTkwMmQ5Y2E2OGU4MzMzYyIsInQiOiIyMDI2LTA5LTI0VDIwOjA1OjAwLjAwMDAwMCswMDowMCIsInYiOjF9",
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?limit=2",
+  "status": 200
+ },
+ "market-intelligence:page2": {
+  "body": {
+   "data": [
+    {
+     "as_of": "2026-09-23T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 2,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?limit=2&cursor=eyJpIjoic2hhMjU2Ojc3NjU0NzNhZTIxYTE3M2FiYWNhYmQyMjNmM2I0Y2M2ZmI0ZjY5ZTFiZjRkOTdlODFlNGI5MDc1OTkyYWU2MjYiLCJzIjoiOTkwMmQ5Y2E2OGU4MzMzYyIsInQiOiIyMDI2LTA5LTI0VDIwOjA1OjAwLjAwMDAwMCswMDowMCIsInYiOjF9",
+  "status": 200
+ },
+ "market-intelligence:symbol": {
+  "body": {
+   "data": [
+    {
+     "as_of": "2026-09-25T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "timeframe_opposition",
+      "timeframe_opposition"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169",
+     "technical_status": "available",
+     "timeframe_pattern": "opposed"
+    },
+    {
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    },
+    {
+     "as_of": "2026-09-23T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:a5363431c87f1ba691198f3cb9bf3ac625af9b769fb17f9795f5f24547257415",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?symbol=META",
+  "status": 200
+ },
+ "market-intelligence:window": {
+  "body": {
+   "data": [
+    {
+     "as_of": "2026-09-25T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "timeframe_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "timeframe_opposition",
+      "timeframe_opposition"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:ba900bd91dfcbeddbdd132de90dbee6cc4cede9a0835218a299f9df0ab0d3e71",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:f720e609b12e626278f722712f3c863ca696783f3fdd919aabaea3d7707af169",
+     "technical_status": "available",
+     "timeframe_pattern": "opposed"
+    },
+    {
+     "as_of": "2026-09-24T20:05:00+00:00",
+     "attention": [
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "conflict",
+       "code": "market_context_opposition_present"
+      },
+      {
+       "category": "gap",
+       "code": "market_context_not_current"
+      },
+      {
+       "category": "presence",
+       "code": "sec_filing_present"
+      }
+     ],
+     "conflict_codes": [
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe",
+      "market_context_opposes_timeframe"
+     ],
+     "intelligence_format_version": "phase8-v1",
+     "intelligence_id": "sha256:7765473ae21a173abacabd223f3b4cc6fb4f69e1bf4d97e81e4b9075992ae626",
+     "market_context_available": true,
+     "rules_version": "phase8-rules-v1",
+     "symbol": "META",
+     "synthesis_id": "sha256:73f8d0269daa37a0d2db5851f0f67495839b3a92c63748b9b7eedc7b368e1206",
+     "technical_status": "available",
+     "timeframe_pattern": "all_bullish"
+    }
+   ],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T16:04:24+00:00",
+    "view": "market-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/market-intelligence?as_of_from=2026-09-24T00:00:00Z&as_of_to=2026-09-25T23:59:59Z",
+  "status": 200
+ }
+}
