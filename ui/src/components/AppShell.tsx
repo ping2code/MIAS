@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router";
 import { liveQuery, readyQuery } from "../api/queries";
 import { useApiClient, useServices, useSession } from "../app/context";
 import { UI_BUILD } from "../lib/buildInfo";
+import { clearPages } from "../lib/cursorTrail";
 import { StatusBadge, type Health } from "./StatusBadge";
 
 export const NAV_ITEMS: readonly { to: string; label: string }[] = [
@@ -45,6 +46,7 @@ export function AppShell() {
   const signOut = (): void => {
     session.signOut();
     queryClient.clear();
+    clearPages();
   };
   return (
     <div className="shell">

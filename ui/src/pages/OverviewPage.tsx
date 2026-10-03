@@ -7,6 +7,7 @@ import { PageHeading } from "../components/PageHeading";
 import { EmptyState, ErrorPanel, LoadingState, QueryRegion } from "../components/PageState";
 import { StatusBadge } from "../components/StatusBadge";
 import { Timestamp } from "../components/Timestamp";
+import { ArtifactId } from "../components/ArtifactId";
 import { UI_BUILD } from "../lib/buildInfo";
 import { formatClock } from "../lib/time";
 
@@ -197,7 +198,7 @@ function MarketIntelligenceSummary({ view }: { view: MarketIntelligenceView }) {
       </dd>
       <dt>Id</dt>
       <dd>
-        <code className="id">{view[ID_FIELD["market-intelligence"]]}</code>
+        <ArtifactId id={view[ID_FIELD["market-intelligence"]]} to={`/market-intelligence/${view[ID_FIELD["market-intelligence"]]}`} />
       </dd>
     </dl>
   );
@@ -220,7 +221,7 @@ function AlertSummary({ view }: { view: AlertView }) {
       <dd>{view.subject_kind}</dd>
       <dt>Id</dt>
       <dd>
-        <code className="id">{view[ID_FIELD.alerts]}</code>
+        <ArtifactId id={view[ID_FIELD.alerts]} to={`/alerts/${view[ID_FIELD.alerts]}`} />
       </dd>
     </dl>
   );

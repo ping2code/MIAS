@@ -17,6 +17,7 @@ import {
   type ApiResult,
   type ArtifactFamily,
   type CanonicalArtifact,
+  type DeliveryListResponse,
   type FamilyViews,
   type HistoryParams,
   type ItemResponse,
@@ -53,6 +54,8 @@ interface RequestSpec<T> {
   body: "json" | "text";
   validate?: Validator<T>;
   acceptStatuses?: readonly number[];
+  /** Error codes that are a definitive answer for this endpoint (never retried), e.g. an absent capability. */
+  terminalCodes?: readonly string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,7 +100,19 @@ function listValidator<F extends ArtifactFamily>(family: F): Validator<ListRespo
     v.data.every((item) => isArtifactView(family, item));
 }
 
-const ARTIFACT_ID = /^sha256:[0-9a-f]{64}$/;
+const isDeliveryList: Validator<DeliveryListResponse> = (v): v is DeliveryListResponse =>
+  isRecord(v) &&
+  isMeta(v.meta) &&
+  Array.isArray(v.data) &&
+  v.data.every(
+    (d) =>
+      isRecord(d) &&
+      typeof d.sequence === "number" &&
+      typeof d.channel === "string" &&
+      (d.status === "delivered" || d.status === "failed"),
+  );
+
+export const ARTIFACT_ID = /^sha256:[0-9a-f]{64}$/;
 
 function artifactPath(family: ArtifactFamily, id: string, suffix = ""): string {
   const segment = ARTIFACT_ID.test(id) ? id : encodeURIComponent(id);
@@ -219,7 +234,8 @@ export function createApiClient(options: ClientOptions) {
         return await attempt(spec, call);
       } catch (error: unknown) {
         const delay = backoff[index];
-        if (!(error instanceof ApiError) || !isRetryable(error) || delay === undefined || call.signal?.aborted) {
+        const terminal = error instanceof ApiError && error.code !== null && (spec.terminalCodes ?? []).includes(error.code);
+        if (!(error instanceof ApiError) || terminal || !isRetryable(error) || delay === undefined || call.signal?.aborted) {
           throw error;
         }
         await sleep(delay, call.signal);
@@ -261,6 +277,21 @@ export function createApiClient(options: ClientOptions) {
     detail: <F extends ArtifactFamily>(family: F, id: string, call?: CallOptions) =>
       request<ItemResponse<FamilyViews[F]>>(
         { path: artifactPath(family, id), auth: true, body: "json", validate: itemValidator(family) },
+        call,
+      ),
+    /**
+     * Phase 12E receipts for one alert. 503 `dependency_unavailable` means this deployment has no receipt store: a
+     * definitive capability answer, so it is not retried.
+     */
+    deliveries: (id: string, call?: CallOptions) =>
+      request<DeliveryListResponse>(
+        {
+          path: artifactPath("alerts", id, "/deliveries"),
+          auth: true,
+          body: "json",
+          validate: isDeliveryList,
+          terminalCodes: ["dependency_unavailable"],
+        },
         call,
       ),
     canonical: (family: ArtifactFamily, id: string, call?: CallOptions) =>

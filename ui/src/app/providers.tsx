@@ -4,6 +4,7 @@ import { createApiClient, type ClientOptions } from "../api/client";
 import { ApiError, describeError } from "../api/errors";
 import type { ApiResult } from "../api/types";
 import { createSessionStore, type SessionStore } from "../auth/session";
+import { clearPages } from "../lib/cursorTrail";
 import { ServicesContext, type AppServices } from "./context";
 import { createDiagnosticsStore } from "./diagnostics";
 
@@ -62,6 +63,7 @@ export function createServices(overrides: Partial<Pick<ClientOptions, "fetchImpl
     onUnauthorized: () => {
       session.expire();
       queryClient.clear();
+      clearPages();
     },
     ...(overrides.fetchImpl ? { fetchImpl: overrides.fetchImpl } : {}),
     ...(overrides.sleep ? { sleep: overrides.sleep } : {}),

@@ -191,3 +191,23 @@ export interface ApiResult<T> {
   requestId: string | null;
   status: number;
 }
+
+/** One Phase 12E delivery receipt (view `alert-deliveries-v1`), as returned; never inferred by the UI. */
+export interface DeliveryView {
+  alert_id: string;
+  channel: string;
+  sequence: number;
+  status: "delivered" | "failed";
+  provider_message_id: string | null;
+  attempts: number;
+  safe_error_code: string | null;
+  attempted_at: string;
+  completed_at: string;
+  delivery_contract_version: string;
+  render_version: string;
+}
+
+export interface DeliveryListResponse {
+  data: DeliveryView[];
+  meta: Meta;
+}
