@@ -34,6 +34,37 @@ export function apiHandlers(overrides: Partial<Record<string, CapturedResponse>>
   ];
 }
 
+/** The five artifact kinds the dashboard reads (route segments). */
+export const ARTIFACT_PATHS: readonly string[] = [
+  "market-intelligence",
+  "options-intelligence",
+  "trade-setups",
+  "invalidation-checks",
+  "alerts",
+];
+
+/**
+ * The Overview's known background requests, served from the real captured responses:
+ * - `GET /api/v1/<kind>?limit=1` per kind (has-data / newest as_of);
+ * - `GET /api/v1/{market-intelligence,alerts}/latest?symbol=META` (the symbol taken from those heads).
+ * They match nothing else — any other request falls through and stays unhandled (onUnhandledFrame: "error"), so
+ * unexpected traffic still fails loudly.
+ */
+export function backgroundHistoryHeads(): HttpHandler[] {
+  return [
+    http.get("*/api/v1/:family/latest", ({ request, params }) => {
+      const family = String(params.family);
+      if ((family !== "market-intelligence" && family !== "alerts") || new URL(request.url).search !== "?symbol=META") return undefined;
+      return respond(authorized(request) ? fixture(`latest:${family}`) : fixture("unauthorized"));
+    }),
+    http.get("*/api/v1/:family", ({ request, params }) => {
+      const family = String(params.family);
+      if (!ARTIFACT_PATHS.includes(family) || new URL(request.url).search !== "?limit=1") return undefined;
+      return respond(authorized(request) ? fixture(`history_head:${family}`) : fixture("unauthorized"));
+    }),
+  ];
+}
+
 /** A fetch that resolves the client's relative URLs against the jsdom origin (browsers do this natively). */
 export const relativeFetch: typeof fetch = (input, init) => {
   const url = typeof input === "string" && input.startsWith("/") ? new URL(input, window.location.origin) : input;

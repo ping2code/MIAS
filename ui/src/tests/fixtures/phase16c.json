@@ -836,6 +836,25 @@
   "request": "/health/ready",
   "status": 503
  },
+ "invalidation-checks:empty": {
+  "body": {
+   "data": [],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T19:35:09+00:00",
+    "view": "invalidation-check-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/invalidation-checks?symbol=ZZZZ",
+  "status": 200
+ },
  "market-intelligence:bad_cursor": {
   "body": {
    "error": {
@@ -1842,6 +1861,44 @@
    "x-request-id": "ui-000000000000000000000001"
   },
   "request": "/api/v1/market-intelligence?as_of_from=2026-09-24T00:00:00Z&as_of_to=2026-09-25T23:59:59Z",
+  "status": 200
+ },
+ "options-intelligence:empty": {
+  "body": {
+   "data": [],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T19:35:09+00:00",
+    "view": "options-intelligence-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/options-intelligence?symbol=ZZZZ",
+  "status": 200
+ },
+ "trade-setups:empty": {
+  "body": {
+   "data": [],
+   "meta": {
+    "api_version": "v1",
+    "limit": 50,
+    "next_cursor": null,
+    "request_id": "ui-000000000000000000000001",
+    "served_at": "2026-10-03T19:35:09+00:00",
+    "view": "trade-setup-summary-v1"
+   }
+  },
+  "headers": {
+   "content-type": "application/json",
+   "x-request-id": "ui-000000000000000000000001"
+  },
+  "request": "/api/v1/trade-setups?symbol=ZZZZ",
   "status": 200
  },
  "version": {

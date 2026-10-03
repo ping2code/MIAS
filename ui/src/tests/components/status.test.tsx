@@ -6,7 +6,7 @@ import { MAX_REQUESTS } from "../../app/diagnostics";
 import { UI_BUILD, UI_VERSION } from "../../lib/buildInfo";
 import { fx } from "../api16c";
 import { fixture } from "../fixtures";
-import { authorized, respond, server } from "../msw";
+import { authorized, backgroundHistoryHeads, respond, server } from "../msw";
 import { renderApp } from "../render";
 
 const READY = fx("health:ready");
@@ -33,6 +33,8 @@ function health({ live = "ok", ready = "ready" }: { live?: "ok" | "down" | "500"
       return respond(ready === "not_ready" ? NOT_READY : READY);
     }),
     http.get("*/api/v1/version", ({ request }) => respond(authorized(request) ? VERSION : fixture("unauthorized"))),
+    // Rendering "/" (the AppShell indicator tests) also runs the Overview's per-kind history heads.
+    ...backgroundHistoryHeads(),
   ];
 }
 

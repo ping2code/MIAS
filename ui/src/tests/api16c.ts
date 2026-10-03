@@ -85,7 +85,10 @@ export function api16c(log: Recorded[] = [], overrides: Partial<Record<string, C
       if (q.get("symbol") === "ZZZZ") return respond(pick(`${family}:empty`));
       if (q.has("as_of_from") || q.has("as_of_to")) return respond(pick(`${family}:window`));
       if (overrides[`${family}:first`]) return respond(pick(`${family}:first`));
-      return respond(pick(`${family}:history`));
+      // The Overview's background head per kind (?limit=1): the real captured head (16B fixtures).
+      if (q.toString() === "limit=1" && !overrides[`${family}:history`]) return respond(phase13(`history_head:${family}`));
+      // Kinds without a captured history page get their real empty page.
+      return respond(pick(f16[`${family}:history`] || overrides[`${family}:history`] ? `${family}:history` : `${family}:empty`));
     }),
   ];
 }

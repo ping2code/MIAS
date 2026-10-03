@@ -92,6 +92,8 @@ def main():
                     capture(client, out, f"{family}:canonical:{index}", f"/api/v1/{family}/{artifact_id}/canonical",
                             text=True)
             capture(client, out, "alerts:deliveries_unavailable", f"/api/v1/alerts/{alerts[0]}/deliveries")
+            for family in ("options-intelligence", "trade-setups", "invalidation-checks"):   # empty history pages
+                capture(client, out, f"{family}:empty", f"/api/v1/{family}?symbol=ZZZZ")
     with tempfile.TemporaryDirectory() as tmp:                         # receipts configured (not the lab deployment)
         receipts = os.path.join(tmp, "receipts")
         os.mkdir(receipts)
