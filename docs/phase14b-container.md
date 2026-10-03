@@ -172,7 +172,7 @@ re-run.
 
 | Image | Size |
 |---|---|
-| runtime | about 215 MB |
+| runtime | about 195 MB (194,645,469 bytes at the final build) |
 | validation (not deployed) | about 479 MB |
 | `ubi9/python-314` builder base | 1.08 GB; never shipped |
 
