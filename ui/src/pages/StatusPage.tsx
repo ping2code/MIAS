@@ -140,7 +140,7 @@ export function StatusPage() {
                   {readyBody.checks.map((check) => (
                     <tr key={check.name}>
                       <th scope="row">
-                        <code>{check.name}</code>
+                        <code className="nowrap">{check.name}</code>
                       </th>
                       <td>
                         <DomainBadge kind="check" value={check.status} label={check.status === "pass" ? "Pass" : "Fail"} />
