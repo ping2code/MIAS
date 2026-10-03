@@ -50,3 +50,18 @@ http://otel-collector.{{ .Release.Namespace }}.svc:4318
 {{- define "mias.collectorActive" -}}
 {{- if and .Values.observability.enabled .Values.observability.collector.enabled -}}true{{- end -}}
 {{- end -}}
+
+{{- define "mias.uiImage" -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" .Values.ui.image.digest) -}}
+{{- fail "ui.image.digest must be sha256:<64 hex> when ui.enabled (digest pinning is mandatory)" -}}
+{{- end -}}
+{{ .Values.ui.image.repository }}@{{ .Values.ui.image.digest }}
+{{- end -}}
+
+{{- define "mias.uiUpstream" -}}
+{{- $upstream := .Values.ui.api.upstream | default (printf "mias-api.%s.svc.%s:8080" .Release.Namespace .Values.ui.api.clusterDomain) -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?:[0-9]{1,5}$" $upstream) -}}
+{{- fail "ui.api.upstream must be host:port (a fully qualified lowercase DNS name; no scheme or path)" -}}
+{{- end -}}
+{{ $upstream }}
+{{- end -}}

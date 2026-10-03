@@ -1,0 +1,236 @@
+{{- if .Values.ui.enabled }}
+# mias-ui (Phase 16B): static dashboard + same-origin nginx proxy to mias-api. No token, Secret, RBAC or Kubernetes
+# API access; restricted-v2, read-only root, writable /tmp only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mias-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mias-ui-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+data:
+  MIAS_UI_API_UPSTREAM: {{ include "mias.uiUpstream" . | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mias-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    app.kubernetes.io/component: dashboard
+    {{- with .Values.ui.image.versionLabel }}
+    app.kubernetes.io/version: {{ . | quote }}
+    {{- end }}
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  # Stateless (no volume claim): a new pod becomes ready before the old one stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mias-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mias-ui
+        app.kubernetes.io/part-of: mias
+        app.kubernetes.io/component: dashboard
+      annotations:
+        checksum/config: {{ include "mias.uiUpstream" . | sha256sum }}
+    spec:
+      serviceAccountName: mias-ui
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        {{- include "mias.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: mias-ui
+          image: {{ include "mias.uiImage" . }}
+          imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: mias-ui-config
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            {{- include "mias.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+          # /healthz is static in nginx: UI health never depends on the API.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.ui.tmp.sizeLimit }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mias-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mias-ui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+{{- if .Values.ui.route.enabled }}
+---
+# Edge TLS at the router; HTTP redirected to HTTPS.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mias-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  host: {{ .Values.ui.route.host }}
+  to:
+    kind: Service
+    name: mias-ui
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# mias-ui accepts only the OpenShift router, on 8080.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mias-ui-allow-router
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mias-ui
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/ingress: ""
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# mias-ui may reach only mias-api on 8080, plus cluster DNS to resolve the Service name. Nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mias-ui-egress-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mias-ui
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mias-api
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+          podSelector:
+            matchLabels:
+              dns.operator.openshift.io/daemonset-dns: default
+      ports:
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+---
+# mias-api additionally accepts mias-ui pods on 8080 (alongside mias-api-allow-router; policies are additive).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mias-api-allow-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-api
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mias-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mias-ui
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- end }}

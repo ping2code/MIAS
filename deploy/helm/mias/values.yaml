@@ -97,3 +97,33 @@ observability:
     serviceMonitor:
       enabled: true                   # User Workload Monitoring scrapes the collector's Prometheus exporter
       interval: 30s
+
+ui:
+  # Phase 16B: the read-only dashboard (static files + a same-origin nginx proxy to the in-namespace mias-api
+  # Service). Off until a mias-ui image is built, pushed and its digest set here. There is no token anywhere in the
+  # chart: each browser user enters the read token, held only in that tab's memory, and nginx passes the browser's
+  # own Authorization header through.
+  enabled: false
+  image:
+    repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
+    digest: ""                        # required when enabled: sha256:<64 hex>
+    versionLabel: ""                  # app.kubernetes.io/version only; never used to pull
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  api:
+    # The proxy upstream. nginx's resolver ignores search domains, so this must be a fully qualified name.
+    # Empty: mias-api.<release namespace>.svc.<clusterDomain>:8080.
+    upstream: ""
+    clusterDomain: cluster.local
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  tmp:
+    sizeLimit: 16Mi
+  route:
+    enabled: true
+    host: mias-ui.apps.ngc.sirii.org
