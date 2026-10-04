@@ -276,9 +276,10 @@ class SyntheticMonitoringTests(unittest.TestCase):
 
     # 15. no API/UI/collector/publisher pod-template (or any Deployment spec) change versus chart 0.3.1
     def test_no_existing_workload_diff(self):
+        oauth_off, _ = render("ui.oauth.enabled=false")                     # minus Hardening Task 8's sidecar
         for name in ("mias-api", "mias-ui", "otel-collector", "mias-publisher"):
             key = ("Deployment", name)
-            obj = self.objs[key]
+            obj = oauth_off[key] if name == "mias-ui" else self.objs[key]
             if name == "mias-ui":                    # minus Hardening Task 5's intended HA change (test_helm_ui_ha.py)
                 obj = json.loads(json.dumps(obj))
                 obj["spec"]["replicas"] = 1
@@ -314,7 +315,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
         result = subprocess.run([HELM, "lint", CHART, "--namespace", "mias"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
-        self.assertEqual((chart["version"], chart["appVersion"]), ("0.5.0", "259236684a74"))
+        self.assertEqual((chart["version"], chart["appVersion"]), ("0.6.0", "259236684a74"))
 
 
 if __name__ == "__main__":

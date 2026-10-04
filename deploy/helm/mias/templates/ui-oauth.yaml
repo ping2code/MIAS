@@ -1,0 +1,112 @@
+{{- if include "mias.uiOAuthActive" . }}
+{{- if not (has .Values.ui.oauth.routeMode (list "path" "full")) }}
+{{- fail "ui.oauth.routeMode must be path or full" }}
+{{- end }}
+# Hardening Task 8: who may use the UI. oauth-proxy admits a user only if this check passes for them:
+# "get services/mias-ui" in this namespace. The Role grants exactly that, to the mias-viewers group (membership is
+# managed out of band: oc adm groups add-users mias-viewers <user>). Cluster admins pass through their own rights.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mias-ui-access
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    resourceNames:
+      - mias-ui
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mias-ui-access
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mias-ui-access
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: {{ .Values.ui.oauth.accessGroup }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# The oauth-proxy needs the OAuth token endpoint (oauth-openshift Route, behind the ingress VIP) and the Kubernetes API
+# (user info, access reviews). The routers and API servers are host-network endpoints, so these are /32 ipBlocks on
+# one port each. DNS and mias-api egress stay in mias-ui-egress-api; nothing else is allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mias-ui-egress-oauth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mias-ui
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.ui.oauth.egress.ingressVIP }}
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        {{- range .Values.ui.oauth.egress.apiServers }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.ui.oauth.egress.apiServerPort }}
+{{- end }}
+{{- if and .Values.ui.route.enabled (eq .Values.ui.oauth.routeMode "path") }}
+---
+# Stage 1 only: /oauth/* on the UI host reaches the proxy (sign-in, callback, auth check, sign-out), while the UI
+# Route still targets nginx. Same host, certificate, HSTS and cookie settings as Route mias-ui.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mias-ui-oauth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+  annotations:
+    haproxy.router.openshift.io/disable_cookies: "true"
+    {{- with .Values.routeTLS.hsts }}
+    haproxy.router.openshift.io/hsts_header: {{ . | quote }}
+    {{- end }}
+spec:
+  host: {{ .Values.ui.route.host }}
+  path: /oauth
+  to:
+    kind: Service
+    name: mias-ui
+    weight: 100
+  port:
+    targetPort: oauth
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+    {{- with .Values.ui.route.tls.externalCertificateSecret }}
+    externalCertificate:
+      name: {{ . }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}
+{{- end }}

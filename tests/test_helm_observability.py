@@ -98,7 +98,8 @@ class HelmObservabilityTests(unittest.TestCase):
         # The default deny still covers every MIAS pod (the collector carries part-of: mias); no publisher egress.
         self.assertEqual(self.collector["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/part-of"], "mias")
         policies = [o for k, o in self.objs.items() if k[0] == "NetworkPolicy" and o["metadata"]["namespace"] == "mias"]
-        self.assertNotIn("ipBlock", repr(policies))          # the synthetic exporter's /32 is in its own namespace
+        # Only the UI oauth-proxy egress (Hardening Task 8) uses /32 ipBlocks in mias; telemetry never does.
+        self.assertNotIn("ipBlock", repr([p for p in policies if p["metadata"]["name"] != "mias-ui-egress-oauth"]))
         self.assertNotIn("0.0.0.0/0", self.text)
         for policy in policies:
             selector = policy["spec"]["podSelector"].get("matchLabels", {})

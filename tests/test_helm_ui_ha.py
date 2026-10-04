@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, ROUTE_ANNOTATIONS, render
+from tests.test_helm_mias import CHART, HELM, OAUTH_OFF, ROUTE_ANNOTATIONS, render
 from tests.test_helm_restart_cookie import render_chart
 
 UI_SELECTOR = {"matchLabels": {"app.kubernetes.io/name": "mias-ui"}}
@@ -110,7 +110,8 @@ class UiHighAvailabilityTests(unittest.TestCase):
 
     # The UI Deployment differs from chart 0.4.0 only by replicas and the spread constraint.
     def test_ui_deployment_change_is_only_ha(self):
-        spec = json.loads(json.dumps(self.dep["spec"]))
+        oauth_off, _ = render(OAUTH_OFF)                                     # minus Hardening Task 8's sidecar
+        spec = json.loads(json.dumps(oauth_off[("Deployment", "mias-ui")]["spec"]))
         spec["replicas"] = 1
         del spec["template"]["spec"]["topologySpreadConstraints"]
         self.assertEqual(hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:16],
@@ -144,7 +145,8 @@ class UiHighAvailabilityTests(unittest.TestCase):
             del route["spec"]["tls"]["externalCertificate"]                    # Hardening Task 7 (test_helm_tls.py)
             self.assertEqual(spec_hash(route), BASELINE_SPECS[("Route", name)], name)
             self.assertEqual(route["metadata"]["annotations"], COOKIES, name)
-        service = self.objs[("Service", "mias-ui")]
+        oauth_off, _ = render(OAUTH_OFF)                                     # Task 8 adds only the oauth Service port
+        service = oauth_off[("Service", "mias-ui")]
         self.assertEqual(spec_hash(service), BASELINE_SPECS[("Service", "mias-ui")])
         self.assertNotIn("sessionAffinity", service["spec"])               # stateless: no affinity anywhere
         self.assertNotIn("sessionAffinity", self.text)

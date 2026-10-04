@@ -167,3 +167,20 @@ modules:
 {{- end }}
 {{- toJson $data }}
 {{- end }}
+
+{{/* Hardening Task 8: the oauth-proxy sidecar is active only with the UI. */}}
+{{- define "mias.uiOAuthActive" -}}
+{{- if and .Values.ui.enabled .Values.ui.oauth.enabled }}true{{ end }}
+{{- end }}
+
+{{- define "mias.oauthProxyImage" -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" .Values.ui.oauth.image.digest) -}}
+{{- fail "ui.oauth.image.digest must be sha256:<64 hex> (digest pinning is mandatory)" -}}
+{{- end -}}
+{{ .Values.ui.oauth.image.repository }}@{{ .Values.ui.oauth.image.digest }}
+{{- end -}}
+
+{{/* The access check: may this user get the mias-ui Service in the release namespace? */}}
+{{- define "mias.oauthSAR" -}}
+{{ dict "namespace" .Release.Namespace "resource" "services" "resourceName" "mias-ui" "verb" "get" | toJson }}
+{{- end -}}

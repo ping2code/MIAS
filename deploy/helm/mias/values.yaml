@@ -210,3 +210,44 @@ ui:
     host: mias-ui.apps.ngc.sirii.org
     tls:
       externalCertificateSecret: mias-ui-tls   # out-of-band Secret (see route.tls above)
+  # Hardening Task 8: OpenShift OAuth in front of the UI, through an oauth-proxy sidecar in each mias-ui pod. The proxy
+  # uses the mias-ui ServiceAccount as its OAuth client (redirect reference to Route mias-ui), keeps a signed stateless
+  # session cookie (shared out-of-band Secret, so both replicas accept it), and admits only users allowed to
+  # "get services/mias-ui" in this namespace (the mias-viewers group, or cluster admins). See
+  # docs/hardening-auth-replacement.md.
+  oauth:
+    enabled: true
+    # Staged rollout. "path": Stage 1, only /oauth/* on the UI host reaches the proxy (Route mias-ui-oauth); the UI
+    # Route still targets nginx. "full": the UI Route targets the proxy, so every page needs an OAuth session.
+    routeMode: path
+    image:
+      # oauth-proxy from the OpenShift 4.21.15 release payload (openshift/oauth-proxy 7f518c02931f); the
+      # openshift/oauth-proxy ImageStream does not import in this cluster, so the release digest is pinned directly.
+      repository: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+      digest: sha256:baa393768a6fd88e5c655b1cfdafcc145d0d8465ee301e630d935604da86baa6
+      versionLabel: "4.21.15"
+      pullPolicy: IfNotPresent
+    port: 8081
+    # kubernetes.io Opaque Secret with key session_secret (random, base64 of 32 bytes), created out of band, shared by
+    # all replicas. Never in values or git.
+    cookieSecret: mias-ui-oauth-cookie
+    cookieName: _mias_session
+    cookieExpire: 8h
+    # Group granted access (Role mias-ui-access: get services/mias-ui). Membership is managed out of band.
+    accessGroup: mias-viewers
+    # Egress the proxy needs: the OAuth token endpoint behind the ingress VIP, and the Kubernetes API (user info and
+    # access reviews) on the control-plane nodes. Verify after network changes.
+    egress:
+      ingressVIP: 192.168.5.141/32
+      apiServers:
+        - 192.168.5.161/32
+        - 192.168.5.162/32
+        - 192.168.5.163/32
+      apiServerPort: 6443
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi

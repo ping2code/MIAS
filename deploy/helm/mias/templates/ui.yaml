@@ -1,6 +1,8 @@
 {{- if .Values.ui.enabled }}
 # mias-ui (Phase 16B): static dashboard + same-origin nginx proxy to mias-api. No token, Secret, RBAC or Kubernetes
-# API access; restricted-v2, read-only root, writable /tmp only.
+# API access; restricted-v2, read-only root, writable /tmp only. Hardening Task 8: the ServiceAccount is also the
+# OAuth client of the oauth-proxy sidecar (its redirect URIs come from Route mias-ui); only the proxy container gets
+# a (projected) token.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -9,6 +11,10 @@ metadata:
   labels:
     app.kubernetes.io/name: mias-ui
     {{- include "mias.labels" . | nindent 4 }}
+  {{- if include "mias.uiOAuthActive" . }}
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"mias-ui"}}'
+  {{- end }}
 automountServiceAccountToken: false
 ---
 apiVersion: v1
@@ -118,10 +124,93 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+        {{- if include "mias.uiOAuthActive" . }}
+        # Hardening Task 8: OpenShift OAuth for the UI. Signed stateless session cookie (shared Secret), access only
+        # for users who may get services/mias-ui here, /healthz left open for the synthetic probe. No basic auth or
+        # OAuth access token is passed upstream; request logging stays off (it would record the OAuth callback code).
+        - name: oauth-proxy
+          image: {{ include "mias.oauthProxyImage" . }}
+          imagePullPolicy: {{ .Values.ui.oauth.image.pullPolicy }}
+          args:
+            - "--provider=openshift"
+            - {{ printf "--http-address=0.0.0.0:%v" .Values.ui.oauth.port | quote }}
+            - "--https-address="
+            - "--upstream=http://127.0.0.1:8080"
+            - "--openshift-service-account=mias-ui"
+            - {{ printf "--redirect-url=https://%s/oauth/callback" .Values.ui.route.host | quote }}
+            - {{ printf "--openshift-sar=%s" (include "mias.oauthSAR" .) | quote }}
+            - "--skip-auth-regex=^/healthz$"
+            - "--skip-provider-button=true"
+            - "--cookie-secret-file=/etc/oauth-proxy/cookie/session_secret"
+            - {{ printf "--cookie-name=%s" .Values.ui.oauth.cookieName | quote }}
+            - "--cookie-secure=true"
+            - "--cookie-httponly=true"
+            - "--cookie-samesite=lax"
+            - {{ printf "--cookie-expire=%s" .Values.ui.oauth.cookieExpire | quote }}
+            - "--pass-basic-auth=false"
+            - "--pass-user-headers=false"
+            - "--pass-access-token=false"
+            - "--request-logging=false"
+          ports:
+            - name: oauth
+              containerPort: {{ .Values.ui.oauth.port }}
+              protocol: TCP
+          securityContext:
+            {{- include "mias.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.ui.oauth.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: oauth
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: oauth
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: oauth-sa
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            - name: oauth-cookie
+              mountPath: /etc/oauth-proxy/cookie
+              readOnly: true
+        {{- end }}
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: {{ .Values.ui.tmp.sizeLimit }}
+        {{- if include "mias.uiOAuthActive" . }}
+        # The OAuth client secret: a bound ServiceAccount token for the proxy container only (3607 s is the API
+        # server's default-token request, which it extends), plus the cluster CA bundle and the namespace.
+        - name: oauth-sa
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3607
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+        - name: oauth-cookie
+          secret:
+            secretName: {{ .Values.ui.oauth.cookieSecret }}
+            items:
+              - key: session_secret
+                path: session_secret
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -140,6 +229,12 @@ spec:
       port: 8080
       targetPort: http
       protocol: TCP
+    {{- if include "mias.uiOAuthActive" . }}
+    - name: oauth
+      port: {{ .Values.ui.oauth.port }}
+      targetPort: oauth
+      protocol: TCP
+    {{- end }}
 {{- if and .Values.ui.pdb.enabled (ge (int .Values.ui.replicaCount) 2) }}
 ---
 # Hardening Task 5: voluntary disruptions (node drains, evictions) may take at most one of the UI pods at a time.
@@ -184,7 +279,8 @@ spec:
     name: mias-ui
     weight: 100
   port:
-    targetPort: http
+    # Hardening Task 8: with ui.oauth.routeMode=full every UI request goes through the oauth-proxy sidecar.
+    targetPort: {{ if and (include "mias.uiOAuthActive" .) (eq .Values.ui.oauth.routeMode "full") }}oauth{{ else }}http{{ end }}
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
@@ -217,8 +313,14 @@ spec:
             matchLabels:
               policy-group.network.openshift.io/ingress: ""
       ports:
+        {{- if or (not (include "mias.uiOAuthActive" .)) (eq .Values.ui.oauth.routeMode "path") }}
         - protocol: TCP
           port: 8080
+        {{- end }}
+        {{- if include "mias.uiOAuthActive" . }}
+        - protocol: TCP
+          port: {{ .Values.ui.oauth.port }}
+        {{- end }}
 ---
 # mias-ui may reach only mias-api on 8080, plus cluster DNS to resolve the Service name. Nothing else.
 apiVersion: networking.k8s.io/v1

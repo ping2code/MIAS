@@ -31,6 +31,14 @@ HSTS = "max-age=31536000"                   # staged: max-age=300 first (revisio
 ROUTE_ANNOTATIONS = {"haproxy.router.openshift.io/disable_cookies": "true", "haproxy.router.openshift.io/hsts_header": HSTS}
 
 
+# Hardening Task 8 (tests/test_helm_auth.py): OpenShift OAuth for the UI. "ui.oauth.enabled=false" renders the
+# pre-Task 8 chart exactly (the rollback), so older UI tests check their invariants with it.
+OAUTH_OFF = "ui.oauth.enabled=false"
+UI_OAUTH_OBJECTS = {("Role", "mias-ui-access"), ("RoleBinding", "mias-ui-access"),
+                    ("NetworkPolicy", "mias-ui-egress-oauth"), ("Route", "mias-ui-oauth")}
+IPBLOCK_POLICIES = {("NetworkPolicy", "blackbox-exporter"), ("NetworkPolicy", "mias-ui-egress-oauth")}
+
+
 def route_tls(secret):
     return {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect", "externalCertificate": {"name": secret}}
 
@@ -72,7 +80,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
         self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
-                         ("v2", "mias", "application", "0.5.0", "259236684a74"))
+                         ("v2", "mias", "application", "0.6.0", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -90,7 +98,8 @@ class HelmChartTests(unittest.TestCase):
             ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
             ("PodDisruptionBudget", "mias-ui"),                 # Hardening Task 5 (tests/test_helm_ui_ha.py)
             # Hardening Task 1: alert rules for User Workload Monitoring (tests/test_helm_alerts.py)
-            ("PrometheusRule", "mias-alerts")] + sorted(SYNTHETIC_OBJECTS) + sorted(ROUTE_TLS_RBAC)))
+            ("PrometheusRule", "mias-alerts")] + sorted(SYNTHETIC_OBJECTS) + sorted(ROUTE_TLS_RBAC)
+            + sorted(UI_OAUTH_OBJECTS)))
         for banned in ("Secret", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
                        "SecurityContextConstraints", "Job", "CronJob", "StatefulSet"):
             self.assertNotIn(banned, {k for k, _ in self.objs})
@@ -195,8 +204,9 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(allow["ingress"], [{"from": [{"namespaceSelector": {"matchLabels": {
             "policy-group.network.openshift.io/ingress": ""}}}], "ports": [{"protocol": "TCP", "port": 8080}]}])
         self.assertNotIn("0.0.0.0/0", self.text)
-        # The only ipBlock is the synthetic exporter's egress to the ingress VIP (a /32 on 443), outside namespace mias.
-        self.assertEqual(self.text.count("ipBlock"), 1)
+        # ipBlocks only where the peer is host-network: the synthetic exporter's /32 to the ingress VIP on 443, and
+        # (Hardening Task 8) the UI oauth-proxy's /32s to the ingress VIP on 443 and the API servers on 6443.
+        self.assertEqual({k for k, o in self.objs.items() if "ipBlock" in repr(o)}, IPBLOCK_POLICIES)
         self.assertEqual(self.objs[("NetworkPolicy", "blackbox-exporter")]["spec"]["egress"][1],
                          {"to": [{"ipBlock": {"cidr": "192.168.5.141/32"}}], "ports": [{"protocol": "TCP", "port": 443}]})
         for pod in (self.api, self.pub, self.objs[("Deployment", "otel-collector")]):   # all under the default deny

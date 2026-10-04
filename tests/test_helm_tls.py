@@ -189,7 +189,7 @@ class RouteTlsTests(unittest.TestCase):
     def test_chart_version(self):
         with open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8") as handle:
             chart = parse(handle.read())
-        self.assertEqual((chart["version"], chart["appVersion"]), ("0.5.0", "259236684a74"))
+        self.assertEqual((chart["version"], chart["appVersion"]), ("0.6.0", "259236684a74"))
 
 
 if __name__ == "__main__":
