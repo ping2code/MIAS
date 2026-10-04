@@ -22,7 +22,7 @@ Never combine a scientific or contract change with a platform release.
 
 ## 2. Current topology
 
-Facts as of chart 0.3.1 and Helm revision 22. **Verify current values** with §32 before relying on them.
+Facts as of chart 0.4.0 and Helm revision 23. **Verify current values** with §32 before relying on them.
 
 ```
 https://mias-ui.apps.<domain>  ─router (edge TLS)─▶ mias-ui :8080 ─same-origin proxy─▶ mias-api :8080 ─▶ /var/lib/mias/artifacts (PVC, RWO)
@@ -31,15 +31,16 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 
 | Item | Current value |
 |---|---|
-| Platform | OpenShift 4.21.x; namespace `mias`; Helm release `mias`, chart `mias` **0.3.1** (verify current value) |
+| Platform | OpenShift 4.21.x; namespace `mias`; Helm release `mias`, chart `mias` **0.4.0** (verify current value) |
 | mias-api | 1 replica, Recreate, digest-pinned (`image.digest`), Secret `mias-api-auth` for the read token |
 | mias-ui | 1 replica, RollingUpdate (maxUnavailable 0), digest-pinned (`ui.image.digest`), nginx same-origin proxy, no Secret |
 | otel-collector | 1 replica, Recreate, digest-pinned (`observability.collector.image.digest`), ServiceMonitor scraped by UWM |
 | mias-publisher | toolbox Deployment, **normally 0 replicas** |
 | Storage | PVC `mias-artifacts` (RWO, `thin-csi`), Helm `resource-policy: keep`; PV reclaim policy **Retain** |
 | Routes | `mias-api` and `mias-ui`, edge TLS with Redirect, `disable_cookies: "true"`; self-signed lab `*.apps` certificate |
-| NetworkPolicies | 7: the default deny, the API's router ingress, telemetry egress, collector ingress, and 3 UI policies |
-| Monitoring | UWM enabled; PrometheusRule `mias-alerts` (11 rules); Thanos Ruler → platform Alertmanager |
+| NetworkPolicies | 7 in `mias`: the default deny, the API's router ingress, telemetry egress, collector ingress, and 3 UI policies; 2 in `mias-monitoring` (default deny; exporter: UWM ingress, DNS and ingress VIP /32 egress) |
+| Monitoring | UWM enabled; PrometheusRule `mias-alerts` (12 rules); Thanos Ruler → platform Alertmanager |
+| Synthetic | Blackbox Exporter (`mias-monitoring`, digest-pinned) probes `https://<ui route>/healthz` every 30 s through Probe `mias-ui-healthz` (in `mias`); alert `MiasUiSyntheticFailing`. See `docs/hardening-synthetic-monitoring.md` |
 | Auth | shared static read token; the UI keeps it in browser memory only |
 | Registry | internal OpenShift registry, **no external route** (push via `oc port-forward`) |
 
@@ -50,6 +51,8 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 - Tools: `git`, `helm` (4.x), `podman`, `node` 22 and `npm`; the project Python venv for tests; `curl`, `openssl`.
 - A change ticket or PR that states the **change type** (§5) and the **expected rollout impact** (§10).
 - The **previous known-good digests** are recorded, and their tags still exist (§25).
+- Out-of-band prerequisites exist: Secret `mias-api-auth` in `mias`; namespace `mias-monitoring` with ImageStream
+  `blackbox-exporter` holding the pinned exporter digest (`docs/hardening-synthetic-monitoring.md` §2).
 
 ## 4. Pre-release verification (read-only)
 
@@ -276,6 +279,8 @@ helm upgrade mias deploy/helm/mias -n mias --reset-values --dry-run=server
   `generation`.
 - **New pods:** Ready, with 0 restarts.
 - **Publisher:** still 0 replicas.
+- **Synthetic exporter** (`mias-monitoring`): Ready, 0 restarts. It restarts only when its probe configuration
+  changes.
 
 ## 14. Route and TLS verification
 
@@ -341,19 +346,23 @@ q 'up{namespace="mias",job="otel-collector"}'
 q 'mias_artifact_index_healthy{namespace="mias",exported_job="mias/mias-api"}'
 q 'mias_artifact_index_last_success_age_seconds{namespace="mias",exported_job="mias/mias-api"}'
 oc logs -n mias deploy/mias-api --since=30m | grep -c -i -E 'transient error|failed to export'
+q 'probe_success{namespace="mias",job="mias-ui-synthetic"}'
+q 'probe_http_status_code{namespace="mias",job="mias-ui-synthetic"}'
+oc get pods -n mias-monitoring
 ```
 
 **Expected:**
 - `up` = 1 and index healthy = 1;
 - index age under 60 s (it refreshes every 30 s);
-- 0 sustained export errors.
+- 0 sustained export errors;
+- `probe_success` = 1 and status 200 (the synthetic probe of the UI Route); the exporter pod Ready.
 
 Cumulative counters reset when the API pod is replaced. That's normal.
 
 ## 18. Alert validation
 
 ```bash
-curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$THANOS/api/v1/rules?type=alert"   # mias.* groups: 11 rules, health "ok"
+curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$THANOS/api/v1/rules?type=alert"   # mias.* groups: 12 rules, health "ok"
 curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$THANOS/api/v1/alerts"             # no MIAS alert pending or firing
 ```
 
@@ -477,7 +486,8 @@ warns at 80%.
 - [ ] Both Routes: HTTPS works, HTTP returns 302, no `Set-Cookie`, headers and CSP exact, certificate as expected.
 - [ ] API health, ready and version checked; UI `/healthz` and browser QA passed (or the documented subset).
 - [ ] Telemetry: collector `up`, index healthy, no export errors.
-- [ ] Alerts: 11 rules `ok`, nothing pending or firing after settling.
+- [ ] Alerts: 12 rules `ok`, nothing pending or firing after settling.
+- [ ] Synthetic: `probe_success` = 1 and status 200 for `job="mias-ui-synthetic"`; blackbox-exporter Ready, 0 restarts.
 - [ ] Logs clean (no tokens or secrets); artifacts, PVC and PV unchanged.
 - [ ] Release evidence recorded; the previous digest's tag kept for rollback.
 
@@ -487,6 +497,7 @@ warns at 80%.
 - pods Ready, no new restarts, publisher 0;
 - `/health/ready` passes all checks;
 - no MIAS alerts firing; index healthy;
+- synthetic probe green: `probe_success{namespace="mias",job="mias-ui-synthetic"}` = 1 (the routed UI path works);
 - PVC Bound and under 80%.
 
 **Before deployment:**
@@ -515,8 +526,16 @@ warns at 80%.
 - **Single replicas everywhere:** the API is on RWO block storage (no API HA); the UI and collector are single replica
   (no UI HA yet).
 - **No central backends:** no trace backend (the collector's debug exporter only), and no central log backend.
-- **Monitoring gaps:** no synthetic or external monitoring yet; Alertmanager receivers are unverified; no inhibition
-  rules.
+- **Monitoring gaps:** Alertmanager receivers are unverified; no inhibition rules.
+- **Synthetic monitoring:**
+  - the probe skips TLS verification (lab self-signed certificate);
+  - it runs from inside the cluster, through the ingress VIP, so the external `*.apps` front end (`192.168.1.60`) and
+    users' DNS aren't covered;
+  - the ingress VIP is pinned in values;
+  - certificate expiry is collected but not alerted;
+  - only the UI Route is probed.
+
+  See `docs/hardening-synthetic-monitoring.md` §9.
 - **Supply chain:** no SBOM and no image signing yet.
 - **Validation scripts:** the Podman matrix and real-API end-to-end scripts aren't committed (§5).
 - **Leftover annotation:** the `mias-api` Route still carries a `kubectl.kubernetes.io/last-applied-configuration`
@@ -535,6 +554,8 @@ warns at 80%.
 | NetworkPolicies | `oc get networkpolicy -n mias` |
 | Storage | `oc get pvc -n mias`; `oc get pv <volume> -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'` |
 | Alert rules | `oc get prometheusrule mias-alerts -n mias`; Thanos `/api/v1/rules?type=alert` |
+| Synthetic probe | `oc get probe -n mias`; `oc get deploy,pods,networkpolicy -n mias-monitoring`; Thanos `probe_success{namespace="mias",job="mias-ui-synthetic"}` |
+| **Synthetic probe off (mutating)** | `helm upgrade … --reset-values --set syntheticMonitoring.enabled=false --wait` (no MIAS workload restarts) |
 | Render | `helm template mias deploy/helm/mias -n mias`; `helm get manifest mias -n mias` |
 | Dry run | `helm upgrade mias deploy/helm/mias -n mias --reset-values --dry-run=server` |
 | **Deploy (mutating)** | `helm upgrade mias deploy/helm/mias -n mias --reset-values --wait --timeout 8m` |
@@ -545,4 +566,4 @@ warns at 80%.
 - `docs/phase14b-container.md` through `phase14f-final-openshift-validation.md`;
 - `phase15-observability.md`;
 - `phase16a…phase16f`;
-- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`.
+- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`.
