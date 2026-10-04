@@ -313,7 +313,7 @@ spec:
             matchLabels:
               policy-group.network.openshift.io/ingress: ""
       ports:
-        {{- if or (not (include "mias.uiOAuthActive" .)) (eq .Values.ui.oauth.routeMode "path") }}
+        {{- if or (not (include "mias.uiOAuthActive" .)) (eq .Values.ui.oauth.routeMode "path") .Values.ui.oauth.routerToNginx }}
         - protocol: TCP
           port: 8080
         {{- end }}

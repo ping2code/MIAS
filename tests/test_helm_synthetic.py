@@ -15,7 +15,7 @@ import unittest
 
 from tests.test_helm_alerts import CORE, EXPECTED as ALERT_SPECS
 from tests.test_helm_mias import (CHART, HELM, ROUTE_ANNOTATIONS, SYNTHETIC_EXPORTER, SYNTHETIC_NS, SYNTHETIC_OBJECTS,
-                                  render)
+                                  pre_oauth_route, render)
 from tests.test_helm_restart_cookie import gojson_sha, render_chart
 from tests.test_openshift_manifests import parse
 
@@ -295,9 +295,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
     def test_no_route_changes(self):
         for name in ("mias-api", "mias-ui"):
             key = ("Route", name)
-            route = json.loads(json.dumps(self.objs[key]))
-            del route["spec"]["tls"]["externalCertificate"]
-            self.assertEqual(spec_hash(route), BASELINE_SPECS[key], name)
+            self.assertEqual(spec_hash(pre_oauth_route(self.objs[key])), BASELINE_SPECS[key], name)
             self.assertEqual(self.objs[key]["metadata"]["annotations"], ROUTE_ANNOTATIONS, name)
             self.assertEqual(self.objs[key], self.off[key], name)
         self.assertEqual([k for k in self.objs if k[0] == "Route"], [k for k in self.off if k[0] == "Route"])

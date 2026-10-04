@@ -12,7 +12,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, HSTS, ROOT, ROUTE_TLS_RBAC, render, route_tls
+from tests.test_helm_mias import CHART, HELM, HSTS, ROOT, ROUTE_TLS_RBAC, pre_oauth_route, render, route_tls
 from tests.test_openshift_manifests import parse
 
 CA_FILE = os.path.join(ROOT, "docs", "tls", "mias-lab-ca.crt")
@@ -64,9 +64,7 @@ class RouteTlsTests(unittest.TestCase):
             self.assertEqual(route["metadata"]["annotations"]["haproxy.router.openshift.io/disable_cookies"], "true")
             self.assertEqual(set(route["metadata"]["annotations"]),
                              {"haproxy.router.openshift.io/disable_cookies", "haproxy.router.openshift.io/hsts_header"})
-            stripped = json.loads(json.dumps(route))
-            del stripped["spec"]["tls"]["externalCertificate"]
-            self.assertEqual(spec_hash(stripped), BASELINE_SPECS[("Route", name)], name)   # target, port, wildcard
+            self.assertEqual(spec_hash(pre_oauth_route(route)), BASELINE_SPECS[("Route", name)], name)   # target, wildcard
             self.assertNotIn("certificate", route["spec"]["tls"])           # no inline cert/key on the Route
             self.assertNotIn("key", route["spec"]["tls"])
         objs, _ = render("route.tls.externalCertificateSecret=", "ui.route.tls.externalCertificateSecret=")

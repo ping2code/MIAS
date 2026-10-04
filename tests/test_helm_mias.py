@@ -3,6 +3,7 @@
 Renders with the local `helm` binary (skipped if absent) and parses the output with the strict block-YAML parser
 from the manifest tests. No cluster access.
 """
+import json
 import os
 import re
 import shutil
@@ -35,8 +36,19 @@ ROUTE_ANNOTATIONS = {"haproxy.router.openshift.io/disable_cookies": "true", "hap
 # pre-Task 8 chart exactly (the rollback), so older UI tests check their invariants with it.
 OAUTH_OFF = "ui.oauth.enabled=false"
 UI_OAUTH_OBJECTS = {("Role", "mias-ui-access"), ("RoleBinding", "mias-ui-access"),
-                    ("NetworkPolicy", "mias-ui-egress-oauth"), ("Route", "mias-ui-oauth")}
+                    ("NetworkPolicy", "mias-ui-egress-oauth")}
+STAGE1_OAUTH_ROUTE = ("Route", "mias-ui-oauth")       # routeMode=path only (Stage 1)
+UI_ROUTE_PORT = "oauth"                               # Stage 2: the UI Route targets the oauth-proxy (8081)
 IPBLOCK_POLICIES = {("NetworkPolicy", "blackbox-exporter"), ("NetworkPolicy", "mias-ui-egress-oauth")}
+
+
+def pre_oauth_route(route):
+    """A Route as it was before Tasks 7-8: no certificate reference, UI Route on nginx's http port."""
+    route = json.loads(json.dumps(route))
+    route["spec"]["tls"].pop("externalCertificate", None)
+    if route["spec"]["port"] == {"targetPort": UI_ROUTE_PORT}:
+        route["spec"]["port"] = {"targetPort": "http"}
+    return route
 
 
 def route_tls(secret):
