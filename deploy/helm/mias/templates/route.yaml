@@ -1,5 +1,6 @@
 {{- if .Values.route.enabled }}
-# Edge TLS at the router; HTTP redirected to HTTPS. The router's default session cookie is retained (see the 14E doc).
+# Edge TLS at the router; HTTP redirected to HTTPS. No router sticky cookie: the API is stateless (bearer auth per
+# request), so session affinity is unnecessary at any replica count.
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -8,6 +9,8 @@ metadata:
   labels:
     app.kubernetes.io/name: mias-api
     {{- include "mias.labels" . | nindent 4 }}
+  annotations:
+    haproxy.router.openshift.io/disable_cookies: "true"
 spec:
   host: {{ .Values.route.host }}
   to:

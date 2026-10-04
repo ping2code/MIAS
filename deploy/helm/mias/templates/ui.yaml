@@ -125,7 +125,8 @@ spec:
       protocol: TCP
 {{- if .Values.ui.route.enabled }}
 ---
-# Edge TLS at the router; HTTP redirected to HTTPS.
+# Edge TLS at the router; HTTP redirected to HTTPS. No router sticky cookie: the UI is static and its session lives in
+# browser memory, so session affinity is unnecessary at any replica count.
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -134,6 +135,8 @@ metadata:
   labels:
     app.kubernetes.io/name: mias-ui
     {{- include "mias.labels" . | nindent 4 }}
+  annotations:
+    haproxy.router.openshift.io/disable_cookies: "true"
 spec:
   host: {{ .Values.ui.route.host }}
   to:

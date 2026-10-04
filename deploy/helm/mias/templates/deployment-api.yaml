@@ -23,8 +23,9 @@ spec:
         app.kubernetes.io/component: api
         app.kubernetes.io/version: {{ .Values.image.versionLabel | quote }}
       annotations:
-        # Roll the pod when its non-secret configuration changes.
-        checksum/config: {{ include (print $.Template.BasePath "/configmap-api.yaml") . | sha256sum }}
+        # Roll the pod when its non-secret configuration changes: the ConfigMap's data only, so chart metadata (labels,
+        # chart version) never restarts the API.
+        checksum/config: {{ (include (print $.Template.BasePath "/configmap-api.yaml") . | fromYaml).data | toJson | sha256sum }}
     spec:
       serviceAccountName: mias-api
       automountServiceAccountToken: false

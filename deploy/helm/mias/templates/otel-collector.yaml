@@ -22,53 +22,7 @@ metadata:
     {{- include "mias.labels" . | nindent 4 }}
 data:
   config.yaml: |
-    extensions:
-      health_check:
-        endpoint: 0.0.0.0:13133
-    receivers:
-      otlp:
-        protocols:
-          http:
-            endpoint: 0.0.0.0:4318
-    processors:
-      memory_limiter:
-        check_interval: 5s
-        limit_percentage: 80
-        spike_limit_percentage: 25
-      batch: {}
-    exporters:
-      prometheus:
-        endpoint: 0.0.0.0:8889
-      debug:
-        verbosity: {{ .Values.observability.collector.traceDebugVerbosity }}
-        sampling_initial: 2
-        sampling_thereafter: 500
-    service:
-      extensions:
-        - health_check
-      telemetry:
-        logs:
-          level: info
-          encoding: json
-        metrics:
-          level: none
-      pipelines:
-        traces:
-          receivers:
-            - otlp
-          processors:
-            - memory_limiter
-            - batch
-          exporters:
-            - debug
-        metrics:
-          receivers:
-            - otlp
-          processors:
-            - memory_limiter
-            - batch
-          exporters:
-            - prometheus
+    {{- include "mias.collectorConfig" . | nindent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -94,7 +48,8 @@ spec:
         app.kubernetes.io/part-of: mias
         app.kubernetes.io/component: telemetry
       annotations:
-        checksum/config: {{ toJson .Values.observability | sha256sum }}
+        # The collector ConfigMap's data only (not labels, chart version or unrelated observability values).
+        checksum/config: {{ dict "config.yaml" (printf "%s\n" (include "mias.collectorConfig" .)) | toJson | sha256sum }}
     spec:
       serviceAccountName: otel-collector
       automountServiceAccountToken: false

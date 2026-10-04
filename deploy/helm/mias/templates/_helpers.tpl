@@ -65,3 +65,55 @@ http://otel-collector.{{ .Release.Namespace }}.svc:4318
 {{- end -}}
 {{ $upstream }}
 {{- end -}}
+
+{{- /* The OpenTelemetry Collector configuration: the otel-collector-config ConfigMap's only data key, and the input to
+the collector Deployment's checksum/config (so only a real configuration change rolls the collector). */ -}}
+{{- define "mias.collectorConfig" -}}
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  batch: {}
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  debug:
+    verbosity: {{ .Values.observability.collector.traceDebugVerbosity }}
+    sampling_initial: 2
+    sampling_thereafter: 500
+service:
+  extensions:
+    - health_check
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+      exporters:
+        - debug
+    metrics:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+        - batch
+      exporters:
+        - prometheus
+{{- end -}}
