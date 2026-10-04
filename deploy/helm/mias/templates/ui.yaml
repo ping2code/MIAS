@@ -59,6 +59,23 @@ spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: 15
+      {{- if .Values.ui.topologySpread.enabled }}
+      {{- if not (has .Values.ui.topologySpread.whenUnsatisfiable (list "DoNotSchedule" "ScheduleAnyway")) }}
+      {{- fail "ui.topologySpread.whenUnsatisfiable must be DoNotSchedule or ScheduleAnyway" }}
+      {{- end }}
+      # One UI pod per worker where possible. Tainted nodes (the masters) are not counted as empty domains, and
+      # pod-template-hash scopes the spread to one ReplicaSet, so each rollout's new pods spread among themselves.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.ui.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mias-ui
+          matchLabelKeys:
+            - pod-template-hash
+          nodeTaintsPolicy: Honor
+      {{- end }}
       securityContext:
         {{- include "mias.podSecurityContext" . | nindent 8 }}
       containers:
@@ -123,6 +140,25 @@ spec:
       port: 8080
       targetPort: http
       protocol: TCP
+{{- if and .Values.ui.pdb.enabled (ge (int .Values.ui.replicaCount) 2) }}
+---
+# Hardening Task 5: voluntary disruptions (node drains, evictions) may take at most one of the UI pods at a time.
+# Pods that are not Ready may always be evicted, so a broken pod never blocks a drain.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mias-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ui.pdb.minAvailable }}
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mias-ui
+{{- end }}
 {{- if .Values.ui.route.enabled }}
 ---
 # Edge TLS at the router; HTTP redirected to HTTPS. No router sticky cookie: the UI is static and its session lives in

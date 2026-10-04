@@ -149,7 +149,20 @@ ui:
     digest: sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0
     versionLabel: 90effc1778a7          # app.kubernetes.io/version only; never used to pull
     pullPolicy: IfNotPresent
-  replicaCount: 1
+  # Hardening Task 5: the UI is stateless (no volume, no server-side session, router cookies off), so it scales
+  # independently of the RWO-bound API. Two replicas on different workers survive one pod or node failure.
+  replicaCount: 2
+  # Voluntary disruptions (drains, evictions) keep at least one UI pod. Rendered only with 2+ replicas: with one
+  # replica a minAvailable of 1 would block every node drain.
+  pdb:
+    enabled: true
+    minAvailable: 1
+  # Spread UI pods across worker nodes (topology key kubernetes.io/hostname, maxSkew 1). DoNotSchedule makes the
+  # spread strict; the lab has three untainted workers, so two replicas plus one surge pod always fit. Use
+  # ScheduleAnyway if fewer than two workers can take UI pods. No zone spread: the nodes carry no zone labels.
+  topologySpread:
+    enabled: true
+    whenUnsatisfiable: DoNotSchedule
   api:
     # The proxy upstream. nginx's resolver ignores search domains, so this must be a fully qualified name.
     # Empty: mias-api.<release namespace>.svc.<clusterDomain>:8080.
