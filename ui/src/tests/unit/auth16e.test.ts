@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isKnownRoute, safeReturnPath } from "../../auth/returnPath";
-import { createSessionStore } from "../../auth/session";
 import { applyTheme, readThemePreference, THEME_STORAGE_KEY, writeThemePreference } from "../../lib/theme";
-import { TEST_TOKEN } from "../fixtures";
-import { VERSION } from "../render";
 
 const MI = `/market-intelligence/sha256:${"a".repeat(64)}`;
 
@@ -53,53 +50,6 @@ describe("safe return paths", () => {
   it("knows exactly the app routes", () => {
     expect(isKnownRoute("/trade-setups")).toBe(true);
     expect(isKnownRoute("/trade-setups/x")).toBe(false);
-  });
-});
-
-describe("memory-only lock", () => {
-  it("hides the token while locked and unlocks only with the same token", () => {
-    const s = createSessionStore();
-    s.authenticated(TEST_TOKEN, VERSION);
-    s.lock();
-    expect(s.getSnapshot()).toMatchObject({ status: "authenticated", locked: true });
-    expect(s.getToken()).toBeNull(); // no request can carry it while locked
-    expect(s.matchesToken("wrong-token-wrong-token-wrong-token")).toBe(false);
-    expect(s.matchesToken(`${TEST_TOKEN}x`)).toBe(false);
-    expect(s.matchesToken(TEST_TOKEN)).toBe(true);
-    s.unlock(VERSION);
-    expect(s.getSnapshot().locked).toBe(false);
-    expect(s.getToken()).toBe(TEST_TOKEN);
-  });
-
-  it("never exposes the token in the locked snapshot and writes no storage", () => {
-    const setItem = vi.spyOn(Storage.prototype, "setItem");
-    const s = createSessionStore();
-    s.authenticated(TEST_TOKEN, VERSION);
-    s.lock();
-    expect(JSON.stringify(s.getSnapshot())).not.toContain(TEST_TOKEN);
-    expect(setItem).not.toHaveBeenCalled();
-  });
-
-  it("signs out or expires from the locked state", () => {
-    const s = createSessionStore();
-    s.authenticated(TEST_TOKEN, VERSION);
-    s.lock();
-    s.signOut();
-    expect(s.getSnapshot()).toMatchObject({ status: "unauthenticated", locked: false, endedReason: "signed_out" });
-    expect(s.matchesToken(TEST_TOKEN)).toBe(false);
-    s.authenticated(TEST_TOKEN, VERSION);
-    s.lock();
-    s.expire();
-    expect(s.getSnapshot()).toMatchObject({ status: "unauthenticated", locked: false, endedReason: "expired" });
-  });
-
-  it("cannot lock or unlock an unauthenticated session, and a new store starts unauthenticated (a reload)", () => {
-    const s = createSessionStore();
-    s.lock();
-    expect(s.getSnapshot().locked).toBe(false);
-    s.unlock(VERSION);
-    expect(s.getSnapshot().status).toBe("unauthenticated");
-    expect(createSessionStore().getSnapshot()).toEqual({ status: "unauthenticated", version: null, endedReason: null, locked: false });
   });
 });
 

@@ -175,7 +175,6 @@ describe("deliveries and latest error mapping", () => {
     const calls: string[] = [];
     const queue = [...replies];
     const c = createApiClient({
-      getToken: () => TEST_TOKEN,
       sleep: () => Promise.resolve(),
       fetchImpl: (input) => {
         calls.push(input instanceof Request ? input.url : input.toString());
@@ -208,7 +207,7 @@ describe("deliveries and latest error mapping", () => {
 
 describe("query keys", () => {
   it("are deterministic and hold only kind, filters and cursor", () => {
-    const c = createApiClient({ getToken: () => TEST_TOKEN });
+    const c = createApiClient({});
     const a = historyQuery(c, "alerts", { symbol: "META", limit: 50 }, null).queryKey;
     const b = historyQuery(c, "alerts", { limit: 50, symbol: "META" }, null).queryKey;
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
@@ -219,7 +218,7 @@ describe("query keys", () => {
   });
 
   it("polls only the first history page", () => {
-    const c = createApiClient({ getToken: () => TEST_TOKEN });
+    const c = createApiClient({});
     expect(historyQuery(c, "alerts", { limit: 50 }, null).refetchInterval).toBe(60_000);
     expect(historyQuery(c, "alerts", { limit: 50 }, "cursor").refetchInterval).toBe(false);
   });

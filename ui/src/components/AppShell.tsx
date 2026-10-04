@@ -1,7 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router";
-import { useServices, useSession } from "../app/context";
+import { versionQuery } from "../api/queries";
+import { useServices } from "../app/context";
 import { API_STATUS_LABEL } from "../lib/apiStatus";
 import { UI_BUILD } from "../lib/buildInfo";
 import { clearPages } from "../lib/cursorTrail";
@@ -37,25 +38,21 @@ function ApiStatus() {
 }
 
 export function AppShell() {
-  const { session, diagnostics } = useServices();
+  const { auth, client, diagnostics } = useServices();
   const queryClient = useQueryClient();
-  const snapshot = useSession();
+  const version = useQuery(versionQuery(client)).data?.value ?? null;
   const compact = useMediaQuery(COMPACT_NAV_QUERY);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const drawerVisible = compact && drawerOpen;
 
+  // Ends the oauth-proxy session (Hardening Task 8): cached data is dropped first, then /oauth/sign_out.
   const signOut = (): void => {
-    session.signOut();
+    void queryClient.cancelQueries();
     queryClient.clear();
     clearPages();
     diagnostics.reset();
-  };
-  const lock = (): void => {
-    // Unmounts the protected UI (RequireAuth shows the lock screen); cached API data is dropped as well.
-    session.lock();
-    void queryClient.cancelQueries();
-    queryClient.clear();
+    auth.signOut();
   };
   const closeDrawer = ({ returnFocus }: { returnFocus: boolean }): void => {
     setDrawerOpen(false);
@@ -97,17 +94,14 @@ export function AppShell() {
         </span>
         <span className="topbar-build">
           UI build <code>{UI_BUILD}</code>
-          {snapshot.version ? (
+          {version ? (
             <>
-              {" · "}API build <code>{snapshot.version.build}</code>
+              {" · "}API build <code>{version.build}</code>
             </>
           ) : null}
         </span>
         <ThemeControl />
         <div className="topbar-actions">
-          <button type="button" className="button button-quiet" onClick={lock} title="Hide the dashboard until the read token is re-entered">
-            Lock
-          </button>
           <button type="button" className="button button-quiet" onClick={signOut}>
             Sign out
           </button>

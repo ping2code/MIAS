@@ -4,9 +4,8 @@ import { createApiClient, type ClientOptions } from "../api/client";
 import { ApiError } from "../api/errors";
 import { queryKeys } from "../api/queries";
 import type { ApiResult, ReadinessView } from "../api/types";
-import { createSessionStore, type SessionStore } from "../auth/session";
+import { createAuthGateway, type AuthGateway } from "../auth/oauth";
 import { isUnreachable } from "../lib/apiStatus";
-import { clearPages } from "../lib/cursorTrail";
 import { ServicesContext, type AppServices } from "./context";
 import { createDiagnosticsStore, type DiagnosticsStore } from "./diagnostics";
 
@@ -45,8 +44,9 @@ export interface ServicesInit {
 }
 
 /**
- * Wires the session, client, diagnostics and query cache together. A 401 from any protected call clears the token
- * and every cached query; the route guard then sends the user to /signin (no navigation from inside the client).
+ * Wires the OAuth gateway, client, diagnostics and query cache together. When a call fails in a way that may mean
+ * the oauth-proxy session ended (401, 403, or the proxy's login redirect seen as a network error), the gateway asks
+ * the proxy; only if the session is really gone is the cache cleared and the page reloaded into the OpenShift login.
  */
 const READY_KEY = JSON.stringify(queryKeys.ready);
 
@@ -80,10 +80,10 @@ function recordReadiness(diagnostics: DiagnosticsStore, now: () => number) {
 
 export function createServices(
   overrides: Partial<Pick<ClientOptions, "fetchImpl" | "sleep" | "timeoutMs" | "backoffMs" | "now">> & {
-    session?: SessionStore;
+    auth?: AuthGateway;
   } = {},
 ): ServicesInit {
-  const session = overrides.session ?? createSessionStore();
+  const auth = overrides.auth ?? createAuthGateway(overrides.fetchImpl ? { fetchImpl: overrides.fetchImpl } : {});
   const diagnostics = createDiagnosticsStore();
   const now = overrides.now ?? (() => Date.now());
   const readiness = recordReadiness(diagnostics, now);
@@ -94,18 +94,19 @@ export function createServices(
       diagnostics.recordRetry(info, now());
     },
     now,
-    getToken: session.getToken,
-    onUnauthorized: () => {
-      session.expire();
-      queryClient.clear();
-      clearPages();
+    onPossibleSessionLoss: () => {
+      void auth.checkSession().then((state) => {
+        // The reload discards all in-memory state; clearing the cache first would only trigger a burst of refetches
+        // from the still-mounted page until the browser navigates.
+        if (state === "unauthenticated") auth.reauthenticate();
+      });
     },
     ...(overrides.fetchImpl ? { fetchImpl: overrides.fetchImpl } : {}),
     ...(overrides.sleep ? { sleep: overrides.sleep } : {}),
     ...(overrides.timeoutMs !== undefined ? { timeoutMs: overrides.timeoutMs } : {}),
     ...(overrides.backoffMs ? { backoffMs: overrides.backoffMs } : {}),
   });
-  return { services: { client, session, diagnostics }, queryClient };
+  return { services: { client, auth, diagnostics }, queryClient };
 }
 
 export function AppProviders({ init, children }: { init?: ServicesInit; children: ReactNode }) {

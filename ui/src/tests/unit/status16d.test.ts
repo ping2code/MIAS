@@ -17,7 +17,6 @@ import {
 } from "../../lib/apiStatus";
 import { noteFor } from "../../pages/status/RecentActivity";
 import { fx } from "../api16c";
-import { TEST_TOKEN } from "../fixtures";
 
 const base: RequestSummary = {
   startedAt: 1_000,
@@ -212,7 +211,6 @@ describe("client instrumentation", () => {
     const retries: { route: string; attempt: number; delayMs: number }[] = [];
     const queue = [...replies];
     const client = createApiClient({
-      getToken: () => TEST_TOKEN,
       now: () => clock,
       sleep: (ms) => {
         clock += ms;
@@ -282,7 +280,6 @@ describe("client instrumentation", () => {
 
   it("never lets a throwing diagnostics hook break a request", async () => {
     const client = createApiClient({
-      getToken: () => TEST_TOKEN,
       onRequest: () => {
         throw new Error("hook");
       },

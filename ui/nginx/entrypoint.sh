@@ -2,6 +2,10 @@
 # mias-ui start-up: render the nginx configuration into /tmp (the only writable path) and exec nginx.
 # Inputs (non-secret): MIAS_UI_API_UPSTREAM (host:port, a fully qualified Service name; nginx's resolver ignores
 # search domains) and optionally MIAS_UI_RESOLVER (an IP; default: the first nameserver in /etc/resolv.conf).
+# Hardening Task 8: MIAS_UI_API_TOKEN_FILE (a path, not the token) names the read-only Secret file with the API read
+# token. It is read into a shell variable only (never an argument, environment variable or log line), checked
+# against a conservative token alphabet, and written as one nginx directive to /tmp/nginx/api-auth.conf (mode 0600).
+# Unset: no token is injected (API calls then get 401). Set but unreadable or invalid: start-up fails (exit 2).
 set -eu
 
 upstream="${MIAS_UI_API_UPSTREAM:-mias-api.mias.svc.cluster.local:8080}"
@@ -31,5 +35,30 @@ mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/u
 sed -e "s|@MIAS_UI_RESOLVER@|$resolver|g" -e "s|@MIAS_UI_API_UPSTREAM@|$upstream|g" \
   /opt/mias-ui/etc/nginx.conf.template > /tmp/nginx/nginx.conf
 
-echo "{\"service.name\":\"mias-ui\",\"message\":\"starting nginx\",\"upstream\":\"$upstream\",\"resolver\":\"$resolver\"}"
+injection=disabled
+if [ -n "${MIAS_UI_API_TOKEN_FILE:-}" ]; then
+  if [ ! -r "$MIAS_UI_API_TOKEN_FILE" ]; then
+    echo "mias-ui: the API token file is not readable" >&2
+    exit 2
+  fi
+  token="$(cat "$MIAS_UI_API_TOKEN_FILE")"
+  case "$token" in
+    "" | *[!A-Za-z0-9._~+/=-]*)
+      unset token
+      echo "mias-ui: the API token file is empty or contains characters outside the token alphabet" >&2
+      exit 2 ;;
+  esac
+  if [ "${#token}" -lt 16 ] || [ "${#token}" -gt 4096 ]; then
+    unset token
+    echo "mias-ui: the API token length is out of range" >&2
+    exit 2
+  fi
+  ( umask 077; printf 'proxy_set_header Authorization "Bearer %s";\n' "$token" > /tmp/nginx/api-auth.conf )
+  unset token
+  injection=enabled
+else
+  ( umask 077; printf 'proxy_set_header Authorization "";\n' > /tmp/nginx/api-auth.conf )
+fi
+
+echo "{\"service.name\":\"mias-ui\",\"message\":\"starting nginx\",\"upstream\":\"$upstream\",\"resolver\":\"$resolver\",\"api_token_injection\":\"$injection\"}"
 exec nginx -c /tmp/nginx/nginx.conf -e stderr -g "daemon off;"

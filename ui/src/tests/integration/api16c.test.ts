@@ -8,7 +8,7 @@ import { TEST_TOKEN } from "../fixtures";
 import { relativeFetch, server } from "../msw";
 
 let log: Recorded[];
-const client = createApiClient({ getToken: () => TEST_TOKEN, fetchImpl: relativeFetch, sleep: () => Promise.resolve() });
+const client = createApiClient({ fetchImpl: relativeFetch, sleep: () => Promise.resolve() });
 
 beforeEach(() => {
   log = [];
@@ -16,12 +16,12 @@ beforeEach(() => {
 });
 
 describe("history over MSW", () => {
-  it("sends exactly the supported parameters, auth only in the header", async () => {
+  it("sends exactly the supported parameters and no Authorization header (nginx adds it)", async () => {
     await client.history("market-intelligence", { symbol: "META", asOfFrom: "2026-09-24T00:00:00Z", asOfTo: "2026-09-25T23:59:59Z", limit: 25 });
     const [call] = log;
     expect([...(call?.url.searchParams.keys() ?? [])]).toEqual(["symbol", "as_of_from", "as_of_to", "limit"]);
     expect([...(call?.url.searchParams.keys() ?? [])].every((k) => HISTORY_PARAMS.has(k))).toBe(true);
-    expect(call?.authorization).toBe(`Bearer ${TEST_TOKEN}`);
+    expect(call?.authorization).toBeNull();
     expect(call?.url.toString()).not.toContain(TEST_TOKEN);
     expect(call?.requestId).toMatch(REQUEST_ID_PATTERN);
   });

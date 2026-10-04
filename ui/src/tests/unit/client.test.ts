@@ -33,10 +33,9 @@ function setup(replies: Reply[], options: Partial<ClientOptions> = {}) {
     if (typeof next === "function") return next(requestInit);
     return Promise.resolve(next);
   });
-  const onUnauthorized = vi.fn();
+  const onPossibleSessionLoss = vi.fn();
   const client = createApiClient({
-    getToken: () => TEST_TOKEN,
-    onUnauthorized,
+    onPossibleSessionLoss,
     fetchImpl,
     sleep: (ms) => {
       sleeps.push(ms);
@@ -44,13 +43,13 @@ function setup(replies: Reply[], options: Partial<ClientOptions> = {}) {
     },
     ...options,
   });
-  return { client, calls, sleeps, onUnauthorized, fetchImpl };
+  return { client, calls, sleeps, onPossibleSessionLoss, fetchImpl };
 }
 
 const VERSION = fixture("version").body;
 
 describe("request construction", () => {
-  it("uses relative same-origin URLs and sends Authorization only to /api/v1", async () => {
+  it("uses relative same-origin URLs, sends no Authorization, and sends only same-origin cookies", async () => {
     const { client, calls } = setup([
       jsonResponse(200, { status: "live" }),
       jsonResponse(200, fixture("ready").body),
@@ -60,13 +59,14 @@ describe("request construction", () => {
     await client.ready();
     await client.version();
     expect(calls.map((c) => c.url)).toEqual(["/health/live", "/health/ready", "/api/v1/version"]);
-    expect(calls[0]?.headers.has("Authorization")).toBe(false);
-    expect(calls[1]?.headers.has("Authorization")).toBe(false);
-    expect(calls[2]?.headers.get("Authorization")).toBe(`Bearer ${TEST_TOKEN}`);
     for (const call of calls) {
+      // Hardening Task 8: nginx injects the read token server-side; the browser never sends it.
+      expect(call.headers.has("Authorization")).toBe(false);
       expect(call.url).not.toContain(TEST_TOKEN);
       expect(call.url.startsWith("/")).toBe(true);
-      expect(call.init.credentials).toBe("omit");
+      // The oauth-proxy session cookie goes to this origin only; redirects (an ended session) are never followed.
+      expect(call.init.credentials).toBe("same-origin");
+      expect(call.init.redirect).toBe("error");
       expect(call.init.method).toBe("GET");
     }
   });
@@ -97,10 +97,10 @@ describe("request construction", () => {
     expect(calls[1]?.url).toBe(`/api/v1/market-intelligence/${detail.data.intelligence_id}`);
   });
 
-  it("does not call the API on a protected route without a token", async () => {
-    const { client, fetchImpl } = setup([], { getToken: () => null });
-    await expect(client.version()).rejects.toMatchObject({ kind: "http", status: 401 });
-    expect(fetchImpl).not.toHaveBeenCalled();
+  it("has no token option at all: the same request is built whatever the caller passes", async () => {
+    const { client, calls } = setup([jsonResponse(200, VERSION)]);
+    await client.version();
+    expect([...(calls[0]?.headers.keys() ?? [])].sort()).toEqual(["accept", "x-request-id"]);
   });
 });
 
@@ -225,23 +225,29 @@ describe("retry policy", () => {
   });
 });
 
-describe("401 handling", () => {
-  it("invokes the global unauthorized handler once for a session call", async () => {
-    const { client, onUnauthorized } = setup([envelope(401, "unauthorized")]);
+describe("possible session loss (oauth-proxy)", () => {
+  it("is reported once for a final 401", async () => {
+    const { client, onPossibleSessionLoss } = setup([envelope(401, "unauthorized")]);
     await expect(client.history("alerts")).rejects.toMatchObject({ status: 401 });
-    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(onPossibleSessionLoss).toHaveBeenCalledTimes(1);
   });
 
-  it("does not invoke it while validating a candidate token at sign-in", async () => {
-    const { client, onUnauthorized, calls } = setup([envelope(401, "unauthorized")], { getToken: () => null });
-    await expect(client.version({ candidateToken: "candidate-token-candidate-token-xx" })).rejects.toMatchObject({ status: 401 });
-    expect(onUnauthorized).not.toHaveBeenCalled();
-    expect(calls[0]?.headers.get("Authorization")).toBe("Bearer candidate-token-candidate-token-xx");
+  it("is reported once for a final 403, also on health calls (the proxy guards every path)", async () => {
+    const { client, onPossibleSessionLoss } = setup([jsonResponse(403, {})]);
+    await expect(client.live()).rejects.toMatchObject({ status: 403 });
+    expect(onPossibleSessionLoss).toHaveBeenCalledTimes(1);
   });
 
-  it("does not invoke it for unauthenticated health calls", async () => {
-    const { client, onUnauthorized } = setup([envelope(401, "unauthorized")]);
-    await expect(client.live()).rejects.toMatchObject({ status: 401 });
-    expect(onUnauthorized).not.toHaveBeenCalled();
+  it("is reported once after retries for a network error (the proxy's login redirect is refused)", async () => {
+    const { client, onPossibleSessionLoss, calls } = setup([new TypeError("redirect"), new TypeError("redirect"), new TypeError("redirect")]);
+    await expect(client.version()).rejects.toMatchObject({ kind: "network" });
+    expect(calls).toHaveLength(3);
+    expect(onPossibleSessionLoss).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not reported for ordinary API errors", async () => {
+    const { client, onPossibleSessionLoss } = setup([envelope(404, "not_found")]);
+    await expect(client.detail("alerts", `sha256:${"a".repeat(64)}`)).rejects.toMatchObject({ status: 404 });
+    expect(onPossibleSessionLoss).not.toHaveBeenCalled();
   });
 });

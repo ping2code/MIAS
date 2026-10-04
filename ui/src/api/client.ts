@@ -2,12 +2,15 @@
  * The single typed mias-api client (Phase 16A §8).
  *
  * - Same-origin relative URLs only (`/health/*`, `/api/v1/*`); no absolute base URL exists in the bundle.
- * - `Authorization: Bearer <token>` is added to `/api/v1/*` only, from the in-memory session (or an explicit
- *   candidate token at sign-in). Never to `/health/*`, never in a URL, never logged.
+ * - No credentials of its own (Hardening Task 8): the browser never holds or sends the API read token. Requests
+ *   carry the same-origin oauth-proxy session cookie (HttpOnly; nginx strips cookies before the API) and nginx
+ *   adds the read token server-side. No `Authorization` header is ever set here.
  * - Every request sends a fresh `X-Request-ID`; the echoed id is returned with results and errors.
- * - 10 s timeout per attempt (AbortController), caller cancellation honoured, cookies never sent.
+ * - 10 s timeout per attempt (AbortController), caller cancellation honoured, redirects never followed (an ended
+ *   proxy session answers with a redirect to the OpenShift login, which surfaces as a network error).
  * - Retries: at most 2 (after 1 s, then 3 s), only for network errors, timeouts, 500 internal, 502/503/504.
- * - A 401 on a protected call (outside sign-in) invokes `onUnauthorized` exactly once per failing call.
+ * - A final 401, 403 or network error invokes `onPossibleSessionLoss` once per failing call, so the app can check
+ *   whether the OAuth session ended (and sign in again) rather than show an outage.
  * - Canonical artifacts are returned as exact text with their ETag; never parsed or re-serialised.
  */
 import { ApiError, isApiErrorCode, isRetryable } from "./errors";
@@ -32,8 +35,7 @@ export const DEFAULT_TIMEOUT_MS = 10_000;
 export const RETRY_BACKOFF_MS: readonly number[] = [1_000, 3_000];
 
 export interface ClientOptions {
-  getToken: () => string | null;
-  onUnauthorized?: () => void;
+  onPossibleSessionLoss?: () => void;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   backoffMs?: readonly number[];
@@ -49,8 +51,6 @@ export interface ClientOptions {
 
 export interface CallOptions {
   signal?: AbortSignal;
-  /** Sign-in only: validate this candidate token instead of the session token; 401 does not sign out. */
-  candidateToken?: string;
 }
 
 type Validator<T> = (value: unknown) => value is T;
@@ -59,7 +59,6 @@ interface RequestSpec<T> {
   path: string;
   /** The route template recorded in diagnostics: no query string and no ids. */
   route: string;
-  auth: boolean;
   body: "json" | "text";
   validate?: Validator<T>;
   acceptStatuses?: readonly number[];
@@ -155,13 +154,6 @@ export function createApiClient(options: ClientOptions) {
   async function attempt<T>(spec: RequestSpec<T>, call: CallOptions): Promise<ApiResult<T>> {
     const requestId = newRequestId(options.random);
     const headers = new Headers({ "X-Request-ID": requestId, Accept: "application/json" });
-    if (spec.auth) {
-      const token = call.candidateToken ?? options.getToken();
-      if (!token) {
-        throw new ApiError("http", { status: 401, code: "unauthorized", requestId: null });
-      }
-      headers.set("Authorization", `Bearer ${token}`);
-    }
     const controller = new AbortController();
     const timeout = { fired: false };
     const timer = setTimeout(() => {
@@ -179,7 +171,7 @@ export function createApiClient(options: ClientOptions) {
           method: "GET",
           headers,
           signal: controller.signal,
-          credentials: "omit",
+          credentials: "same-origin",
           redirect: "error",
         });
       } catch {
@@ -201,11 +193,7 @@ export function createApiClient(options: ClientOptions) {
         } catch {
           // non-JSON error bodies (e.g. a proxy page) are never shown
         }
-        const error = new ApiError("http", { status: response.status, code, requestId: bodyRequestId ?? echoed });
-        if (response.status === 401 && spec.auth && call.candidateToken === undefined) {
-          options.onUnauthorized?.();
-        }
-        throw error;
+        throw new ApiError("http", { status: response.status, code, requestId: bodyRequestId ?? echoed });
       }
       if (spec.body === "text") {
         const text = await response.text();
@@ -280,6 +268,13 @@ export function createApiClient(options: ClientOptions) {
         if (!(error instanceof ApiError) || terminal || !isRetryable(error) || delay === undefined || call.signal?.aborted) {
           const api = error instanceof ApiError ? error : null;
           report(spec, startedAt, index + 1, api?.status ?? null, api?.requestId ?? null, error, terminal ? "capability_unavailable" : null);
+          if (api !== null && (api.kind === "network" || api.status === 401 || api.status === 403)) {
+            try {
+              options.onPossibleSessionLoss?.();
+            } catch {
+              // Session handling never affects the request result.
+            }
+          }
           throw error;
         }
         try {
@@ -299,14 +294,14 @@ export function createApiClient(options: ClientOptions) {
 
   return {
     live: (call?: CallOptions) =>
-      request<LivenessView>({ path: "/health/live", route: "/health/live", auth: false, body: "json", validate: isLiveness }, call),
+      request<LivenessView>({ path: "/health/live", route: "/health/live", body: "json", validate: isLiveness }, call),
     ready: (call?: CallOptions) =>
       request<ReadinessView>(
-        { path: "/health/ready", route: "/health/ready", auth: false, body: "json", validate: isReadiness, acceptStatuses: [503] },
+        { path: "/health/ready", route: "/health/ready", body: "json", validate: isReadiness, acceptStatuses: [503] },
         call,
       ),
     version: (call?: CallOptions) =>
-      request<VersionView>({ path: "/api/v1/version", route: "/api/v1/version", auth: true, body: "json", validate: isVersion }, call),
+      request<VersionView>({ path: "/api/v1/version", route: "/api/v1/version", body: "json", validate: isVersion }, call),
     history: <F extends ArtifactFamily>(family: F, params: HistoryParams = {}, call?: CallOptions) => {
       const query = new URLSearchParams();
       if (params.symbol !== undefined) query.set("symbol", params.symbol);
@@ -316,7 +311,7 @@ export function createApiClient(options: ClientOptions) {
       if (params.cursor !== undefined) query.set("cursor", params.cursor);
       const suffix = query.size > 0 ? `?${query.toString()}` : "";
       return request<ListResponse<FamilyViews[F]>>(
-        { path: `/api/v1/${family}${suffix}`, route: `/api/v1/${family}`, auth: true, body: "json", validate: listValidator(family) },
+        { path: `/api/v1/${family}${suffix}`, route: `/api/v1/${family}`, body: "json", validate: listValidator(family) },
         call,
       );
     },
@@ -324,13 +319,13 @@ export function createApiClient(options: ClientOptions) {
       const query = new URLSearchParams({ symbol });
       if (asOf !== undefined) query.set("as_of", asOf);
       return request<ItemResponse<FamilyViews[F]>>(
-        { path: `/api/v1/${family}/latest?${query.toString()}`, route: `/api/v1/${family}/latest`, auth: true, body: "json", validate: itemValidator(family) },
+        { path: `/api/v1/${family}/latest?${query.toString()}`, route: `/api/v1/${family}/latest`, body: "json", validate: itemValidator(family) },
         call,
       );
     },
     detail: <F extends ArtifactFamily>(family: F, id: string, call?: CallOptions) =>
       request<ItemResponse<FamilyViews[F]>>(
-        { path: artifactPath(family, id), route: `/api/v1/${family}/{id}`, auth: true, body: "json", validate: itemValidator(family) },
+        { path: artifactPath(family, id), route: `/api/v1/${family}/{id}`, body: "json", validate: itemValidator(family) },
         call,
       ),
     /**
@@ -342,7 +337,6 @@ export function createApiClient(options: ClientOptions) {
         {
           path: artifactPath("alerts", id, "/deliveries"),
           route: "/api/v1/alerts/{id}/deliveries",
-          auth: true,
           body: "json",
           validate: isDeliveryList,
           terminalCodes: ["dependency_unavailable"],
@@ -350,7 +344,7 @@ export function createApiClient(options: ClientOptions) {
         call,
       ),
     canonical: (family: ArtifactFamily, id: string, call?: CallOptions) =>
-      request<CanonicalArtifact>({ path: artifactPath(family, id, "/canonical"), route: `/api/v1/${family}/{id}/canonical`, auth: true, body: "text" }, call),
+      request<CanonicalArtifact>({ path: artifactPath(family, id, "/canonical"), route: `/api/v1/${family}/{id}/canonical`, body: "text" }, call),
   };
 }
 

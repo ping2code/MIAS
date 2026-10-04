@@ -1,6 +1,6 @@
 import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
-import { fixture, TEST_TOKEN, type CapturedResponse } from "./fixtures";
+import { fixture, type CapturedResponse } from "./fixtures";
 
 export const server = setupServer();
 
@@ -10,8 +10,17 @@ export function respond(entry: CapturedResponse): HttpResponse<string> {
   return new HttpResponse(body, { status: entry.status, headers });
 }
 
+/**
+ * Hardening Task 8: nginx adds the API read token server-side, so the browser must never send `Authorization`.
+ * The mock API therefore treats any request that carries the header as a client bug and answers 401.
+ */
 export function authorized(request: Request): boolean {
-  return request.headers.get("Authorization") === `Bearer ${TEST_TOKEN}`;
+  return request.headers.get("Authorization") === null;
+}
+
+/** oauth-proxy's session check: 202 while signed in (the default), 401 once the session ended. */
+export function oauthHandlers(state: "authenticated" | "unauthenticated" = "authenticated"): HttpHandler[] {
+  return [http.get("*/oauth/auth", () => new HttpResponse(null, { status: state === "authenticated" ? 202 : 401 }))];
 }
 
 /** The happy-path API: health, version and every Overview/placeholder query, from captured responses. */
@@ -20,6 +29,7 @@ export function apiHandlers(overrides: Partial<Record<string, CapturedResponse>>
   const guarded = (name: string) => ({ request }: { request: Request }) =>
     authorized(request) ? respond(pick(name)) : respond(fixture("unauthorized"));
   return [
+    ...oauthHandlers(),
     http.get("*/health/live", () => respond(pick("live"))),
     http.get("*/health/ready", () => respond(pick("ready"))),
     http.get("*/api/v1/version", guarded("version")),

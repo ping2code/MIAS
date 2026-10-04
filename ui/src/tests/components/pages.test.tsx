@@ -129,8 +129,6 @@ describe("placeholders and navigation", () => {
     await user.tab();
     expect(screen.getByRole("radio", { name: /System/ })).toHaveFocus(); // the theme radio group is one tab stop
     await user.tab();
-    expect(screen.getByRole("button", { name: "Lock" })).toHaveFocus();
-    await user.tab();
     expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
     await user.tab();
     const nav = screen.getByRole("navigation", { name: "Primary" });

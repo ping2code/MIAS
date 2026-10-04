@@ -1,6 +1,4 @@
-import { Route, Routes } from "react-router";
-import { RequireAuth } from "../auth/RequireAuth";
-import { SignInPage } from "../auth/SignInPage";
+import { Navigate, Route, Routes } from "react-router";
 import { AppShell } from "../components/AppShell";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { OverviewPage } from "../pages/OverviewPage";
@@ -16,14 +14,9 @@ const LATER = "Detailed view arrives in a later Phase 16 step";
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/signin" element={<SignInPage />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
+      {/* Sign-in is OpenShift OAuth in front of the whole app (Hardening Task 8); old /signin links land on Overview. */}
+      <Route path="/signin" element={<Navigate to="/" replace />} />
+      <Route element={<AppShell />}>
         <Route index element={<OverviewPage />} />
         <Route path="market-intelligence" element={<MarketIntelligenceListPage />} />
         <Route path="market-intelligence/:id" element={<MarketIntelligenceDetailPage />} />

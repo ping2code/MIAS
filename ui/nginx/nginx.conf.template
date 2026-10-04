@@ -1,6 +1,7 @@
 # mias-ui nginx configuration (Phase 16B). Rendered at start-up into /tmp/nginx/nginx.conf by entrypoint.sh, which
 # substitutes only @MIAS_UI_RESOLVER@ and @MIAS_UI_API_UPSTREAM@ (both validated). No token, key or secret exists
-# here: the browser's own Authorization header is passed through unchanged and never logged or injected.
+# here. Hardening Task 8: the API read token is added server-side from /tmp/nginx/api-auth.conf (written by
+# entrypoint.sh from a read-only Secret mount, mode 0600, outside the web root); the browser never sends or sees it.
 worker_processes 1;
 pid /tmp/nginx/nginx.pid;
 error_log stderr warn;
@@ -64,14 +65,17 @@ http {
             return 200 "ok\n";
         }
 
-        # Same-origin proxy to mias-api. Request headers (Authorization, X-Request-ID) pass through unchanged;
-        # response status, body and headers (ETag, Cache-Control, X-Request-ID) are preserved; nothing is cached.
+        # Same-origin proxy to mias-api. X-Request-ID passes through; Authorization is always set here (never the
+        # browser's): the injected read token on /api/v1/, empty on /health/. Response status, body and headers (ETag,
+        # Cache-Control, X-Request-ID) are preserved; nothing is cached.
         location /api/v1/ {
             include /opt/mias-ui/etc/proxy.conf;
+            include /tmp/nginx/api-auth.conf;
         }
 
         location /health/ {
             include /opt/mias-ui/etc/proxy.conf;
+            proxy_set_header Authorization "";
         }
 
         # No SPA fallback for API-looking paths outside the proxied prefixes.

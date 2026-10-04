@@ -43,7 +43,7 @@ describe("Market Intelligence list", () => {
     ]);
     const [first] = historyCalls(log);
     expect(first?.url.search).toBe("?limit=50");
-    expect(first?.authorization).toMatch(/^Bearer /);
+    expect(first?.authorization).toBeNull();             // Hardening Task 8: nginx adds the token server-side
     expect(screen.getByText(/end of history/)).toBeInTheDocument();
   });
 

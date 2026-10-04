@@ -78,7 +78,7 @@ export function describeError(error: unknown): ErrorPresentation {
   }
   switch (error.code) {
     case "unauthorized":
-      return { title: "Session ended", detail: "Your session ended. Sign in again.", retryable: false };
+      return { title: "Session ended", detail: "Your MIAS session ended. Reload the page to sign in again.", retryable: false };
     case "not_found":
       return { title: "Not found", detail: "That artifact could not be found.", retryable: false };
     case "ambiguous_latest":

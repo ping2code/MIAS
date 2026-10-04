@@ -12,7 +12,7 @@ import {
 import { createQueryClient } from "../../app/providers";
 import { TEST_TOKEN } from "../fixtures";
 
-const client = createApiClient({ getToken: () => TEST_TOKEN, fetchImpl: () => Promise.reject(new Error("unused")) });
+const client = createApiClient({ fetchImpl: () => Promise.reject(new Error("unused")) });
 
 describe("query cadence", () => {
   it("polls health every 30 s, version every 5 min, history head every 60 s, latest every 30 s", () => {

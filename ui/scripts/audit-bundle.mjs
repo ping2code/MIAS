@@ -29,6 +29,10 @@ const CHECKS = [
   [/sourceMappingURL/, "source map reference"],
   [/placeholder-read-token/, "test placeholder token"],
   [/Bearer\s+[A-Za-z0-9._~+\/=-]{16,}/, "literal bearer token"],
+  // Hardening Task 8: the browser never handles the API read token; nginx injects it server-side.
+  [/\bAuthorization\b/, "Authorization header in browser code"],
+  [/\bBearer\b/, "bearer scheme in browser code"],
+  [/read token/i, "read-token UI"],
   [/MIAS_API_(READ|OPERATOR)_TOKEN/, "API token variable name"],
   [/VITE_[A-Z0-9_]+/, "Vite env variable"],
   [/\bsessionStorage\b/, "sessionStorage"],

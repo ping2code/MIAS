@@ -1,11 +1,11 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 import type { ApiClient } from "../api/client";
-import type { SessionSnapshot, SessionStore } from "../auth/session";
+import type { AuthGateway } from "../auth/oauth";
 import type { DiagnosticsSnapshot, DiagnosticsStore } from "./diagnostics";
 
 export interface AppServices {
   client: ApiClient;
-  session: SessionStore;
+  auth: AuthGateway;
   diagnostics: DiagnosticsStore;
 }
 
@@ -19,11 +19,6 @@ export function useServices(): AppServices {
 
 export function useApiClient(): ApiClient {
   return useServices().client;
-}
-
-export function useSession(): SessionSnapshot {
-  const { session } = useServices();
-  return useSyncExternalStore(session.subscribe, session.getSnapshot);
 }
 
 export function useDiagnostics(): DiagnosticsSnapshot {

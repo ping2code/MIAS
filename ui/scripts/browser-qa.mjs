@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 // Phase 16E real-browser QA for mias-ui (local only; never part of the image or the npm gates).
 //
-// Drives a real Chromium over CDP (e.g. the chromedp/headless-shell container on the host network) against a
-// running mias-ui (same-origin proxy) + mias-api. The read token comes from the environment and is never printed.
+// Drives a real Chromium over CDP against a running mias-ui behind oauth-proxy (Hardening Task 8). The dashboard has
+// no sign-in of its own: start Chrome with --remote-debugging-port, log in to MIAS through OpenShift OAuth in that
+// browser, then run this script. It reuses the browser's default (logged-in) context and never handles a password,
+// session cookie or API token; nginx adds the read token server-side.
 //
-//   MIAS_QA_URL=http://127.0.0.1:18082 MIAS_QA_CDP=http://127.0.0.1:9222 MIAS_QA_TOKEN=… \
-//   MIAS_QA_OUT=<dir for screenshots/downloads> MIAS_QA_RESTART=<script that restarts the API with MIAS_QA_TOKEN2> \
-//   MIAS_QA_TOKEN2=… PLAYWRIGHT_CORE=<path to a playwright-core install> node ui/scripts/browser-qa.mjs
+//   MIAS_QA_URL=https://mias-ui.apps.<domain> MIAS_QA_CDP=http://127.0.0.1:9222 \
+//   MIAS_QA_OUT=<dir for screenshots/downloads> PLAYWRIGHT_CORE=<path to a playwright-core install> \
+//   node ui/scripts/browser-qa.mjs
 //
-// Live (Phase 16F): MIAS_QA_URL=https://mias-ui.apps.<domain>, MIAS_QA_LAB_TLS=1 (the browser accepts the lab's
-// self-signed ingress certificate; give Node the ingress CA with NODE_EXTRA_CA_CERTS), and no MIAS_QA_RESTART
-// (token rotation restarts the API, so it only runs when explicitly configured).
-import { execFileSync } from "node:child_process";
+// The browser must trust the MIAS lab CA (docs/tls/mias-lab-ca.crt); give Node the CA with NODE_EXTRA_CA_CERTS.
 import { mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -21,9 +20,7 @@ const { chromium } = require("playwright-core");
 
 const BASE = process.env.MIAS_QA_URL ?? "http://127.0.0.1:18082";
 const CDP = process.env.MIAS_QA_CDP ?? "http://127.0.0.1:9222";
-const TOKEN = process.env.MIAS_QA_TOKEN;
 const OUT = process.env.MIAS_QA_OUT ?? "./qa-out";
-if (!TOKEN) throw new Error("MIAS_QA_TOKEN is required");
 mkdirSync(join(OUT, "shots"), { recursive: true });
 mkdirSync(join(OUT, "downloads"), { recursive: true });
 
@@ -34,22 +31,22 @@ function check(name, ok, detail = "") {
   else fail += 1;
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${!ok && detail ? ` — ${detail}` : ""}`);
 }
-const redact = (s) => String(s).split(TOKEN).join("<token>");
-
-async function apiText(path) {
-  const res = await fetch(BASE + path, { headers: { Authorization: `Bearer ${TOKEN}` } });
-  return { status: res.status, text: await res.text(), etag: res.headers.get("etag") };
-}
+const redact = (s) => String(s);
 
 const browser = await chromium.connectOverCDP(CDP);
 console.log(`browser: ${browser.version()}`);
-const context = await browser.newContext({
-  viewport: { width: 1920, height: 1080 },
-  acceptDownloads: true,
-  ignoreHTTPSErrors: process.env.MIAS_QA_LAB_TLS === "1",
-});
+// The default context holds the operator's OAuth session (HttpOnly cookie; never read here).
+const context = browser.contexts()[0];
+if (!context) throw new Error("no browser context: log in to MIAS in the CDP-attached Chrome first");
 await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
 const page = await context.newPage();
+await page.setViewportSize({ width: 1920, height: 1080 });
+
+// API comparisons go through the same OAuth session; nginx adds the read token (no Authorization from here).
+async function apiText(path) {
+  const res = await context.request.get(BASE + path, { maxRedirects: 0 });
+  return { status: res.status(), text: await res.text(), etag: res.headers().etag ?? null };
+}
 const consoleProblems = [];
 page.on("console", (m) => {
   if (m.type() === "error" || /Content Security Policy|Refused to/i.test(m.text())) consoleProblems.push(redact(m.text()));
@@ -69,20 +66,12 @@ async function shot(name) {
 }
 const h1 = () => page.locator("h1").first();
 
-// ---- Sign-in: deep link is preserved through sign-in
+// ---- OAuth session: the deep link opens directly, with no sign-in, token or lock UI in the app
 await page.goto(`${BASE}/status`);
-await page.waitForURL(/\/signin$/);
-check("unauthenticated deep link redirects to /signin", page.url().endsWith("/signin"));
-await shot("desktop-1920-signin-light");
-await page.getByLabel("Read token").fill("wrong-token-wrong-token-wrong-token");
-await page.getByRole("button", { name: "Sign in" }).click();
-await page.getByText("Invalid or expired read token").waitFor();
-check("wrong token shows 'Invalid or expired read token'", true);
-check("focus returns to the token field after a failed sign-in", await page.evaluate(() => document.activeElement?.getAttribute("name") === "mias-read-token"));
-await page.getByLabel("Read token").fill(TOKEN);
-await page.getByRole("button", { name: "Sign in" }).click();
 await page.getByRole("heading", { name: "System Status", level: 1 }).waitFor();
-check("sign-in returns to the requested page (/status)", new URL(page.url()).pathname === "/status");
+check("deep link opens directly with the OAuth session (no /signin)", new URL(page.url()).pathname === "/status");
+check("no token field, sign-in or lock control in the app",
+  (await page.getByLabel(/token/i).count()) === 0 && (await page.getByRole("button", { name: /^(Lock|Unlock|Sign in)$/ }).count()) === 0);
 check("status page heading has focus", await page.evaluate(() => document.activeElement?.tagName === "H1"));
 await page.getByText(/3 of 3 checks pass/).waitFor();
 check("status shows the API's readiness checks", true);
@@ -131,7 +120,6 @@ const dlPath = join(OUT, "downloads", download.suggestedFilename());
 await download.saveAs(dlPath);
 const dlBytes = readFileSync(dlPath);
 check("downloaded bytes equal the API canonical bytes", dlBytes.equals(Buffer.from(canonical.text, "utf8")), `size ${dlBytes.length}`);
-check("download file name/URL carry no token", !download.suggestedFilename().includes(TOKEN) && !download.url().includes(TOKEN));
 check("download used a same-origin blob: URL", download.url().startsWith(`blob:${BASE}`), download.url().slice(0, 40));
 await page.getByText(`Saved as ${expectedName}`).waitFor();
 check("download is announced", true);
@@ -187,24 +175,7 @@ for (const [name, link] of [["overview", "Overview"], ["status", "System Status"
 }
 await page.getByRole("radio", { name: /Light/ }).check();
 
-// ---- Lock / unlock
 await page.setViewportSize({ width: 1920, height: 1080 });
-await page.getByRole("button", { name: "Lock" }).click();
-await page.getByRole("heading", { name: "MIAS is locked" }).waitFor();
-check("lock hides the dashboard (no main, no nav)", (await page.locator("main").count()) === 0 && (await page.getByRole("navigation").count()) === 0);
-check("lock screen heading has focus", await page.evaluate(() => document.activeElement?.textContent === "MIAS is locked"));
-const before = requests.length;
-await page.waitForTimeout(1500);
-check("no API requests while locked", requests.slice(before).filter((r) => r.url().includes("/api/")).length === 0);
-await shot("desktop-1920-locked-light");
-await page.getByLabel("Read token").fill("wrong-token-wrong-token-wrong-token");
-await page.getByRole("button", { name: "Unlock" }).click();
-await page.getByText("That token does not match this session. The dashboard stays locked.").waitFor();
-check("wrong token keeps the dashboard locked", true);
-await page.getByLabel("Read token").fill(TOKEN);
-await page.getByRole("button", { name: "Unlock" }).click();
-await page.getByRole("heading", { name: "System Status", level: 1 }).waitFor();
-check("same token unlocks back to the same page", new URL(page.url()).pathname === "/status");
 
 // ---- Tablet and phone navigation drawer
 for (const [label, w, hgt] of [["tablet-820", 820, 1180], ["mobile-390", 390, 844]]) {
@@ -255,48 +226,24 @@ await page.keyboard.press("Escape");
 await page.emulateMedia({ reducedMotion: "no-preference" });
 await page.setViewportSize({ width: 1920, height: 1080 });
 
-// ---- Session ended: the API's token is rotated while the user is signed in
-if (process.env.MIAS_QA_RESTART && process.env.MIAS_QA_TOKEN2) {
-  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Alerts" }).click();
-  await page.getByRole("table", { name: /Alert history/ }).waitFor();
-  execFileSync("bash", [process.env.MIAS_QA_RESTART], { stdio: "ignore" }); // API now accepts only MIAS_QA_TOKEN2
-  await page.getByLabel("Symbol").fill("ZZZZ"); // a new query: guaranteed to reach the API
-  await page.getByRole("button", { name: "Apply" }).click();
-  await page.getByText("Your MIAS session ended. Sign in again to continue.").waitFor({ timeout: 30000 });
-  check("401 mid-session lands on /signin with the session-ended banner", new URL(page.url()).pathname === "/signin");
-  check("session-ended banner says the user will return", await page.getByText("You will return to the page you were on.").isVisible());
-  await shot("desktop-1920-session-ended-light");
-  await page.getByLabel("Read token").fill(process.env.MIAS_QA_TOKEN2);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("heading", { name: "Alerts", level: 1 }).waitFor();
-  const back = new URL(page.url());
-  check("after re-sign-in the user returns to the same page and filters", back.pathname === "/alerts" && back.searchParams.get("symbol") === "ZZZZ", back.pathname + back.search);
-  await page.getByText("No alerts are available for the selected filters.").waitFor();
-  await page.reload();
-  await page.waitForURL(/\/signin$/);
-  check("a reload requires sign-in again (the token was memory-only)", true);
-  check("theme preference (non-sensitive) survives the reload", (await page.evaluate(() => document.documentElement.dataset.theme ?? "system")) === "light");
-}
-
-if (!(process.env.MIAS_QA_RESTART && process.env.MIAS_QA_TOKEN2)) {
-  // Without token rotation: a reload alone must require sign-in again (the token was memory-only).
-  await page.reload();
-  await page.waitForURL(/\/signin$/);
-  check("a reload requires sign-in again (the token was memory-only)", true);
-  await shot("desktop-1920-after-reload-signin");
-  await page.getByLabel("Read token").fill(TOKEN);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await h1().waitFor();
-  check("signing in again after the reload works", true);
-}
+// ---- A reload keeps the OAuth session (the proxy cookie), and the theme preference
+await page.reload();
+await h1().waitFor();
+check("a reload stays signed in (OAuth session, no /signin)", !new URL(page.url()).pathname.startsWith("/signin"));
+check("theme preference (non-sensitive) survives the reload", (await page.evaluate(() => document.documentElement.dataset.theme ?? "system")) === "light");
 
 const csp = await page.evaluate(() => window.__cspViolations);
 check("no CSP violations in the session", csp.length === 0, csp.join("; "));
 check("no console errors or page errors", consoleProblems.filter((m) => !/401|Unauthorized|Failed to load resource/.test(m)).length === 0, consoleProblems.join(" | "));
 const external = requests.map((r) => new URL(r.url())).filter((u) => u.protocol.startsWith("http") && u.origin !== BASE);
 check("every request stayed same-origin", external.length === 0, external.map((u) => u.origin).join(","));
-check("no token in any request URL", requests.every((r) => !r.url().includes(TOKEN)));
-check("Authorization sent only to /api/v1", requests.every((r) => !r.headers().authorization || new URL(r.url()).pathname.startsWith("/api/v1/")));
+check("no request from the browser carries an Authorization header", requests.every((r) => !r.headers().authorization));
+check("the API answered through the OAuth session (nginx injects the token)", (await apiText("/api/v1/version")).status === 200);
+
+// ---- Sign out last: it ends the proxy session at /oauth/sign_out (OpenShift may sign the browser in again silently)
+const signOut = page.waitForRequest((r) => new URL(r.url()).pathname === "/oauth/sign_out");
+await page.getByRole("button", { name: "Sign out" }).click();
+check("Sign out goes through /oauth/sign_out", (await signOut.catch(() => null)) !== null);
 
 await context.close();
 await browser.close();
