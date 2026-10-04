@@ -1,0 +1,50 @@
+{{- $secrets := list }}
+{{- if and .Values.route.enabled .Values.route.tls.externalCertificateSecret }}
+{{- $secrets = append $secrets .Values.route.tls.externalCertificateSecret }}
+{{- end }}
+{{- if and .Values.ui.enabled .Values.ui.route.enabled .Values.ui.route.tls.externalCertificateSecret }}
+{{- $secrets = append $secrets .Values.ui.route.tls.externalCertificateSecret }}
+{{- end }}
+{{- if $secrets }}
+# Hardening Task 7: Routes using spec.tls.externalCertificate are served only if the OpenShift router can read the
+# referenced Secret. This grants the router's service account read access to exactly those named TLS Secrets in this
+# namespace, nothing else. The Secrets themselves are created out of band (never rendered by this chart).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mias-route-tls-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-route-tls
+    {{- include "mias.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      {{- range $secrets }}
+      - {{ . }}
+      {{- end }}
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mias-route-tls-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-route-tls
+    {{- include "mias.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mias-route-tls-reader
+subjects:
+  - kind: ServiceAccount
+    name: router
+    namespace: openshift-ingress
+{{- end }}

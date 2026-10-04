@@ -56,6 +56,18 @@ tmp:
 route:
   enabled: true
   host: mias-api.apps.ngc.sirii.org
+  tls:
+    # Hardening Task 7: the Route serves this certificate (issued by the MIAS lab CA, docs/tls/mias-lab-ca.crt)
+    # instead of the ingress default. The kubernetes.io/tls Secret is created out of band (never in git or values);
+    # see docs/hardening-tls-dns-hsts.md. Empty: fall back to the ingress controller's default certificate.
+    externalCertificateSecret: mias-api-tls
+
+# Hardening Task 7: shared transport settings for both Routes.
+routeTLS:
+  # Strict-Transport-Security sent by the router on HTTPS responses (haproxy.router.openshift.io/hsts_header). Staged:
+  # a short max-age first, raised only after trusted TLS is proven. No includeSubDomains (other *.apps hosts are not
+  # MIAS-controlled) and no preload. Empty: no HSTS.
+  hsts: max-age=300
 
 networkPolicy:
   enabled: true                       # default-deny for MIAS pods; the API accepts only router traffic on 8080
@@ -180,3 +192,5 @@ ui:
   route:
     enabled: true
     host: mias-ui.apps.ngc.sirii.org
+    tls:
+      externalCertificateSecret: mias-ui-tls   # out-of-band Secret (see route.tls above)

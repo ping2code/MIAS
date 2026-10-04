@@ -1,6 +1,7 @@
 {{- if .Values.route.enabled }}
 # Edge TLS at the router; HTTP redirected to HTTPS. No router sticky cookie: the API is stateless (bearer auth per
-# request), so session affinity is unnecessary at any replica count.
+# request), so session affinity is unnecessary at any replica count. Hardening Task 7: optional HSTS, and the MIAS
+# certificate from an out-of-band Secret (read by the router through templates/route-tls-rbac.yaml).
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -11,6 +12,9 @@ metadata:
     {{- include "mias.labels" . | nindent 4 }}
   annotations:
     haproxy.router.openshift.io/disable_cookies: "true"
+    {{- with .Values.routeTLS.hsts }}
+    haproxy.router.openshift.io/hsts_header: {{ . | quote }}
+    {{- end }}
 spec:
   host: {{ .Values.route.host }}
   to:
@@ -22,5 +26,9 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+    {{- with .Values.route.tls.externalCertificateSecret }}
+    externalCertificate:
+      name: {{ . }}
+    {{- end }}
   wildcardPolicy: None
 {{- end }}
