@@ -56,7 +56,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
         self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
-                         ("v2", "mias", "application", "0.3.0", "259236684a74"))
+                         ("v2", "mias", "application", "0.3.1", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -164,7 +164,8 @@ class HelmChartTests(unittest.TestCase):
         route = self.objs[("Route", "mias-api")]
         self.assertEqual(route["spec"]["host"], "mias-api.apps.ngc.sirii.org")
         self.assertEqual(route["spec"]["tls"], {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"})
-        self.assertNotIn("annotations", route["metadata"])                       # router defaults retained
+        # Hardening Task 2: no router sticky cookie (stateless backend); nothing else overrides router defaults.
+        self.assertEqual(route["metadata"]["annotations"], {"haproxy.router.openshift.io/disable_cookies": "true"})
 
     def test_network_policies(self):
         deny = self.objs[("NetworkPolicy", "mias-default-deny")]["spec"]

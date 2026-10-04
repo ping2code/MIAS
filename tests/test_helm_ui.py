@@ -1,12 +1,15 @@
 """Phase 16B/16F: the mias-ui part of the mias Helm chart (ui.*). Renders with the local `helm` binary (skipped if
 absent); no cluster access. Since 16F the UI is enabled by default with the deployed digest pinned; with
-ui.enabled=false the chart must render exactly the Phase 15 objects, apart from the chart version label (0.3.0)."""
+ui.enabled=false (and alerts off) the chart must render the Phase 15 objects, apart from the derived and intentionally
+added values listed at PHASE15_OBJECTS."""
 import hashlib
+import json
+import re
 import subprocess
 import unittest
 
 from tests.test_helm_mias import CHART, DIGEST, HELM, render
-from tests.test_openshift_manifests import walk
+from tests.test_openshift_manifests import parse, walk
 
 UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder for render-only tests
 # Phase 16F: the deployed mias-ui image (merged main 90effc1778a7612e8a708194644b46b79db09641), pinned in values.yaml.
@@ -15,12 +18,14 @@ UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}")
 UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
               ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
               ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui")}
-# sha256 of `helm template mias deploy/helm/mias --namespace mias` at Phase 15 (origin/main 30455ea), per value set.
-PHASE15_RENDER = {
-    (): "5ee344113044501b",
-    ("observability.enabled=false",): "0e57da8caf13eeaf",
-    ("networkPolicy.enabled=false",): "91c7caf038cd1f59",
-    ("route.enabled=false",): "947b64a95a4e94d3",
+# Phase 15 (origin/main 30455ea) rendered per value set, parsed, and hashed as canonical JSON with three derived or
+# intentionally added values removed: each pod template's checksum/config (an input hash whose algorithm changed in
+# Hardening Task 2), the helm.sh/chart label, and the Routes' disable_cookies annotation (Hardening Task 2).
+PHASE15_OBJECTS = {
+    (): "6da0e3138c4887b6",
+    ("observability.enabled=false",): "9ffd285162eb4e8a",
+    ("networkPolicy.enabled=false",): "c8739f6ec3b3520d",
+    ("route.enabled=false",): "2ed5cc465d4ff1b0",
 }
 ALERTS = ("PrometheusRule", "mias-alerts")
 
@@ -41,34 +46,37 @@ def raw_render(*sets):
     return subprocess.run(args, capture_output=True, text=True, timeout=60)
 
 
-def as_phase15_label(text, *sets):
-    """The render with the 16F chart version (0.3.0) put back to Phase 15's (0.2.0), so the bytes can be compared.
-
-    The chart version reaches two places: the helm.sh/chart label, and mias-api's checksum/config annotation, which
-    is the sha256 of the rendered mias-api ConfigMap (labels included). Both are recomputed from the label alone, so
-    any other difference still fails the comparison. (One consequence: the 0.3.0 upgrade restarts mias-api once.)
-    """
-    args = [HELM, "template", "mias", CHART, "--namespace", "mias", "--show-only", "templates/configmap-api.yaml"]
-    for item in sets:
-        args += ["--set", item]
-    cm = subprocess.run(args, capture_output=True, text=True, timeout=60, check=True).stdout.split("\n", 2)[2]
-    new_sum = hashlib.sha256(cm.encode()).hexdigest()
-    old_sum = hashlib.sha256(cm.replace("mias-0.3.0", "mias-0.2.0").encode()).hexdigest()
-    return text.replace(f"checksum/config: {new_sum}", f"checksum/config: {old_sum}").replace(
-        "helm.sh/chart: mias-0.3.0", "helm.sh/chart: mias-0.2.0")
+def canonical_objects_hash(*sets):
+    """The parsed render as canonical JSON, without the derived/added values listed at PHASE15_OBJECTS."""
+    out = raw_render(*sets)
+    if out.returncode != 0:
+        raise AssertionError(out.stderr[-500:])
+    objs = []
+    for chunk in re.split(r"^---\s*$", out.stdout, flags=re.M):
+        if not any(line.strip() and not line.lstrip().startswith("#") for line in chunk.splitlines()):
+            continue
+        obj = parse(chunk)
+        obj["metadata"].get("labels", {}).pop("helm.sh/chart", None)
+        annotations = obj["metadata"].get("annotations")
+        if annotations is not None:
+            annotations.pop("haproxy.router.openshift.io/disable_cookies", None)
+            if not annotations:
+                del obj["metadata"]["annotations"]
+        template = obj.get("spec", {}).get("template", {}).get("metadata", {}).get("annotations")
+        if template:
+            template.pop("checksum/config", None)
+        objs.append(obj)
+    objs.sort(key=lambda o: (o["kind"], o["metadata"]["name"]))
+    return hashlib.sha256(json.dumps(objs, sort_keys=True).encode()).hexdigest()[:16]
 
 
 @unittest.skipUnless(HELM, "helm binary not available")
 class HelmUiDisabledTests(unittest.TestCase):
     def test_disabled_render_equals_phase15(self):
-        # The rollback render (ui.enabled=false) is Phase 15 byte for byte, except the chart version label.
-        for sets, prefix in PHASE15_RENDER.items():
-            out = raw_render(*sets, "ui.enabled=false", "monitoring.alerts.enabled=false")
-            self.assertEqual(out.returncode, 0, out.stderr)
-            self.assertIn("helm.sh/chart: mias-0.3.0", out.stdout)
-            self.assertNotIn("mias-0.2.0", out.stdout)
-            normalised = as_phase15_label(out.stdout, *sets, "ui.enabled=false", "monitoring.alerts.enabled=false")
-            self.assertEqual(hashlib.sha256(normalised.encode()).hexdigest()[:16], prefix, sets)
+        # With the UI and alerts off, every object equals Phase 15 except the derived/added values (see above).
+        for sets, expected in PHASE15_OBJECTS.items():
+            self.assertEqual(canonical_objects_hash(*sets, "ui.enabled=false", "monitoring.alerts.enabled=false"),
+                             expected, sets)
 
     def test_default_deploys_the_pinned_ui_image(self):
         objs, _ = render()
