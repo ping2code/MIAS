@@ -22,7 +22,7 @@ Never combine a scientific or contract change with a platform release.
 
 ## 2. Current topology
 
-Facts as of chart 0.4.0 and Helm revision 23. **Verify current values** with §32 before relying on them.
+Facts as of chart 0.4.1 and Helm revision 25. **Verify current values** with §32 before relying on them.
 
 ```
 https://mias-ui.apps.<domain>  ─router (edge TLS)─▶ mias-ui :8080 ─same-origin proxy─▶ mias-api :8080 ─▶ /var/lib/mias/artifacts (PVC, RWO)
@@ -31,9 +31,9 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 
 | Item | Current value |
 |---|---|
-| Platform | OpenShift 4.21.x; namespace `mias`; Helm release `mias`, chart `mias` **0.4.0** (verify current value) |
+| Platform | OpenShift 4.21.x; namespace `mias`; Helm release `mias`, chart `mias` **0.4.1** (verify current value) |
 | mias-api | 1 replica, Recreate, digest-pinned (`image.digest`), Secret `mias-api-auth` for the read token |
-| mias-ui | 1 replica, RollingUpdate (maxUnavailable 0), digest-pinned (`ui.image.digest`), nginx same-origin proxy, no Secret |
+| mias-ui | **2 replicas** on different workers (strict hostname topology spread), PDB `mias-ui` (minAvailable 1), RollingUpdate (maxUnavailable 0, maxSurge 1), digest-pinned (`ui.image.digest`), nginx same-origin proxy, no Secret. See `docs/hardening-ui-ha.md` |
 | otel-collector | 1 replica, Recreate, digest-pinned (`observability.collector.image.digest`), ServiceMonitor scraped by UWM |
 | mias-publisher | toolbox Deployment, **normally 0 replicas** |
 | Storage | PVC `mias-artifacts` (RWO, `thin-csi`), Helm `resource-policy: keep`; PV reclaim policy **Retain** |
@@ -279,6 +279,13 @@ helm upgrade mias deploy/helm/mias -n mias --reset-values --dry-run=server
   `generation`.
 - **New pods:** Ready, with 0 restarts.
 - **Publisher:** still 0 replicas.
+- **UI HA:** `mias-ui` 2/2 Ready, on two **different** nodes; PDB `mias-ui` shows `disruptionsAllowed` 1:
+  ```bash
+  oc get pods -n mias -l app.kubernetes.io/name=mias-ui -o wide          # 2 pods, both Ready, different NODE
+  oc get pdb mias-ui -n mias -o jsonpath='{.status.desiredHealthy} {.status.currentHealthy} {.status.disruptionsAllowed}{"\n"}'   # 1 2 1
+  ```
+  While a UI rollout is in progress, OpenShift's own `PodDisruptionBudgetAtLimit` may show as pending for a few
+  seconds. That's expected; it fires only after 60m at the limit.
 - **Synthetic exporter** (`mias-monitoring`): Ready, 0 restarts. It restarts only when its probe configuration
   changes.
 
@@ -419,7 +426,8 @@ helm upgrade mias deploy/helm/mias -n mias --reset-values --set ui.enabled=false
 ```
 
 - **Removes only** the UI objects: Deployment, Service, Route, ServiceAccount, ConfigMap, `mias-ui-allow-router`,
-  `mias-ui-egress-api` and `mias-api-allow-ui`. The `MiasUiUnavailable` rule drops too.
+  `mias-ui-egress-api`, `mias-api-allow-ui` and the PDB `mias-ui`.
+- **Also drops:** the `MiasUiUnavailable` rule, and the synthetic probe objects with their alert.
 - **Untouched:** the API, collector, PVC, PV and ImageStream (no restart).
 - **Restore:** a plain `helm upgrade mias deploy/helm/mias -n mias --reset-values --wait` from the committed defaults,
   then re-verify (§13–§19).
@@ -488,6 +496,7 @@ warns at 80%.
 - [ ] Telemetry: collector `up`, index healthy, no export errors.
 - [ ] Alerts: 12 rules `ok`, nothing pending or firing after settling.
 - [ ] Synthetic: `probe_success` = 1 and status 200 for `job="mias-ui-synthetic"`; blackbox-exporter Ready, 0 restarts.
+- [ ] UI HA: `mias-ui` 2/2 Ready on different nodes; PDB `disruptionsAllowed` = 1; both pods receive traffic.
 - [ ] Logs clean (no tokens or secrets); artifacts, PVC and PV unchanged.
 - [ ] Release evidence recorded; the previous digest's tag kept for rollback.
 
@@ -495,6 +504,8 @@ warns at 80%.
 
 **Daily:**
 - pods Ready, no new restarts, publisher 0;
+- `mias-ui` **2/2** Ready on two different nodes. With 1/2 the UI still serves (no MIAS alert), but redundancy is gone:
+  investigate.
 - `/health/ready` passes all checks;
 - no MIAS alerts firing; index healthy;
 - synthetic probe green: `probe_success{namespace="mias",job="mias-ui-synthetic"}` = 1 (the routed UI path works);
@@ -523,8 +534,16 @@ warns at 80%.
 
 - **TLS:** self-signed lab TLS (an ingress-operator CA), and no HSTS.
 - **Auth:** a shared static read token; the public `mias-api` Route still exists alongside the UI proxy.
-- **Single replicas everywhere:** the API is on RWO block storage (no API HA); the UI and collector are single replica
-  (no UI HA yet).
+- **Single replicas:**
+  - the API is on RWO block storage, so there's no API HA; the UI depends on it for data;
+  - the collector is single replica;
+  - the UI is HA (2 replicas, PDB, spread; `docs/hardening-ui-ha.md`), but no MIAS alert covers degraded UI capacity
+    (1 of 2).
+- **No preStop drain delay on UI pods.** A request that reaches a pod just after it gets SIGTERM can fail. No such
+  failure has been observed (`docs/hardening-ui-ha.md` §7).
+- **Lab client path:** the external `*.apps` front end (`192.168.1.60`) occasionally drops a TCP SYN, costing 1–5 s
+  at connect. This is independent of MIAS: it happens before TLS and the Host header. Use client timeouts of at
+  least 10 s when measuring continuity from WSL.
 - **No central backends:** no trace backend (the collector's debug exporter only), and no central log backend.
 - **Monitoring gaps:** Alertmanager receivers are unverified; no inhibition rules.
 - **Synthetic monitoring:**
@@ -554,6 +573,7 @@ warns at 80%.
 | NetworkPolicies | `oc get networkpolicy -n mias` |
 | Storage | `oc get pvc -n mias`; `oc get pv <volume> -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'` |
 | Alert rules | `oc get prometheusrule mias-alerts -n mias`; Thanos `/api/v1/rules?type=alert` |
+| UI HA | `oc get pods -n mias -l app.kubernetes.io/name=mias-ui -o wide`; `oc get pdb mias-ui -n mias` |
 | Synthetic probe | `oc get probe -n mias`; `oc get deploy,pods,networkpolicy -n mias-monitoring`; Thanos `probe_success{namespace="mias",job="mias-ui-synthetic"}` |
 | **Synthetic probe off (mutating)** | `helm upgrade … --reset-values --set syntheticMonitoring.enabled=false --wait` (no MIAS workload restarts) |
 | Render | `helm template mias deploy/helm/mias -n mias`; `helm get manifest mias -n mias` |
@@ -566,4 +586,4 @@ warns at 80%.
 - `docs/phase14b-container.md` through `phase14f-final-openshift-validation.md`;
 - `phase15-observability.md`;
 - `phase16a…phase16f`;
-- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`.
+- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`.
