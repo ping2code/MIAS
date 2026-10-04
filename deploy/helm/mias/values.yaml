@@ -65,9 +65,10 @@ route:
 # Hardening Task 7: shared transport settings for both Routes.
 routeTLS:
   # Strict-Transport-Security sent by the router on HTTPS responses (haproxy.router.openshift.io/hsts_header). Staged:
-  # a short max-age first, raised only after trusted TLS is proven. No includeSubDomains (other *.apps hosts are not
-  # MIAS-controlled) and no preload. Empty: no HSTS.
-  hsts: max-age=300
+  # max-age=300 first (revision 28), raised to one year only after trusted TLS was proven in browsers. No
+  # includeSubDomains (other *.apps hosts are not MIAS-controlled) and no preload. Empty: no HSTS. Browsers cache it
+  # for max-age: lower or remove it FIRST in any rollback to an untrusted certificate.
+  hsts: max-age=31536000
 
 networkPolicy:
   enabled: true                       # default-deny for MIAS pods; the API accepts only router traffic on 8080

@@ -334,7 +334,7 @@ curl -sk -D - -o /dev/null https://mias-ui.apps.<domain>/ | grep -i -E '^(conten
 - `Server: nginx` with no version;
 - the certificate fingerprint and expiry as previously recorded (a change is an incident unless a TLS change was
   planned). Issuer `MIAS Lab Root CA 2026`; leaves valid until 2027-11-05;
-- `strict-transport-security` exactly equal to `routeTLS.hsts` (`max-age=300` today), on HTTPS only; no
+- `strict-transport-security` exactly equal to `routeTLS.hsts` (`max-age=31536000` since revision 29), on HTTPS only; no
   `includeSubDomains`, no `preload`;
 - verification OK with the CA and the right hostname (a hostname mismatch must give code 62).
 
@@ -458,8 +458,9 @@ Roll back (or fix forward, §23) if any of these hold:
 
 **HSTS caveat (Hardening Task 7):** browsers cache `Strict-Transport-Security` for its `max-age`. Any rollback that
 returns a Route to an untrusted certificate leaves those browsers with **no click-through** until the cached max-age
-expires. Roll HSTS back **first**, and keep max-age short until the trusted-certificate setup is settled. The order
-is in `docs/hardening-tls-dns-hsts.md` §10.
+expires, which is **up to one year** with the current `max-age=31536000`. Lowering HSTS takes effect in a browser
+only on its next HTTPS visit, so roll HSTS back **first**, and never move a MIAS host to a certificate the clients
+don't trust. The order is in `docs/hardening-tls-dns-hsts.md` §10.
 
 ## 24. Emergency UI disable (proven live in 16F)
 
@@ -594,7 +595,7 @@ warns at 80%.
 
 - **TLS:**
   - the MIAS Routes use a **private**, name-constrained lab CA, trusted only where it's installed (no CRL or OCSP);
-  - HSTS is staged at `max-age=300`;
+  - HSTS is `max-age=31536000` (one year), so a lapsed MIAS certificate is a hard browser failure: renew on time;
   - the cluster default `*.apps` certificate is still self-signed.
 
   See `docs/hardening-tls-dns-hsts.md` §11.

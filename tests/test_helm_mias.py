@@ -27,7 +27,7 @@ SYNTHETIC_OBJECTS = SYNTHETIC_EXPORTER | {("Probe", "mias-ui-healthz")}
 # Hardening Task 7 (tests/test_helm_tls.py): the router may read the out-of-band Route TLS Secrets; both Routes send
 # HSTS and serve the MIAS lab certificate. HSTS is staged: this constant is the committed default.
 ROUTE_TLS_RBAC = {("Role", "mias-route-tls-reader"), ("RoleBinding", "mias-route-tls-reader")}
-HSTS = "max-age=300"
+HSTS = "max-age=31536000"                   # staged: max-age=300 first (revision 28)
 ROUTE_ANNOTATIONS = {"haproxy.router.openshift.io/disable_cookies": "true", "haproxy.router.openshift.io/hsts_header": HSTS}
 
 

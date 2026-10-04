@@ -8,6 +8,7 @@ operator's self-signed wildcard. They send **HSTS**, and the synthetic probe ver
   1. **Revision 26:** Route certificates and router RBAC.
   2. **Revision 27:** synthetic TLS verification.
   3. **Revision 28:** HSTS `max-age=300`.
+  4. **Revision 29:** HSTS raised to `max-age=31536000` (one year), after interactive browser validation.
 - **Restarts:** only the blackbox exporter restarted, once, as planned. API, UI (both pods) and collector were
   untouched, and the publisher stayed at 0.
 
@@ -95,19 +96,23 @@ No DNS server or zone was changed.
 
 ## 5. HSTS
 
-- **Annotation:** `haproxy.router.openshift.io/hsts_header: "max-age=300"`, the supported OpenShift router
+- **Final value:** `max-age=31536000` (one year).
+- **Annotation:** `haproxy.router.openshift.io/hsts_header: "max-age=31536000"`, the supported OpenShift router
   annotation, on both Routes (`routeTLS.hsts`). The cluster has no `requiredHSTSPolicies`.
-- **Live result:** every HTTPS response on both Routes carries `strict-transport-security: max-age=300`. Plain-HTTP
-  302 redirects carry none, which is correct, since browsers ignore HSTS over HTTP.
+- **Live result:** every HTTPS response on both Routes carries `strict-transport-security: max-age=31536000`.
+  Plain-HTTP 302 redirects carry none, which is correct, since browsers ignore HSTS over HTTP.
 - **No `includeSubDomains`:** it would apply HSTS to subdomains of each MIAS host. None exist today, but MIAS doesn't
   control the rest of `*.apps`, and the gain is nil.
 - **No `preload`:** it's a public list that's meaningless for a private CA, and hard to undo.
 - **Staging:**
   - it was enabled only after trust was proven: curl and openssl verification, Windows `Invoke-WebRequest`, headless
     Chrome and Edge, and the synthetic probe;
-  - it started at `max-age=300` so a rollback stays cheap;
-  - it should be raised (for example to `max-age=31536000`) only after the operator confirms the browser behaviour,
-    by changing `routeTLS.hsts` (a Route-only change, so no pod restarts).
+  - it started at `max-age=300` (revision 28) so a rollback stayed cheap during validation;
+  - the operator then confirmed it interactively: Chrome Incognito loads `https://mias-ui.apps.ngc.sirii.org/` as
+    secure with no warning, and `/health/ready` on the API returns `ready` with all checks passing;
+  - it was raised to `max-age=31536000` at **revision 29**. That was a Route-only change: the render diff was exactly
+    the two `hsts_header` annotations, the dry run was clean, and **no pod restarted** (every pod UID and Deployment
+    generation identical).
 
 ## 6. Synthetic monitoring
 
@@ -151,7 +156,7 @@ tls_config:
 | Headless Chrome and Edge, fresh profile | loaded, title "Sign in to MIAS" | loaded |
 | Console (control, not MIAS) | **blocked** `ERR_CERT_AUTHORITY_INVALID` | — |
 | HTTP | 302 → https | 302 → https |
-| HSTS | `max-age=300` | `max-age=300` |
+| HSTS (revision 29) | `max-age=31536000` | `max-age=31536000` |
 | `Set-Cookie` | 0 | 0 |
 
 - **UI security headers** are unchanged: the exact CSP, `nosniff`, `no-referrer`, `Permissions-Policy`, COOP, CORP
@@ -168,7 +173,8 @@ tls_config:
 |---|---|---|
 | 26 | `--set routeTLS.hsts= --set syntheticMonitoring.tls.insecureSkipVerify=true --set syntheticMonitoring.tls.caCert=` | + Role and RoleBinding; both Routes + `externalCertificate`; + `MiasTlsCertificateExpiring` |
 | 27 | `--set routeTLS.hsts=` | blackbox ConfigMap (verify on, CA) + checksum |
-| 28 | committed defaults | both Routes + `hsts_header: "max-age=300"` |
+| 28 | `--set routeTLS.hsts=max-age=300` (then the committed default) | both Routes + `hsts_header: "max-age=300"` |
+| 29 | committed defaults (`routeTLS.hsts: max-age=31536000`) | both Routes: `hsts_header` 300 → 31536000; nothing else; no pod restart |
 
 **Restart proof:**
 - `mias-api-7598db4d79-jrxfc`, `mias-ui-7f94d449c4-4smg2` / `-ps5r4` and `otel-collector-9b8c77dd9-bq52c` kept the
@@ -201,8 +207,10 @@ The CA itself expires on 2031-10-04.
 ## 10. Rollback (order matters)
 
 1. **HSTS first.** Set `routeTLS.hsts` to a short value, or empty, and upgrade. Browsers that saw the header keep
-   enforcing HTTPS until **their cached max-age expires**: 300 s today, up to a year if it's raised. That's why HSTS
-   started at 300.
+   enforcing HTTPS until **their cached max-age expires**: **up to one year** now (`max-age=31536000`). For those
+   browsers, an untrusted or expired certificate on a MIAS host has **no click-through**. Roll back to a host only
+   with a certificate they trust, or keep the MIAS CA trusted, until the cached max-age expires. Lowering the value
+   affects a browser only after it next visits over HTTPS.
 2. **Route certificates.** Set `route.tls.externalCertificateSecret=` and `ui.route.tls.externalCertificateSecret=`.
    The Routes return to the ingress default certificate, and the Role/RoleBinding disappear. The Secrets stay until
    deleted by hand.
@@ -223,7 +231,8 @@ remove the NRPT rule (`Remove-DnsClientNrptRule`).
   but still present.
 - **Expiry alert covers the UI certificate only** (the probe targets the UI). The API leaf shares its dates. Renewal
   is manual.
-- **HSTS is at 300 s** until the operator confirms browser behaviour; then it should be raised (§5).
+- **HSTS is one year.** A lapsed or untrusted MIAS certificate is a hard failure in browsers that cached it, so
+  renew before 2027-11-05 (§9; the alert fires 30 days ahead).
 - **Firefox** may need `security.enterprise_roots.enabled`, or its own import, to trust a Windows user root.
 - **The cluster default `*.apps` certificate** (console, OAuth, other Routes) is still the self-signed ingress
   certificate, deliberately out of scope.
