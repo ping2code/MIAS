@@ -129,6 +129,14 @@ class ProvenanceManifestTests(unittest.TestCase):
             self.assertNotIn(":latest", item["upstreamImage"], name)
         self.assertFalse(set(third) & set(self.images))
 
+    def test_signed_rollback_digests_are_listed(self):
+        for item in self.doc.get("signedRetained", []):
+            self.assertIn(item["component"], self.images)
+            self.assertRegex(item["digest"], DIGEST)
+            self.assertRegex(item["attachmentDigest"], DIGEST)
+            self.assertRegex(item["sourceCommit"], SHA1)
+            self.assertNotEqual(item["digest"], self.images[item["component"]]["digest"])
+
     def test_unsigned_rollback_digests_are_listed(self):
         for item in self.doc["unsignedRetained"]:
             self.assertIn(item["component"], self.images)

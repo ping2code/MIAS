@@ -10,8 +10,8 @@ import json
 import re
 import unittest
 
-from tests.test_helm_mias import (HELM, OAUTH_OFF, ROUTE_ANNOTATIONS, STAGE1_OAUTH_ROUTE, UI_OAUTH_OBJECTS, render,
-                                  route_tls)
+from tests.test_helm_mias import (HELM, OAUTH_OFF, PRE_TASK8, ROUTE_ANNOTATIONS, STAGE1_OAUTH_ROUTE, UI_OAUTH_OBJECTS,
+                                  render, route_tls)
 from tests.test_openshift_manifests import parse
 
 HOST = "mias-ui.apps.ngc.sirii.org"
@@ -89,7 +89,8 @@ class OAuthProxyTests(unittest.TestCase):
         self.assertIn({"name": "oauth-sa", "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
                        "readOnly": True}, self.proxy["volumeMounts"])
         nginx = self.containers["mias-ui"]
-        self.assertEqual(nginx["volumeMounts"], [{"name": "tmp", "mountPath": "/tmp"}])   # no token, no cookie secret
+        self.assertNotIn("oauth-sa", [m["name"] for m in nginx["volumeMounts"]])          # no SA token in nginx
+        self.assertNotIn("oauth-cookie", [m["name"] for m in nginx["volumeMounts"]])
 
     def test_proxy_security_context_and_resources(self):
         self.assertEqual(self.proxy["securityContext"], self.containers["mias-ui"]["securityContext"])
@@ -163,8 +164,14 @@ class OAuthProxyTests(unittest.TestCase):
                          off[("Deployment", "mias-ui")]["spec"]["template"]["spec"]["topologySpreadConstraints"])
         self.assertEqual(self.objs[("PrometheusRule", "mias-alerts")], off[("PrometheusRule", "mias-alerts")])
         self.assertEqual(self.objs[("Probe", "mias-ui-healthz")], off[("Probe", "mias-ui-healthz")])
-        nginx_off = off[("Deployment", "mias-ui")]["spec"]["template"]["spec"]["containers"][0]
-        self.assertEqual(self.containers["mias-ui"], nginx_off)                # the nginx container itself unchanged
+        # The nginx container differs from Stage 2 only by the Stage 3 image and the server-side token (path + mount).
+        nginx = json.loads(json.dumps(self.containers["mias-ui"]))
+        nginx.pop("env")
+        nginx["volumeMounts"] = [m for m in nginx["volumeMounts"] if m["name"] != "api-auth"]
+        before, _ = render(*PRE_TASK8)
+        nginx_before = before[("Deployment", "mias-ui")]["spec"]["template"]["spec"]["containers"][0]
+        nginx["image"] = nginx_before["image"]
+        self.assertEqual(nginx, nginx_before)
 
     # 17. NetworkPolicy: router may reach 8080 (Stage 1) and 8081; proxy egress only to the VIP:443 and API servers
     def test_network_policy_minimal(self):
@@ -188,7 +195,28 @@ class OAuthProxyTests(unittest.TestCase):
         self.assertNotIn("oauth", text)
         off, _ = render(OAUTH_OFF)
         self.assertFalse(UI_OAUTH_OBJECTS & set(off))
-        self.assertEqual(canonical(off), CHART_050)
+        before, _ = render(*PRE_TASK8)                                           # also the full Stage 3 rollback
+        self.assertEqual(canonical(before), CHART_050)
+
+    # 8. Stage 3: the API token is injected server-side. Only the nginx container mounts it (one key, read-only, as a
+    # file); its environment carries the path only; the proxy sidecar can't read it; nothing reaches the browser bundle.
+    def test_server_side_token_injection(self):
+        nginx, proxy = self.containers["mias-ui"], self.proxy
+        self.assertEqual(nginx["env"], [{"name": "MIAS_UI_API_TOKEN_FILE", "value": "/etc/mias-ui/api-auth/token"}])
+        self.assertIn({"name": "api-auth", "mountPath": "/etc/mias-ui/api-auth", "readOnly": True}, nginx["volumeMounts"])
+        self.assertNotIn("api-auth", [m["name"] for m in proxy["volumeMounts"]])
+        self.assertNotIn("env", proxy)
+        volume = [v for v in self.pod["volumes"] if v["name"] == "api-auth"][0]
+        self.assertEqual(volume["secret"]["secretName"], "mias-api-auth")
+        self.assertEqual(volume["secret"]["items"], [{"key": "MIAS_API_READ_TOKEN", "path": "token"}])
+        self.assertIn("defaultMode: 0440", self.text)
+        self.assertNotIn("secretKeyRef", json.dumps(self.containers))            # never as an environment variable
+        self.assertEqual(nginx["image"], "image-registry.openshift-image-registry.svc:5000/mias/mias-ui"
+                                         "@sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640")
+        objs, _ = render("ui.api.injectToken=false")
+        dep = objs[("Deployment", "mias-ui")]["spec"]["template"]["spec"]
+        self.assertNotIn("api-auth", json.dumps(dep))
+        self.assertNotIn("MIAS_UI_API_TOKEN_FILE", json.dumps(dep))
 
     # 20. no Secret data anywhere in the render
     def test_no_secret_material(self):

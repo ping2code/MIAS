@@ -8,15 +8,15 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import (CHART, DIGEST, HELM, OAUTH_OFF, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, UI_OAUTH_OBJECTS,
+from tests.test_helm_mias import (CHART, DIGEST, HELM, OAUTH_OFF, PRE_TASK8, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, UI_OAUTH_OBJECTS,
                                   render, route_tls)
 from tests.test_openshift_manifests import parse, walk
 
 UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder for render-only tests
 # Phase 16F: the deployed mias-ui image (merged main 90effc1778a7612e8a708194644b46b79db09641), pinned in values.yaml.
-DEPLOYED_UI_DIGEST = "sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0"
+DEPLOYED_UI_DIGEST = "sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640"   # Task 8 Stage 3
 # The pre-Task 8 UI shape (no oauth-proxy); the OAuth layer is tested in tests/test_helm_auth.py.
-UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}", OAUTH_OFF)
+UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}", OAUTH_OFF, "ui.api.injectToken=false")
 UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
               ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
               ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
@@ -95,7 +95,7 @@ class HelmUiDisabledTests(unittest.TestCase):
         dep = objs[("Deployment", "mias-ui")]
         self.assertEqual(dep["spec"]["template"]["spec"]["containers"][0]["image"],
                          f"image-registry.openshift-image-registry.svc:5000/mias/mias-ui@{DEPLOYED_UI_DIGEST}")
-        self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "90effc1778a7")
+        self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "ad5c2e1e664c")
         disabled, _ = render("ui.enabled=false")
         # Rollback removes exactly the UI objects and the synthetic probe of the UI Route (alerts stay)
         self.assertEqual(set(objs) - set(disabled), UI_OBJECTS | UI_OAUTH_OBJECTS | SYNTHETIC_OBJECTS)

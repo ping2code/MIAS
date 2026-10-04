@@ -15,7 +15,7 @@ import unittest
 
 from tests.test_helm_alerts import CORE, EXPECTED as ALERT_SPECS
 from tests.test_helm_mias import (CHART, HELM, ROUTE_ANNOTATIONS, SYNTHETIC_EXPORTER, SYNTHETIC_NS, SYNTHETIC_OBJECTS,
-                                  pre_oauth_route, render)
+                                  PRE_TASK8, pre_oauth_route, render)
 from tests.test_helm_restart_cookie import gojson_sha, render_chart
 from tests.test_openshift_manifests import parse
 
@@ -276,7 +276,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
 
     # 15. no API/UI/collector/publisher pod-template (or any Deployment spec) change versus chart 0.3.1
     def test_no_existing_workload_diff(self):
-        oauth_off, _ = render("ui.oauth.enabled=false")                     # minus Hardening Task 8's sidecar
+        oauth_off, _ = render(*PRE_TASK8)                     # minus Hardening Task 8's sidecar
         for name in ("mias-api", "mias-ui", "otel-collector", "mias-publisher"):
             key = ("Deployment", name)
             obj = oauth_off[key] if name == "mias-ui" else self.objs[key]

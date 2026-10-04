@@ -35,6 +35,11 @@ ROUTE_ANNOTATIONS = {"haproxy.router.openshift.io/disable_cookies": "true", "hap
 # Hardening Task 8 (tests/test_helm_auth.py): OpenShift OAuth for the UI. "ui.oauth.enabled=false" renders the
 # pre-Task 8 chart exactly (the rollback), so older UI tests check their invariants with it.
 OAUTH_OFF = "ui.oauth.enabled=false"
+# The complete pre-Task 8 UI (= the Stage 2 rollback image and settings): no proxy, no server-side token, the
+# Phase 16F/Task 2 image. Rendering with it reproduces chart 0.5.0 exactly (tests/test_helm_auth.py).
+STAGE2_UI_DIGEST = "sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0"
+PRE_TASK8 = (OAUTH_OFF, "ui.api.injectToken=false", f"ui.image.digest={STAGE2_UI_DIGEST}",
+             "ui.image.versionLabel=90effc1778a7")
 UI_OAUTH_OBJECTS = {("Role", "mias-ui-access"), ("RoleBinding", "mias-ui-access"),
                     ("NetworkPolicy", "mias-ui-egress-oauth")}
 STAGE1_OAUTH_ROUTE = ("Route", "mias-ui-oauth")       # routeMode=path only (Stage 1)

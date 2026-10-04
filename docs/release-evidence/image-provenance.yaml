@@ -53,33 +53,42 @@ images:
   - component: mias-ui
     builtBy: mias
     repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-    tag: "90effc1778a7"
-    digest: sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0
-    sourceCommit: 90effc1778a7612e8a708194644b46b79db09641
-    ociRevision: 90effc1778a7612e8a708194644b46b79db09641
+    tag: "ad5c2e1e664c"
+    digest: sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640
+    sourceCommit: ad5c2e1e664cb16766aea6f2d05812ac022f7ee8
+    sourceRef: claude/hardening-auth-replacement (Hardening Task 8 Stage 3; not yet merged to main)
+    ociRevision: ad5c2e1e664cb16766aea6f2d05812ac022f7ee8
     ociSource: https://github.com/ping2code/MIAS
-    configId: sha256:9443160dcfa7a9d3d708f002aa72c17f7d6bcec485d58e41cc4ce4cefae6bd59
+    configId: sha256:ce61cb34420576a67fd4ddaccb71c642f32b94d202a7ee4ed00e771b73a1be25
     baseImage: registry.access.redhat.com/ubi9/nginx-124
     deployedBy: deploy/helm/mias values ui.image.digest
     signature:
       identity: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-      attachmentTag: sha256-8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0.sig
-      attachmentDigest: sha256:d66450b3f63c56190ff4a210e8e69db88bbc9d8575eaedd9f7e5eb4c668cf5ab
+      attachmentTag: sha256-415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640.sig
+      attachmentDigest: sha256:afb2417af217e69bd42f6c0449b8499de193859d0cb58d1f6ec269d71b2bfeec
       cosignVerified: true
       containersPolicyVerified: true
     sbom:
-      file: mias-ui-sha256-8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0.cdx.json
-      sha256: "2cf407fd22de0e739202334a1074ea1c4ac196cbf76e141209eed1d5a20a653f"
+      file: mias-ui-sha256-415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640.cdx.json
+      sha256: "9ee628bd392222aee1469851a7eccdcc31e9aa9061306cb872eab82072e5040e"
       sizeBytes: 3926824
       packageCount: 312
       rpmPackages: 294
       pypiPackages: 18
       fileCount: 11355
       operatingSystem: rhel 9.8
-      generatedAt: "2026-10-04T04:04:28Z"
-      attestationTag: sha256-8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0.att
-      attestationDigest: sha256:5db5c27d46f67ff4585b1f13ea61ba93f54e38a3dc44f1fd8044d0b6d52170f6
+      generatedAt: "2026-10-04T16:05:39Z"
+      attestationTag: sha256-415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640.att
+      attestationDigest: sha256:8dc017b0f1af356f26a32d11505cc6620392906764090ac157d9bcaec028f47b
       attestationVerified: true
+# Previous deployed digests kept for rollback that ARE signed (Hardening Task 6), with their SBOM attestations.
+signedRetained:
+  - component: mias-ui
+    digest: sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0
+    tag: "90effc1778a7"
+    sourceCommit: 90effc1778a7612e8a708194644b46b79db09641
+    role: Hardening Task 8 Stage 2 rollback (token sign-in UI)
+    attachmentDigest: sha256:d66450b3f63c56190ff4a210e8e69db88bbc9d8575eaedd9f7e5eb4c668cf5ab
 # Rollback digests still in the registry. They are NOT signed: sign them before any enforcing policy is enabled.
 unsignedRetained:
   - component: mias-api

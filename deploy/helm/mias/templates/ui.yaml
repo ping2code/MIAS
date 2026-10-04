@@ -91,6 +91,12 @@ spec:
           envFrom:
             - configMapRef:
                 name: mias-ui-config
+          {{- if .Values.ui.api.injectToken }}
+          # Hardening Task 8: the path (not the token) of the read-only Secret file nginx injects server-side.
+          env:
+            - name: MIAS_UI_API_TOKEN_FILE
+              value: /etc/mias-ui/api-auth/token
+          {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -124,6 +130,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.ui.api.injectToken }}
+            - name: api-auth
+              mountPath: /etc/mias-ui/api-auth
+              readOnly: true
+            {{- end }}
         {{- if include "mias.uiOAuthActive" . }}
         # Hardening Task 8: OpenShift OAuth for the UI. Signed stateless session cookie (shared Secret), access only
         # for users who may get services/mias-ui here, /healthz left open for the synthetic probe. No basic auth or
@@ -185,6 +196,17 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: {{ .Values.ui.tmp.sizeLimit }}
+        {{- if .Values.ui.api.injectToken }}
+        # Only the read-token key of the API's existing Secret, group-readable for the pod's fsGroup; mounted into
+        # the nginx container alone (never the oauth-proxy sidecar).
+        - name: api-auth
+          secret:
+            secretName: {{ required "existingSecret.name is required" .Values.existingSecret.name }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.existingSecret.key }}
+                path: token
+        {{- end }}
         {{- if include "mias.uiOAuthActive" . }}
         # The OAuth client secret: a bound ServiceAccount token for the proxy container only (3607 s is the API
         # server's default-token request, which it extends), plus the cluster CA bundle and the namespace.
