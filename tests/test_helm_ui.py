@@ -8,7 +8,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import CHART, DIGEST, HELM, SYNTHETIC_OBJECTS, render
+from tests.test_helm_mias import CHART, DIGEST, HELM, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, render, route_tls
 from tests.test_openshift_manifests import parse, walk
 
 UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder for render-only tests
@@ -21,7 +21,9 @@ UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("
               ("PodDisruptionBudget", "mias-ui")}                  # Hardening Task 5 (tests/test_helm_ui_ha.py)
 # Phase 15 (origin/main 30455ea) rendered per value set, parsed, and hashed as canonical JSON with three derived or
 # intentionally added values removed: each pod template's checksum/config (an input hash whose algorithm changed in
-# Hardening Task 2), the helm.sh/chart label, and the Routes' disable_cookies annotation (Hardening Task 2).
+# Hardening Task 2), the helm.sh/chart label, and the Routes' disable_cookies annotation (Hardening Task 2). Hardening
+# Task 7's additions are removed too: the hsts_header annotation, the Route externalCertificate reference, and the
+# router's Route-TLS Role/RoleBinding.
 PHASE15_OBJECTS = {
     (): "6da0e3138c4887b6",
     ("observability.enabled=false",): "9ffd285162eb4e8a",
@@ -29,6 +31,7 @@ PHASE15_OBJECTS = {
     ("route.enabled=false",): "2ed5cc465d4ff1b0",
 }
 ALERTS = ("PrometheusRule", "mias-alerts")
+TLS_ROLE = ("Role", "mias-route-tls-reader")          # lists the UI certificate Secret only while the UI Route exists
 
 
 def alert_names(objs):
@@ -57,10 +60,15 @@ def canonical_objects_hash(*sets):
         if not any(line.strip() and not line.lstrip().startswith("#") for line in chunk.splitlines()):
             continue
         obj = parse(chunk)
+        if (obj["kind"], obj["metadata"]["name"]) in ROUTE_TLS_RBAC:
+            continue
         obj["metadata"].get("labels", {}).pop("helm.sh/chart", None)
+        if obj["kind"] == "Route":
+            obj["spec"]["tls"].pop("externalCertificate", None)
         annotations = obj["metadata"].get("annotations")
         if annotations is not None:
             annotations.pop("haproxy.router.openshift.io/disable_cookies", None)
+            annotations.pop("haproxy.router.openshift.io/hsts_header", None)
             if not annotations:
                 del obj["metadata"]["annotations"]
         template = obj.get("spec", {}).get("template", {}).get("metadata", {}).get("annotations")
@@ -90,10 +98,11 @@ class HelmUiDisabledTests(unittest.TestCase):
         # Rollback removes exactly the UI objects and the synthetic probe of the UI Route (alerts stay)
         self.assertEqual(set(objs) - set(disabled), UI_OBJECTS | SYNTHETIC_OBJECTS)
         for key, obj in disabled.items():
-            if key == ALERTS:
-                continue                                            # the UI alerts follow ui.enabled (below)
+            if key in (ALERTS, TLS_ROLE):
+                continue                                            # the UI alerts and UI cert grant follow ui.enabled
             self.assertEqual(objs[key], obj, key)                   # and leaves every other object identical
-        self.assertEqual(alert_names(objs) - alert_names(disabled), {"MiasUiUnavailable", "MiasUiSyntheticFailing"})
+        self.assertEqual(alert_names(objs) - alert_names(disabled),
+                         {"MiasUiUnavailable", "MiasUiSyntheticFailing", "MiasTlsCertificateExpiring"})
 
     def test_disabled_renders_no_ui_object(self):
         objs, text = render("ui.enabled=false")
@@ -125,16 +134,17 @@ class HelmUiEnabledTests(unittest.TestCase):
         base, _ = render("ui.enabled=false")
         self.assertEqual(set(self.objs) - set(base), UI_OBJECTS | SYNTHETIC_OBJECTS)
         for key, obj in base.items():
-            if key == ALERTS:
-                continue                                          # the UI alerts follow ui.enabled
+            if key in (ALERTS, TLS_ROLE):
+                continue                                          # the UI alerts and UI cert grant follow ui.enabled
             self.assertEqual(self.objs[key], obj, key)            # every Phase 15 object is byte-for-byte the same
         self.assertTrue(self.objs[("Deployment", "mias-api")]["spec"]["template"]["spec"]["containers"][0]["image"]
                         .endswith(DIGEST))
 
     def test_no_secret_rbac_or_hpa(self):
         kinds = {k for k, _ in self.objs}
-        for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler"):
+        for banned in ("Secret", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler"):
             self.assertNotIn(banned, kinds)
+        self.assertEqual({k for k in self.objs if k[0] in ("Role", "RoleBinding")}, ROUTE_TLS_RBAC)
         ui_text = subprocess.run([HELM, "template", "mias", CHART, "--namespace", "mias", "--show-only",
                                   "templates/ui.yaml"] + [a for s in UI_ON for a in ("--set", s)],
                                  capture_output=True, text=True, timeout=60).stdout
@@ -179,7 +189,7 @@ class HelmUiEnabledTests(unittest.TestCase):
         route = self.objs[("Route", "mias-ui")]["spec"]
         self.assertEqual(route["host"], "mias-ui.apps.ngc.sirii.org")
         self.assertEqual(route["to"], {"kind": "Service", "name": "mias-ui", "weight": 100})
-        self.assertEqual(route["tls"], {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"})
+        self.assertEqual(route["tls"], route_tls("mias-ui-tls"))         # Hardening Task 7: MIAS lab certificate
         objs, _ = render(*UI_ON, "ui.route.enabled=false")
         self.assertNotIn(("Route", "mias-ui"), objs)
         self.assertIn(("Route", "mias-api"), objs)

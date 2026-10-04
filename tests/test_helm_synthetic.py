@@ -14,7 +14,8 @@ import tempfile
 import unittest
 
 from tests.test_helm_alerts import CORE, EXPECTED as ALERT_SPECS
-from tests.test_helm_mias import CHART, HELM, SYNTHETIC_EXPORTER, SYNTHETIC_NS, SYNTHETIC_OBJECTS, render
+from tests.test_helm_mias import (CHART, HELM, ROUTE_ANNOTATIONS, SYNTHETIC_EXPORTER, SYNTHETIC_NS, SYNTHETIC_OBJECTS,
+                                  render)
 from tests.test_helm_restart_cookie import gojson_sha, render_chart
 from tests.test_openshift_manifests import parse
 
@@ -123,18 +124,19 @@ class SyntheticMonitoringTests(unittest.TestCase):
         self.assertLess(scrape, interval)
         self.assertLessEqual(interval * 10, 300)        # at least ten probes inside the alert's 5m window
 
-    # 6. TLS verification is skipped only because of the lab's self-signed wildcard, and only via the value
+    # 6. Hardening Task 7: TLS is verified against the MIAS lab CA; the skip exists only as an explicit fallback value
     def test_tls_skip_verify_follows_the_lab_value(self):
         tls = parse(self.config)["modules"]["http_2xx_mias"]["http"]["tls_config"]
-        self.assertEqual(tls, {"insecure_skip_verify": True})
-        objs, _ = render("syntheticMonitoring.tls.insecureSkipVerify=false")
-        strict = objs[("ConfigMap", "blackbox-exporter-config")]["data"]["config.yml"]
-        self.assertEqual(parse(strict)["modules"]["http_2xx_mias"]["http"]["tls_config"],
-                         {"insecure_skip_verify": False})
+        self.assertEqual(tls, {"insecure_skip_verify": False, "ca_file": "/etc/blackbox_exporter/ca.crt"})
+        objs, _ = render("syntheticMonitoring.tls.insecureSkipVerify=true", "syntheticMonitoring.tls.caCert=")
+        lab = objs[("ConfigMap", "blackbox-exporter-config")]["data"]
+        self.assertEqual(parse(lab["config.yml"])["modules"]["http_2xx_mias"]["http"]["tls_config"],
+                         {"insecure_skip_verify": True})               # the pre-Task 7 fallback, exactly
+        self.assertEqual(sorted(lab), ["config.yml"])
         # The skip lives only in the exporter: no CA or TLS setting reaches any MIAS application container or Route.
         self.assertEqual(self.text.count("insecure_skip_verify"), 1)
         values = open(os.path.join(CHART, "values.yaml"), encoding="utf-8").read()
-        self.assertRegex(values, r"# TEMPORARY: the lab ingress certificate is self-signed.*\n\s+insecureSkipVerify: true")
+        self.assertRegex(values, r"\n    insecureSkipVerify: false\n")
 
     # 7. restricted-v2 compatible (arbitrary UID, no privilege, read-only root, digest-pinned image)
     def test_deployment_is_restricted(self):
@@ -162,8 +164,12 @@ class SyntheticMonitoringTests(unittest.TestCase):
         self.assertEqual(self.objs[("ServiceAccount", "blackbox-exporter")]["automountServiceAccountToken"], False)
         self.assertEqual((self.pod["serviceAccountName"], self.pod["automountServiceAccountToken"],
                           self.pod["enableServiceLinks"]), ("blackbox-exporter", False, False))
-        for banned in ("Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "Secret"):
+        for banned in ("ClusterRole", "ClusterRoleBinding", "Secret"):
             self.assertNotIn(banned, {k for k, _ in self.objs})
+        for key, obj in self.objs.items():                                 # the only RBAC is the Task 7 router grant
+            if key[0] in ("Role", "RoleBinding"):
+                self.assertEqual(obj["metadata"]["namespace"], "mias", key)
+                self.assertNotIn("blackbox", json.dumps(obj), key)
 
     # 9. resources are requested and limited, and small
     def test_resources_defined(self):
@@ -217,7 +223,8 @@ class SyntheticMonitoringTests(unittest.TestCase):
             'or absent_over_time(probe_success{namespace="mias",job="mias-ui-synthetic"}[5m])'])
         group = [g for g in self.objs[("PrometheusRule", "mias-alerts")]["spec"]["groups"]
                  if g["name"] == "mias.synthetic"]
-        self.assertEqual([[r["alert"] for r in g["rules"]] for g in group], [["MiasUiSyntheticFailing"]])
+        self.assertEqual([[r["alert"] for r in g["rules"]] for g in group],
+                         [["MiasUiSyntheticFailing", "MiasTlsCertificateExpiring"]])   # + Task 7 expiry
         for sets in (("syntheticMonitoring.enabled=false",), ("ui.enabled=false",), ("ui.route.enabled=false",)):
             objs, _ = render(*sets)
             self.assertNotIn("MiasUiSyntheticFailing", alert_rules(objs), sets)
@@ -230,7 +237,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
         self.assertEqual(len(CORE), 11)
         on, off = alert_rules(self.objs), alert_rules(self.off)
         self.assertEqual(set(off), CORE)
-        self.assertEqual(set(on), CORE | {"MiasUiSyntheticFailing"})
+        self.assertEqual(set(on), CORE | {"MiasUiSyntheticFailing", "MiasTlsCertificateExpiring"})
         self.assertEqual(set(ALERT_SPECS), set(on))
         for name in CORE:
             self.assertEqual(on[name], off[name], name)
@@ -259,7 +266,8 @@ class SyntheticMonitoringTests(unittest.TestCase):
         self.assertEqual(annotations["checksum/config"],
                          gojson_sha(self.objs[("ConfigMap", "blackbox-exporter-config")]["data"]))
         for change, rolls in (("syntheticMonitoring.probeTimeout=8s", True),
-                              ("syntheticMonitoring.tls.insecureSkipVerify=false", True),
+                              ("syntheticMonitoring.tls.insecureSkipVerify=true", True),
+                              ("syntheticMonitoring.tls.caCert=", True),
                               ("syntheticMonitoring.interval=60s", False),
                               ("ui.replicaCount=2", False)):
             objs, _ = render(change)
@@ -281,13 +289,16 @@ class SyntheticMonitoringTests(unittest.TestCase):
                     ("ConfigMap", "mias-ui-config"), ("ConfigMap", "mias-publisher-config")):
             self.assertEqual(self.objs[key], self.off[key], key)
 
-    # 16. no Route change (host, TLS, cookies, target)
+    # 16. no Route change from synthetic monitoring (host, TLS, cookies, target); Task 7's certificate reference and
+    # HSTS are the only later Route changes (tests/test_helm_tls.py)
     def test_no_route_changes(self):
         for name in ("mias-api", "mias-ui"):
             key = ("Route", name)
-            self.assertEqual(spec_hash(self.objs[key]), BASELINE_SPECS[key], name)
-            self.assertEqual(self.objs[key]["metadata"]["annotations"],
-                             {"haproxy.router.openshift.io/disable_cookies": "true"}, name)
+            route = json.loads(json.dumps(self.objs[key]))
+            del route["spec"]["tls"]["externalCertificate"]
+            self.assertEqual(spec_hash(route), BASELINE_SPECS[key], name)
+            self.assertEqual(self.objs[key]["metadata"]["annotations"], ROUTE_ANNOTATIONS, name)
+            self.assertEqual(self.objs[key], self.off[key], name)
         self.assertEqual([k for k in self.objs if k[0] == "Route"], [k for k in self.off if k[0] == "Route"])
 
     # 17. no storage change (the artifact PVC keeps its spec and keep policy)
@@ -303,7 +314,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
         result = subprocess.run([HELM, "lint", CHART, "--namespace", "mias"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
-        self.assertEqual((chart["version"], chart["appVersion"]), ("0.4.1", "259236684a74"))
+        self.assertEqual((chart["version"], chart["appVersion"]), ("0.5.0", "259236684a74"))
 
 
 if __name__ == "__main__":

@@ -24,6 +24,15 @@ SYNTHETIC_EXPORTER = {("ServiceAccount", "blackbox-exporter"), ("ConfigMap", "bl
                       ("Deployment", "blackbox-exporter"), ("Service", "blackbox-exporter"),
                       ("NetworkPolicy", "synthetic-default-deny"), ("NetworkPolicy", "blackbox-exporter")}
 SYNTHETIC_OBJECTS = SYNTHETIC_EXPORTER | {("Probe", "mias-ui-healthz")}
+# Hardening Task 7 (tests/test_helm_tls.py): the router may read the out-of-band Route TLS Secrets; both Routes send
+# HSTS and serve the MIAS lab certificate. HSTS is staged: this constant is the committed default.
+ROUTE_TLS_RBAC = {("Role", "mias-route-tls-reader"), ("RoleBinding", "mias-route-tls-reader")}
+HSTS = "max-age=300"
+ROUTE_ANNOTATIONS = {"haproxy.router.openshift.io/disable_cookies": "true", "haproxy.router.openshift.io/hsts_header": HSTS}
+
+
+def route_tls(secret):
+    return {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect", "externalCertificate": {"name": secret}}
 
 
 def render(*sets):
@@ -63,7 +72,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
         self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
-                         ("v2", "mias", "application", "0.4.1", "259236684a74"))
+                         ("v2", "mias", "application", "0.5.0", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -81,8 +90,8 @@ class HelmChartTests(unittest.TestCase):
             ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
             ("PodDisruptionBudget", "mias-ui"),                 # Hardening Task 5 (tests/test_helm_ui_ha.py)
             # Hardening Task 1: alert rules for User Workload Monitoring (tests/test_helm_alerts.py)
-            ("PrometheusRule", "mias-alerts")] + sorted(SYNTHETIC_OBJECTS)))
-        for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
+            ("PrometheusRule", "mias-alerts")] + sorted(SYNTHETIC_OBJECTS) + sorted(ROUTE_TLS_RBAC)))
+        for banned in ("Secret", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
                        "SecurityContextConstraints", "Job", "CronJob", "StatefulSet"):
             self.assertNotIn(banned, {k for k, _ in self.objs})
         for key, obj in self.objs.items():
@@ -172,9 +181,9 @@ class HelmChartTests(unittest.TestCase):
                                                                       "targetPort": "http", "protocol": "TCP"}]))
         route = self.objs[("Route", "mias-api")]
         self.assertEqual(route["spec"]["host"], "mias-api.apps.ngc.sirii.org")
-        self.assertEqual(route["spec"]["tls"], {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"})
-        # Hardening Task 2: no router sticky cookie (stateless backend); nothing else overrides router defaults.
-        self.assertEqual(route["metadata"]["annotations"], {"haproxy.router.openshift.io/disable_cookies": "true"})
+        self.assertEqual(route["spec"]["tls"], route_tls("mias-api-tls"))      # Hardening Task 7: MIAS lab cert
+        # Hardening Task 2: no router sticky cookie (stateless backend); Task 7: HSTS. Nothing else overrides defaults.
+        self.assertEqual(route["metadata"]["annotations"], ROUTE_ANNOTATIONS)
 
     def test_network_policies(self):
         deny = self.objs[("NetworkPolicy", "mias-default-deny")]["spec"]
@@ -201,7 +210,8 @@ class HelmChartTests(unittest.TestCase):
     def test_adoption_render_matches_raw_baseline(self):
         """With the 14E hardening switched off, the chart reproduces the raw 14C/14D manifests' specs."""
         objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false", "observability.enabled=false",
-                         f"image.digest={RAW_DIGEST}", "image.versionLabel=f14ecd722428")
+                         f"image.digest={RAW_DIGEST}", "image.versionLabel=f14ecd722428",
+                         "route.tls.externalCertificateSecret=", "routeTLS.hsts=")
         pairs = {("Deployment", "mias-api"): "base/deployment.yaml", ("Service", "mias-api"): "base/service.yaml",
                  ("Route", "mias-api"): "base/route.yaml", ("ConfigMap", "mias-api-config"): "base/configmap.yaml",
                  ("PersistentVolumeClaim", "mias-artifacts"): "base/pvc.yaml",

@@ -22,6 +22,7 @@ EXPECTED = {
 }
 CORE = set(EXPECTED)                                   # the 11 Task 1 rules
 EXPECTED["MiasUiSyntheticFailing"] = ("critical", "5m", "ui")   # Hardening Task 4 (tests/test_helm_synthetic.py)
+EXPECTED["MiasTlsCertificateExpiring"] = ("warning", "1h", "tls")  # Hardening Task 7 (tests/test_helm_tls.py)
 # Every metric the rules may use; each was verified to exist in UWM/Thanos with these label shapes.
 ALLOWED_METRICS = {
     "kube_deployment_status_replicas_available", "kube_deployment_spec_replicas", "kube_pod_status_ready",
@@ -30,6 +31,7 @@ ALLOWED_METRICS = {
     "mias_artifact_index_healthy", "mias_artifact_index_last_success_age_seconds",
     "http_server_request_duration_seconds_count",
     "probe_success",                                   # Task 4: the Blackbox Exporter probe of the UI Route
+    "probe_ssl_earliest_cert_expiry",                  # Task 7: certificate expiry seen by that probe
 }
 PROMQL_WORDS = {"sum", "rate", "increase", "max", "by", "or", "and", "absent", "absent_over_time", "vector"}
 
@@ -116,9 +118,9 @@ class HelmAlertTests(unittest.TestCase):
         self.assertEqual(set(self.objs) - set(off), {("PrometheusRule", "mias-alerts")})   # the Probe itself stays
         for key, obj in off.items():
             self.assertEqual(self.objs[key], obj, key)          # pod templates, Routes, policies, ConfigMaps identical
-        for banned in ("kind: Secret", "kind: Role", "kind: RoleBinding", "kind: ClusterRole"):
+        for banned in ("kind: Secret", "kind: ClusterRole"):                # the only Role is the Task 7 Route-TLS reader
             self.assertNotIn(banned, self.text)
-        self.assertIn("helm.sh/chart: mias-0.4.1", self.text)
+        self.assertIn("helm.sh/chart: mias-0.5.0", self.text)
 
 
 if __name__ == "__main__":

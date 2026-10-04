@@ -184,5 +184,19 @@ spec:
             summary: MIAS dashboard is not reachable through its Route
             description: The synthetic probe of the UI Route's /healthz (DNS, router, TLS, UI) has failed, could not run, or stopped reporting, for at least 5 minutes.
             runbook_hint: Check the mias-ui Route and pods, the router and ingress VIP, TLS, and the blackbox-exporter pod in the synthetic-monitoring namespace.
+        - alert: MiasTlsCertificateExpiring
+          # Hardening Task 7: the certificate chain the probe saw on the UI Route expires within 30 days. The MIAS lab
+          # certificates are renewed by hand (docs/hardening-tls-dns-hsts.md), so this is the renewal reminder.
+          expr: |
+            (probe_ssl_earliest_cert_expiry{namespace="{{ .Release.Namespace }}",job="mias-ui-synthetic"} - time()) < 30 * 86400
+          for: 1h
+          labels:
+            severity: warning
+            component: tls
+            part_of: mias
+          annotations:
+            summary: MIAS Route TLS certificate expires within 30 days
+            description: The earliest-expiring certificate presented on the UI Route expires in under 30 days; the API Route certificate was issued at the same time.
+            runbook_hint: Renew the mias-ui and mias-api certificates from the MIAS lab CA and replace the mias-ui-tls and mias-api-tls Secrets (see docs/hardening-tls-dns-hsts.md).
     {{- end }}
 {{- end }}

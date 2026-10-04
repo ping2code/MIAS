@@ -154,4 +154,16 @@ modules:
         - "^ok"
       tls_config:
         insecure_skip_verify: {{ .Values.syntheticMonitoring.tls.insecureSkipVerify }}
+        {{- if .Values.syntheticMonitoring.tls.caCert }}
+        ca_file: /etc/blackbox_exporter/ca.crt
+        {{- end }}
 {{- end -}}
+
+{{/* Hardening Task 7: the blackbox ConfigMap data (config.yml, plus the public lab CA when set), for the checksum. */}}
+{{- define "mias.blackboxConfigData" -}}
+{{- $data := dict "config.yml" (printf "%s\n" (include "mias.blackboxConfig" .)) }}
+{{- with .Values.syntheticMonitoring.tls.caCert }}
+{{- $_ := set $data "ca.crt" (printf "%s\n" (trim .)) }}
+{{- end }}
+{{- toJson $data }}
+{{- end }}

@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, render
+from tests.test_helm_mias import CHART, HELM, ROUTE_ANNOTATIONS, render
 from tests.test_helm_restart_cookie import render_chart
 
 UI_SELECTOR = {"matchLabels": {"app.kubernetes.io/name": "mias-ui"}}
@@ -31,7 +31,9 @@ BASELINE_SPECS = {
     ("PrometheusRule", "mias-alerts"): "a8c62e36cab81401",
     ("PersistentVolumeClaim", "mias-artifacts"): "1e4a3390f26af2c5",
 }
-COOKIES = {"haproxy.router.openshift.io/disable_cookies": "true"}
+COOKIES = ROUTE_ANNOTATIONS                                 # disable_cookies (Task 2) plus HSTS (Task 7)
+# Hardening Task 7 changed the blackbox ConfigMap (CA, verification on); this fallback reproduces the 0.4.0 exporter.
+SYNTHETIC_FALLBACK = ("syntheticMonitoring.tls.insecureSkipVerify=true", "syntheticMonitoring.tls.caCert=")
 
 
 def spec_hash(obj):
@@ -116,9 +118,11 @@ class UiHighAvailabilityTests(unittest.TestCase):
 
     # 12-14. API, collector and blackbox (and publisher) pod templates unchanged
     def test_other_workloads_unchanged(self):
+        fallback, _ = render(*SYNTHETIC_FALLBACK)
         for name in ("mias-api", "otel-collector", "blackbox-exporter", "mias-publisher"):
             key = ("Deployment", name)
-            self.assertEqual(spec_hash(self.objs[key]), BASELINE_SPECS[key], name)
+            objs = fallback if name == "blackbox-exporter" else self.objs
+            self.assertEqual(spec_hash(objs[key]), BASELINE_SPECS[key], name)
 
     def test_chart_bump_restarts_no_other_workload(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -136,7 +140,8 @@ class UiHighAvailabilityTests(unittest.TestCase):
     # 15-16. Routes unchanged, router cookies still disabled; the UI Service is untouched
     def test_routes_and_cookies_unchanged(self):
         for name in ("mias-api", "mias-ui"):
-            route = self.objs[("Route", name)]
+            route = json.loads(json.dumps(self.objs[("Route", name)]))
+            del route["spec"]["tls"]["externalCertificate"]                    # Hardening Task 7 (test_helm_tls.py)
             self.assertEqual(spec_hash(route), BASELINE_SPECS[("Route", name)], name)
             self.assertEqual(route["metadata"]["annotations"], COOKIES, name)
         service = self.objs[("Service", "mias-ui")]
@@ -146,7 +151,9 @@ class UiHighAvailabilityTests(unittest.TestCase):
 
     # 17. alert rules and the synthetic Probe unchanged (MiasUiUnavailable stays "available < 1")
     def test_alerts_and_probe_unchanged(self):
-        rule = self.objs[("PrometheusRule", "mias-alerts")]
+        rule = json.loads(json.dumps(self.objs[("PrometheusRule", "mias-alerts")]))
+        for group in rule["spec"]["groups"]:                                    # minus Hardening Task 7's expiry alert
+            group["rules"] = [r for r in group["rules"] if r["alert"] != "MiasTlsCertificateExpiring"]
         self.assertEqual(spec_hash(rule), BASELINE_SPECS[("PrometheusRule", "mias-alerts")])
         ui = [r for g in rule["spec"]["groups"] for r in g["rules"] if r["alert"] == "MiasUiUnavailable"][0]
         self.assertIn('kube_deployment_status_replicas_available{namespace="mias",deployment="mias-ui"} < 1',

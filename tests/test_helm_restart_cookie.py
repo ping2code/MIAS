@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, render
+from tests.test_helm_mias import CHART, HELM, ROUTE_ANNOTATIONS, render, route_tls
 from tests.test_openshift_manifests import parse
 
 
@@ -102,7 +102,7 @@ class ChecksumTests(unittest.TestCase):
 
 @unittest.skipUnless(HELM, "helm binary not available")
 class RouteCookieTests(unittest.TestCase):
-    COOKIE = {"haproxy.router.openshift.io/disable_cookies": "true"}
+    COOKIE = ROUTE_ANNOTATIONS                         # disable_cookies (Task 2) plus HSTS (Task 7)
 
     def test_both_routes_disable_the_router_cookie_and_keep_their_spec(self):
         objs, _ = render()
@@ -110,7 +110,7 @@ class RouteCookieTests(unittest.TestCase):
         ui = objs[("Route", "mias-ui")]
         for route in (api, ui):
             self.assertEqual(route["metadata"]["annotations"], self.COOKIE)
-            self.assertEqual(route["spec"]["tls"], {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"})
+            self.assertEqual(route["spec"]["tls"], route_tls(route["metadata"]["name"] + "-tls"))
             self.assertEqual(route["spec"]["port"], {"targetPort": "http"})
             self.assertEqual(route["spec"]["wildcardPolicy"], "None")
         self.assertEqual((api["spec"]["host"], api["spec"]["to"]["name"]), ("mias-api.apps.ngc.sirii.org", "mias-api"))
