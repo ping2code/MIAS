@@ -1,11 +1,33 @@
-MIAS release {{ .Release.Name }} in namespace {{ .Release.Namespace }} (revision {{ .Release.Revision }}).
+MIAS release {{ .Release.Name }} in namespace {{ .Release.Namespace }} (revision {{ .Release.Revision }}, chart {{ .Chart.Version }}).
+Operator runbook: docs/operations-release-runbook.md (release, verification, rollback).
 
-Image: {{ include "mias.image" . }}
-API replicas: {{ .Values.api.replicaCount }}; publisher replicas: {{ .Values.publisher.replicaCount }} (scale to 1 only to publish).
-Route: https://{{ .Values.route.host }} (bearer token from Secret {{ .Values.existingSecret.name }}; never printed here).
+API image: {{ include "mias.image" . }}
+{{- if .Values.ui.enabled }}
+UI image:  {{ include "mias.uiImage" . }}
+{{- end }}
+Replicas: API {{ .Values.api.replicaCount }}{{ if .Values.ui.enabled }}, UI {{ .Values.ui.replicaCount }}{{ end }}; publisher {{ .Values.publisher.replicaCount }} (scale to 1 only while publishing, then back to 0).
+{{- if .Values.route.enabled }}
+API Route: https://{{ .Values.route.host }} (bearer token from Secret {{ .Values.existingSecret.name }}; never printed here)
+{{- end }}
+{{- if and .Values.ui.enabled .Values.ui.route.enabled }}
+UI Route:  https://{{ .Values.ui.route.host }} (users sign in with the read token; it stays in browser memory)
+{{- end }}
 
-Publish (operator):
+Verify:
+  oc get pods,deploy -n {{ .Release.Namespace }}
+  curl -sk https://{{ .Values.route.host }}/health/ready
+{{- if and .Values.ui.enabled .Values.ui.route.enabled }}
+  curl -sk https://{{ .Values.ui.route.host }}/healthz
+{{- end }}
+{{- if .Values.monitoring.alerts.enabled }}
+  oc get prometheusrule mias-alerts -n {{ .Release.Namespace }}   (alert state: OpenShift console, Observe -> Alerting)
+{{- end }}
+  oc get deploy mias-publisher -n {{ .Release.Namespace }}   (expect 0 replicas)
+
+Publish (operator; see docs/phase14d-artifact-publishing.md):
   oc scale deployment/mias-publisher --replicas=1 -n {{ .Release.Namespace }}
   oc cp ./ARTIFACT.json {{ .Release.Namespace }}/<publisher-pod>:/tmp/ARTIFACT.json
   oc exec -n {{ .Release.Namespace }} <publisher-pod> -- python -m artifact_store.runner publish --kind <kind> --file /tmp/ARTIFACT.json
   oc scale deployment/mias-publisher --replicas=0 -n {{ .Release.Namespace }}
+
+Never delete the mias-artifacts PVC or its PV (Helm keep policy, PV Retain).
