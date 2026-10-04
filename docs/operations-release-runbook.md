@@ -192,6 +192,28 @@ podman image inspect localhost/mias-ui:${SHA:0:12} \
 Record: commit SHA, local image ID, local digest, revision label, size, base image digests (from the build log), and
 gate results.
 
+**Supply-chain gates** (Hardening Task 6; full workflow and rationale in `docs/hardening-image-signing-sbom.md`).
+These run after the push (§8) and digest check (§9), and **before** the digest is pinned in Helm. The tools run as
+digest-pinned containers. Every cosign call uses `--tlog-upload=false`, because nothing goes to the public Rekor.
+
+1. **SBOM** of the pushed registry digest, in CycloneDX JSON:
+   `syft scan registry:localhost:5005/mias/<component>@<digest> -o cyclonedx-json=<component>-sha256-<hex>.cdx.json`.
+   Review it for secrets (§6 of the doc), then archive it in `~/.mias-release-evidence/sbom/`.
+2. **Sign the digest:**
+   `cosign sign --key ~/.mias-signing/mias-release.key --tlog-upload=false --allow-insecure-registry
+   --sign-container-identity image-registry.openshift-image-registry.svc:5000/mias/<component>
+   -a org.opencontainers.image.revision=$SHA -a mias.component=<component> -y localhost:5005/mias/<component>@<digest>`.
+   The key stays in `~/.mias-signing/`; never copy it elsewhere or print it.
+3. **Attest the SBOM:**
+   `cosign attest --key … --tlog-upload=false --type cyclonedx --predicate <sbom> -y …@<digest>`.
+4. **Verify in a fresh process** against the registry, using the committed public key:
+   `cosign verify --key docs/release-evidence/mias-release.pub --insecure-ignore-tlog=true --allow-insecure-registry …@<digest>`,
+   plus `cosign verify-attestation --type cyclonedx …`. Both must pass, showing the in-cluster identity and the
+   revision annotation equal to `$SHA`.
+5. **Record** the component's entry in `docs/release-evidence/image-provenance.yaml` (digest, commit, config ID,
+   signature attachment, SBOM hash and counts). Commit it **together with** the Helm digest pin;
+   `tests/test_supply_chain.py` fails if the pin and the manifest disagree.
+
 ## 8. Registry push (internal registry, no external route)
 
 ```bash
@@ -222,7 +244,7 @@ Required, or stop:
 - the **registry digest** (which differs from the local digest because layers are recompressed) is what goes into
   `values.yaml`.
 
-Then pin the digest through a git commit: `ui.image.digest` and `ui.image.versionLabel` (or `image.digest` and
+Then (after the supply-chain gates in §7) pin the digest through a git commit: `ui.image.digest` and `ui.image.versionLabel` (or `image.digest` and
 `image.versionLabel` for the API), plus the matching test constant in `tests/test_helm_ui.py` (`DEPLOYED_UI_DIGEST`)
 or `tests/test_helm_mias.py` (`DIGEST`).
 
@@ -449,6 +471,15 @@ Then roll back by pinning that digest through git (§23.2). Don't prune any tag 
 The cluster image pruner keeps only tagged images (`keepTagRevisions=3`), so deleting a tag can make its image
 unrecoverable.
 
+**Signatures and SBOMs are retained with their image:**
+- each signed digest has `sha256-<digest>.sig` and `.att` tags in the same ImageStream;
+- never prune those while the image is kept, and remove them together with it;
+- keep the archived SBOM and the manifest entry as long as the image exists;
+- never prune by tag age alone, and check Helm history first.
+
+**Before any signature enforcement** (an ImagePolicy), every rollback digest must be signed too. See
+`unsignedRetained` in `docs/release-evidence/image-provenance.yaml`.
+
 ## 26. Helm rollback caveats
 
 - **Old state:** `helm rollback` restores that revision's values and chart, including old labels and checksum
@@ -499,6 +530,10 @@ warns at 80%.
 - [ ] UI HA: `mias-ui` 2/2 Ready on different nodes; PDB `disruptionsAllowed` = 1; both pods receive traffic.
 - [ ] Logs clean (no tokens or secrets); artifacts, PVC and PV unchanged.
 - [ ] Release evidence recorded; the previous digest's tag kept for rollback.
+- [ ] Supply chain, re-checked after the push and the pin:
+  - `cosign verify` and `verify-attestation` pass against the registry for the deployed digest;
+  - the registry config ID equals the local image ID, and the OCI revision equals the commit;
+  - `tests/test_supply_chain.py` passes.
 
 ## 30. Operational checklists
 
@@ -515,6 +550,8 @@ warns at 80%.
 - clean git, HEAD equal to origin/main;
 - gates green for the change type (§5);
 - image built from the exact commit, with provenance recorded and the digest verified;
+- SBOM generated and attested, digest signed, signature verified from the registry in a fresh process, and
+  `image-provenance.yaml` updated (§7);
 - the previous rollback digest exists;
 - render diff reviewed; server dry run clean;
 - persistent services recorded.
@@ -555,7 +592,13 @@ warns at 80%.
   - only the UI Route is probed.
 
   See `docs/hardening-synthetic-monitoring.md` §9.
-- **Supply chain:** no SBOM and no image signing yet.
+- **Supply chain:**
+  - MIAS images are signed (cosign key, no transparency log) and have signed CycloneDX SBOMs;
+  - there's **no enforcing ImagePolicy** (OpenShift has no audit mode);
+  - rollback digests are unsigned;
+  - one lab key with no KMS, no SLSA build provenance, and no vulnerability scan.
+
+  See `docs/hardening-image-signing-sbom.md` §15.
 - **Validation scripts:** the Podman matrix and real-API end-to-end scripts aren't committed (§5).
 - **Leftover annotation:** the `mias-api` Route still carries a `kubectl.kubernetes.io/last-applied-configuration`
   annotation from Phase 14 (harmless).
@@ -586,4 +629,4 @@ warns at 80%.
 - `docs/phase14b-container.md` through `phase14f-final-openshift-validation.md`;
 - `phase15-observability.md`;
 - `phase16a…phase16f`;
-- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`.
+- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`, `hardening-image-signing-sbom.md`.
