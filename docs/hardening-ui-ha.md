@@ -148,9 +148,10 @@ deletion (03:20–03:29). The minimum HTTP status was 200, and the maximum durat
 - No MIAS alert went pending or firing.
 - A deleted pod isn't a container restart, so `MiasPodRestarting` saw nothing.
 
-**Isolated client-side timeouts.** Over about 25 minutes of continuity logging, 3 of about 1,300 UI requests hit the
-3 s client timeout (03:27:24, 03:29:27, 03:31:08). Only the first coincided with a pod event: the original pod
-stopping at the end of the rollout. The third came in steady state, with no pod change at all.
+**Isolated client-side timeouts.** Over the full 25 minutes of continuity logging (03:26–03:51), **6 of 2,389** UI
+requests hit the 3 s client timeout (03:27:24, 03:29:27, 03:31:08, 03:42:05, 03:43:32, 03:44:59). Only the first
+coincided with a pod event: the original pod stopping at the end of the rollout. The other five came in steady state,
+with no pod change at all.
 
 A follow-up measurement with a 10 s timeout and per-phase timing identified the cause. Every slow request (4 of 697,
 1.0–5.1 s) spent that time in **TCP connect** (`time_connect` 1.03 s or 5.01 s, i.e. SYN retransmits) to the
