@@ -133,6 +133,7 @@ exporter restarts.
       expr: |
         (probe_success{namespace="mias",job="mias-ui-synthetic"} == 0)
         or (up{namespace="mias",job="mias-ui-synthetic"} == 0)
+        or absent_over_time(probe_success{namespace="mias",job="mias-ui-synthetic"}[5m])
       for: 5m
       labels: {severity: critical, component: ui, part_of: mias}
 ```
@@ -140,6 +141,13 @@ exporter restarts.
 - **`probe_success == 0`:** the user path is broken (DNS, VIP, router, TLS, Route or pod).
 - **`up == 0`:** the probe couldn't run (exporter down, or blocked by the NetworkPolicy). That's not proof the UI is
   down, but it is a loss of external visibility worth paging on.
+- **`absent_over_time(probe_success…[5m])`:** the probe series is gone entirely, for example because the Probe was
+  deleted, is no longer selected by UWM, or the exporter target vanished from discovery. In that case `probe_success`
+  and `up` both disappear, so neither comparison above could ever be true.
+  - The selector uses only equality matchers, so the result carries `namespace="mias"` and `job="mias-ui-synthetic"`.
+  - With `for: 5m`, it fires about 10 minutes after the last sample: 5 minutes of absence, then 5 minutes pending.
+  - The 5-minute window absorbs brief gaps (for example a UWM Prometheus restart), so they don't page.
+  - It also overlaps with `up == 0`, because a failed scrape produces no `probe_success`. That overlap is harmless.
 - **Relation to `MiasUiUnavailable`:** that alert stays as is. It sees pod availability; this one sees the routed path.
   When both fire, the pods are down; when only this one fires, the problem is in front of the pods.
 - **Window:** `for: 5m` at a 30 s interval means about 10 consecutive failed probes. A single rollout of mias-ui
@@ -243,6 +251,21 @@ exporter restarts.
 
 No failure was injected: the Route wasn't broken to test the alert, per the task's rules.
 
+**Revision 24 (missing-series branch).** The `absent_over_time` branch (§6) was added as a PrometheusRule-only change.
+- **Render diff against revision 23:** only `mias-alerts` changed (the expression, a comment and the description).
+- **Server dry run:** clean.
+- **Upgrade:** `helm upgrade … --reset-values --wait` produced revision 24.
+- **Restarts:** none. Every pod UID (mias-api, mias-ui, otel-collector, blackbox-exporter) and every Deployment
+  generation is unchanged; the publisher stays at 0.
+- **Live validation in Thanos:**
+  - Thanos Ruler loaded and parsed the new query (`health=ok`, no `lastError`).
+  - The full expression returns no series while the probe is healthy, and none over the 10 minutes after the change
+    (`max_over_time` subquery).
+  - Both selectors bind to the live `probe_success` and `up` series (value 1).
+  - The absent branch was proven on a non-matching job label rather than by deleting the Probe: it returns 1, with
+    labels `{namespace="mias", job=…}`.
+- **Rules:** all 12 `ok`, with nothing pending or firing, past the 5-minute `for` window.
+
 ## 9. Limitations
 
 - **TLS verification is skipped** (lab self-signed certificate; §5). The probe proves TLS works, not that the
@@ -259,8 +282,6 @@ No failure was injected: the Route wasn't broken to test the alert, per the task
   It wasn't added in this task (the scope was one alert).
 - **The API Route isn't probed.** Only the UI Route is. The UI's `/healthz` doesn't exercise the API: an API outage
   is covered by `MiasApiUnavailable` and `MiasApiNotReady`.
-- **Missing series aren't alerted.** If the Probe object itself were deleted, both series would disappear and this
-  alert couldn't fire.
 - **Single exporter replica.** An exporter outage pages through the `up == 0` branch rather than going silent.
 - **Alertmanager delivery** remains unverified (Secret-backed receivers; unchanged from Task 1).
 - **Chart NOTES** don't mention the Probe yet. Changing them would make the repo differ from revision 23's stored

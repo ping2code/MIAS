@@ -209,6 +209,12 @@ class SyntheticMonitoringTests(unittest.TestCase):
         self.assertEqual(set(rule["annotations"]), {"summary", "description", "runbook_hint"})
         self.assertIn('probe_success{namespace="mias",job="mias-ui-synthetic"} == 0', rule["expr"])
         self.assertIn('up{namespace="mias",job="mias-ui-synthetic"} == 0', rule["expr"])   # probe could not run
+        # The probe series disappearing (Probe deleted or undiscovered) must also fire, not silence the alert.
+        self.assertIn('absent_over_time(probe_success{namespace="mias",job="mias-ui-synthetic"}[5m])', rule["expr"])
+        self.assertEqual([line.strip() for line in rule["expr"].strip().splitlines()], [
+            '(probe_success{namespace="mias",job="mias-ui-synthetic"} == 0)',
+            'or (up{namespace="mias",job="mias-ui-synthetic"} == 0)',
+            'or absent_over_time(probe_success{namespace="mias",job="mias-ui-synthetic"}[5m])'])
         group = [g for g in self.objs[("PrometheusRule", "mias-alerts")]["spec"]["groups"]
                  if g["name"] == "mias.synthetic"]
         self.assertEqual([[r["alert"] for r in g["rules"]] for g in group], [["MiasUiSyntheticFailing"]])

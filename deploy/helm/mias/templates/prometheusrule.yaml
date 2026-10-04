@@ -169,10 +169,12 @@ spec:
     - name: mias.synthetic
       rules:
         - alert: MiasUiSyntheticFailing
-          # The external probe failed, or the probe could not run (exporter not scrapeable).
+          # The external probe failed, the probe could not run (exporter not scrapeable), or the probe series vanished
+          # for 5m (Probe deleted or no longer discovered), so losing the probe cannot silence the alert.
           expr: |
             (probe_success{namespace="{{ .Release.Namespace }}",job="mias-ui-synthetic"} == 0)
             or (up{namespace="{{ .Release.Namespace }}",job="mias-ui-synthetic"} == 0)
+            or absent_over_time(probe_success{namespace="{{ .Release.Namespace }}",job="mias-ui-synthetic"}[5m])
           for: 5m
           labels:
             severity: critical
@@ -180,7 +182,7 @@ spec:
             part_of: mias
           annotations:
             summary: MIAS dashboard is not reachable through its Route
-            description: The synthetic probe of the UI Route's /healthz (DNS, router, TLS, UI) has failed, or could not run, for at least 5 minutes.
+            description: The synthetic probe of the UI Route's /healthz (DNS, router, TLS, UI) has failed, could not run, or stopped reporting, for at least 5 minutes.
             runbook_hint: Check the mias-ui Route and pods, the router and ingress VIP, TLS, and the blackbox-exporter pod in the synthetic-monitoring namespace.
     {{- end }}
 {{- end }}
