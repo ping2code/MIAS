@@ -17,7 +17,8 @@ DEPLOYED_UI_DIGEST = "sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea8
 UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}")
 UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
               ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
-              ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui")}
+              ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
+              ("PodDisruptionBudget", "mias-ui")}                  # Hardening Task 5 (tests/test_helm_ui_ha.py)
 # Phase 15 (origin/main 30455ea) rendered per value set, parsed, and hashed as canonical JSON with three derived or
 # intentionally added values removed: each pod template's checksum/config (an input hash whose algorithm changed in
 # Hardening Task 2), the helm.sh/chart label, and the Routes' disable_cookies annotation (Hardening Task 2).
@@ -147,7 +148,7 @@ class HelmUiEnabledTests(unittest.TestCase):
                          f"image-registry.openshift-image-registry.svc:5000/mias/mias-ui@{UI_DIGEST}")
         self.assertEqual((self.dep["spec"]["replicas"], self.pod["serviceAccountName"],
                           self.pod["automountServiceAccountToken"], self.pod["enableServiceLinks"]),
-                         (1, "mias-ui", False, False))
+                         (2, "mias-ui", False, False))   # Hardening Task 5: two replicas
         self.assertEqual(self.objs[("ServiceAccount", "mias-ui")]["automountServiceAccountToken"], False)
         self.assertEqual(self.pod["securityContext"], {"runAsNonRoot": True, "fsGroupChangePolicy": "OnRootMismatch",
                                                        "seccompProfile": {"type": "RuntimeDefault"}})

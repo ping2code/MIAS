@@ -270,7 +270,12 @@ class SyntheticMonitoringTests(unittest.TestCase):
     def test_no_existing_workload_diff(self):
         for name in ("mias-api", "mias-ui", "otel-collector", "mias-publisher"):
             key = ("Deployment", name)
-            self.assertEqual(spec_hash(self.objs[key]), BASELINE_SPECS[key], name)
+            obj = self.objs[key]
+            if name == "mias-ui":                    # minus Hardening Task 5's intended HA change (test_helm_ui_ha.py)
+                obj = json.loads(json.dumps(obj))
+                obj["spec"]["replicas"] = 1
+                del obj["spec"]["template"]["spec"]["topologySpreadConstraints"]
+            self.assertEqual(spec_hash(obj), BASELINE_SPECS[key], name)
             self.assertEqual(self.objs[key], self.off[key], name)
         for key in (("ConfigMap", "mias-api-config"), ("ConfigMap", "otel-collector-config"),
                     ("ConfigMap", "mias-ui-config"), ("ConfigMap", "mias-publisher-config")):
@@ -298,7 +303,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
         result = subprocess.run([HELM, "lint", CHART, "--namespace", "mias"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
-        self.assertEqual((chart["version"], chart["appVersion"]), ("0.4.0", "259236684a74"))
+        self.assertEqual((chart["version"], chart["appVersion"]), ("0.4.1", "259236684a74"))
 
 
 if __name__ == "__main__":

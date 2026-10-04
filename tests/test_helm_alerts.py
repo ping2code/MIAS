@@ -118,7 +118,7 @@ class HelmAlertTests(unittest.TestCase):
             self.assertEqual(self.objs[key], obj, key)          # pod templates, Routes, policies, ConfigMaps identical
         for banned in ("kind: Secret", "kind: Role", "kind: RoleBinding", "kind: ClusterRole"):
             self.assertNotIn(banned, self.text)
-        self.assertIn("helm.sh/chart: mias-0.4.0", self.text)
+        self.assertIn("helm.sh/chart: mias-0.4.1", self.text)
 
 
 if __name__ == "__main__":

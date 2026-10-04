@@ -63,7 +63,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
         self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
-                         ("v2", "mias", "application", "0.4.0", "259236684a74"))
+                         ("v2", "mias", "application", "0.4.1", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -79,6 +79,7 @@ class HelmChartTests(unittest.TestCase):
             ("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
             ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
             ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
+            ("PodDisruptionBudget", "mias-ui"),                 # Hardening Task 5 (tests/test_helm_ui_ha.py)
             # Hardening Task 1: alert rules for User Workload Monitoring (tests/test_helm_alerts.py)
             ("PrometheusRule", "mias-alerts")] + sorted(SYNTHETIC_OBJECTS)))
         for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
