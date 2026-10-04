@@ -17,6 +17,13 @@ RAW = os.path.join(ROOT, "deploy", "openshift")
 DIGEST = "sha256:634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196"      # Phase 15 image (git 259236684a74)
 RAW_DIGEST = "sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a"  # 14C/14D reference manifests
 HELM = shutil.which("helm")
+# Hardening Task 4: synthetic monitoring (tests/test_helm_synthetic.py). The exporter lives in its own namespace; the
+# Probe stays in the release namespace (UWM enforces namespace="mias" on the series the rules can see).
+SYNTHETIC_NS = "mias-monitoring"
+SYNTHETIC_EXPORTER = {("ServiceAccount", "blackbox-exporter"), ("ConfigMap", "blackbox-exporter-config"),
+                      ("Deployment", "blackbox-exporter"), ("Service", "blackbox-exporter"),
+                      ("NetworkPolicy", "synthetic-default-deny"), ("NetworkPolicy", "blackbox-exporter")}
+SYNTHETIC_OBJECTS = SYNTHETIC_EXPORTER | {("Probe", "mias-ui-healthz")}
 
 
 def render(*sets):
@@ -56,7 +63,7 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         chart = parse(open(os.path.join(CHART, "Chart.yaml"), encoding="utf-8").read())
         self.assertEqual((chart["apiVersion"], chart["name"], chart["type"], chart["version"], chart["appVersion"]),
-                         ("v2", "mias", "application", "0.3.1", "259236684a74"))
+                         ("v2", "mias", "application", "0.4.0", "259236684a74"))
 
     def test_exact_object_set(self):
         self.assertEqual(sorted(self.objs), sorted([
@@ -73,11 +80,12 @@ class HelmChartTests(unittest.TestCase):
             ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
             ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
             # Hardening Task 1: alert rules for User Workload Monitoring (tests/test_helm_alerts.py)
-            ("PrometheusRule", "mias-alerts")]))
+            ("PrometheusRule", "mias-alerts")] + sorted(SYNTHETIC_OBJECTS)))
         for banned in ("Secret", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "HorizontalPodAutoscaler",
                        "SecurityContextConstraints", "Job", "CronJob", "StatefulSet"):
             self.assertNotIn(banned, {k for k, _ in self.objs})
-        self.assertTrue(all(o["metadata"]["namespace"] == "mias" for o in self.objs.values()))
+        for key, obj in self.objs.items():
+            self.assertEqual(obj["metadata"]["namespace"], SYNTHETIC_NS if key in SYNTHETIC_EXPORTER else "mias", key)
 
     def test_digest_pinning_same_image(self):
         self.assertEqual(self.api_c["image"], f"image-registry.openshift-image-registry.svc:5000/mias/mias-api@{DIGEST}")
@@ -177,7 +185,10 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(allow["ingress"], [{"from": [{"namespaceSelector": {"matchLabels": {
             "policy-group.network.openshift.io/ingress": ""}}}], "ports": [{"protocol": "TCP", "port": 8080}]}])
         self.assertNotIn("0.0.0.0/0", self.text)
-        self.assertNotIn("ipBlock", self.text)
+        # The only ipBlock is the synthetic exporter's egress to the ingress VIP (a /32 on 443), outside namespace mias.
+        self.assertEqual(self.text.count("ipBlock"), 1)
+        self.assertEqual(self.objs[("NetworkPolicy", "blackbox-exporter")]["spec"]["egress"][1],
+                         {"to": [{"ipBlock": {"cidr": "192.168.5.141/32"}}], "ports": [{"protocol": "TCP", "port": 443}]})
         for pod in (self.api, self.pub, self.objs[("Deployment", "otel-collector")]):   # all under the default deny
             self.assertEqual(pod["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/part-of"], "mias")
         objs, _ = render("networkPolicy.enabled=false")

@@ -22,6 +22,8 @@ def scalar(text):
         return text == "true"
     if re.fullmatch(r"-?\d+", text):
         return int(text)
+    if text == "{}":                     # the empty map, e.g. a NetworkPolicy podSelector selecting every pod
+        return {}
     if text.startswith(("{", "[", "&", "*", "|", ">", "!")):
         raise ValueError(f"unsupported YAML construct: {text!r}")
     return text

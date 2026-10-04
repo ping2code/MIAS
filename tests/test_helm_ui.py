@@ -8,7 +8,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import CHART, DIGEST, HELM, render
+from tests.test_helm_mias import CHART, DIGEST, HELM, SYNTHETIC_OBJECTS, render
 from tests.test_openshift_manifests import parse, walk
 
 UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder for render-only tests
@@ -86,12 +86,13 @@ class HelmUiDisabledTests(unittest.TestCase):
                          f"image-registry.openshift-image-registry.svc:5000/mias/mias-ui@{DEPLOYED_UI_DIGEST}")
         self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "90effc1778a7")
         disabled, _ = render("ui.enabled=false")
-        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS)   # rollback removes exactly the UI objects (alerts stay)
+        # Rollback removes exactly the UI objects and the synthetic probe of the UI Route (alerts stay)
+        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS | SYNTHETIC_OBJECTS)
         for key, obj in disabled.items():
             if key == ALERTS:
-                continue                                            # the UI alert follows ui.enabled (below)
+                continue                                            # the UI alerts follow ui.enabled (below)
             self.assertEqual(objs[key], obj, key)                   # and leaves every other object identical
-        self.assertEqual(alert_names(objs) - alert_names(disabled), {"MiasUiUnavailable"})
+        self.assertEqual(alert_names(objs) - alert_names(disabled), {"MiasUiUnavailable", "MiasUiSyntheticFailing"})
 
     def test_disabled_renders_no_ui_object(self):
         objs, text = render("ui.enabled=false")
@@ -121,10 +122,10 @@ class HelmUiEnabledTests(unittest.TestCase):
     def test_objects_and_phase15_untouched(self):
         self.assertTrue(UI_OBJECTS <= set(self.objs))
         base, _ = render("ui.enabled=false")
-        self.assertEqual(set(self.objs) - set(base), UI_OBJECTS)
+        self.assertEqual(set(self.objs) - set(base), UI_OBJECTS | SYNTHETIC_OBJECTS)
         for key, obj in base.items():
             if key == ALERTS:
-                continue                                          # the UI alert follows ui.enabled
+                continue                                          # the UI alerts follow ui.enabled
             self.assertEqual(self.objs[key], obj, key)            # every Phase 15 object is byte-for-byte the same
         self.assertTrue(self.objs[("Deployment", "mias-api")]["spec"]["template"]["spec"]["containers"][0]["image"]
                         .endswith(DIGEST))
@@ -203,7 +204,8 @@ class HelmUiEnabledTests(unittest.TestCase):
              "ports": [{"protocol": "TCP", "port": 8080}]}])
         # The existing router rule and default deny are unchanged; no ipBlock or wildcard anywhere.
         self.assertIn(("NetworkPolicy", "mias-default-deny"), self.objs)
-        self.assertNotIn("ipBlock", self.text)
+        mias_policies = [o for k, o in self.objs.items() if k[0] == "NetworkPolicy" and o["metadata"]["namespace"] == "mias"]
+        self.assertNotIn("ipBlock", repr(mias_policies))      # the synthetic exporter's /32 is in its own namespace
         self.assertNotIn("0.0.0.0/0", self.text)
         objs, _ = render(*UI_ON, "networkPolicy.enabled=false")
         self.assertFalse({k for k in objs if k[0] == "NetworkPolicy"})

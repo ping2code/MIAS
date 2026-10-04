@@ -1,6 +1,6 @@
 """Hardening Task 1: the mias-alerts PrometheusRule (User Workload Monitoring). Renders with the local `helm` binary
 (skipped if absent) and parses the result structurally; no cluster access. The rule must be additive: enabling or
-disabling it changes no other object."""
+disabling it changes no other object. Hardening Task 4 adds one synthetic-probe alert in its own group."""
 import re
 import unittest
 
@@ -20,6 +20,8 @@ EXPECTED = {
     "MiasApi5xxRatio": ("warning", "10m", "api"),
     "MiasTelemetryPipelineStalled": ("warning", None, "telemetry"),
 }
+CORE = set(EXPECTED)                                   # the 11 Task 1 rules
+EXPECTED["MiasUiSyntheticFailing"] = ("critical", "5m", "ui")   # Hardening Task 4 (tests/test_helm_synthetic.py)
 # Every metric the rules may use; each was verified to exist in UWM/Thanos with these label shapes.
 ALLOWED_METRICS = {
     "kube_deployment_status_replicas_available", "kube_deployment_spec_replicas", "kube_pod_status_ready",
@@ -27,6 +29,7 @@ ALLOWED_METRICS = {
     "kubelet_volume_stats_used_bytes", "kubelet_volume_stats_capacity_bytes", "up",
     "mias_artifact_index_healthy", "mias_artifact_index_last_success_age_seconds",
     "http_server_request_duration_seconds_count",
+    "probe_success",                                   # Task 4: the Blackbox Exporter probe of the UI Route
 }
 PROMQL_WORDS = {"sum", "rate", "increase", "max", "by", "or", "and", "absent", "absent_over_time", "vector"}
 
@@ -53,12 +56,14 @@ class HelmAlertTests(unittest.TestCase):
         # Evaluated by the UWM Thanos Ruler (platform kube-state-metrics needed), never leaf-prometheus only.
         self.assertNotIn("openshift.io/prometheus-rule-evaluation-scope", labels)
         self.assertEqual([g["name"] for g in self.rule["spec"]["groups"]],
-                         ["mias.availability", "mias.artifacts", "mias.telemetry"])
+                         ["mias.availability", "mias.artifacts", "mias.telemetry", "mias.synthetic"])
 
-    def test_exact_alert_set_without_synthetic(self):
+    def test_exact_alert_set(self):
         self.assertEqual(set(self.alerts), set(EXPECTED))
-        self.assertNotIn("MiasUiSyntheticFailing", self.text)
-        self.assertNotIn("probe_success", self.text)
+        objs, text = render("syntheticMonitoring.enabled=false")
+        rule = objs[("PrometheusRule", "mias-alerts")]
+        self.assertEqual({r["alert"] for g in rule["spec"]["groups"] for r in g["rules"]}, CORE)
+        self.assertNotIn("probe_success", text)
 
     def test_severity_for_and_labels(self):
         for name, (severity, duration, component) in EXPECTED.items():
@@ -102,18 +107,18 @@ class HelmAlertTests(unittest.TestCase):
         objs, text = render("ui.enabled=false")
         rule = objs[("PrometheusRule", "mias-alerts")]
         names = {r["alert"] for g in rule["spec"]["groups"] for r in g["rules"]}
-        self.assertEqual(names, set(EXPECTED) - {"MiasUiUnavailable"})
+        self.assertEqual(names, CORE - {"MiasUiUnavailable"})          # the synthetic probe targets the UI Route
         self.assertNotIn("mias-ui", text)
 
     def test_additive_only(self):
         off, off_text = render("monitoring.alerts.enabled=false")
         self.assertNotIn(("PrometheusRule", "mias-alerts"), off)
-        self.assertEqual(set(self.objs) - set(off), {("PrometheusRule", "mias-alerts")})
+        self.assertEqual(set(self.objs) - set(off), {("PrometheusRule", "mias-alerts")})   # the Probe itself stays
         for key, obj in off.items():
             self.assertEqual(self.objs[key], obj, key)          # pod templates, Routes, policies, ConfigMaps identical
         for banned in ("kind: Secret", "kind: Role", "kind: RoleBinding", "kind: ClusterRole"):
             self.assertNotIn(banned, self.text)
-        self.assertIn("helm.sh/chart: mias-0.3.1", self.text)
+        self.assertIn("helm.sh/chart: mias-0.4.0", self.text)
 
 
 if __name__ == "__main__":

@@ -165,4 +165,22 @@ spec:
             summary: MIAS API telemetry has stopped arriving
             description: No mias-api metrics have reached User Workload Monitoring for 15 minutes (API down, collector down, or export broken).
             runbook_hint: Check MiasApiUnavailable and MiasCollectorDown first, then API logs for OTLP export errors and the mias-api-egress-telemetry NetworkPolicy.
+    {{- if include "mias.syntheticActive" . }}
+    - name: mias.synthetic
+      rules:
+        - alert: MiasUiSyntheticFailing
+          # The external probe failed, or the probe could not run (exporter not scrapeable).
+          expr: |
+            (probe_success{namespace="{{ .Release.Namespace }}",job="mias-ui-synthetic"} == 0)
+            or (up{namespace="{{ .Release.Namespace }}",job="mias-ui-synthetic"} == 0)
+          for: 5m
+          labels:
+            severity: critical
+            component: ui
+            part_of: mias
+          annotations:
+            summary: MIAS dashboard is not reachable through its Route
+            description: The synthetic probe of the UI Route's /healthz (DNS, router, TLS, UI) has failed, or could not run, for at least 5 minutes.
+            runbook_hint: Check the mias-ui Route and pods, the router and ingress VIP, TLS, and the blackbox-exporter pod in the synthetic-monitoring namespace.
+    {{- end }}
 {{- end }}

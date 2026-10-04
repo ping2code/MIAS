@@ -97,9 +97,9 @@ class HelmObservabilityTests(unittest.TestCase):
              "ports": [{"protocol": "TCP", "port": 8889}]}])
         # The default deny still covers every MIAS pod (the collector carries part-of: mias); no publisher egress.
         self.assertEqual(self.collector["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/part-of"], "mias")
-        self.assertNotIn("ipBlock", self.text)
+        policies = [o for k, o in self.objs.items() if k[0] == "NetworkPolicy" and o["metadata"]["namespace"] == "mias"]
+        self.assertNotIn("ipBlock", repr(policies))          # the synthetic exporter's /32 is in its own namespace
         self.assertNotIn("0.0.0.0/0", self.text)
-        policies = [o for k, o in self.objs.items() if k[0] == "NetworkPolicy"]
         for policy in policies:
             selector = policy["spec"]["podSelector"].get("matchLabels", {})
             self.assertNotEqual(selector.get("app.kubernetes.io/name"), "mias-publisher")
