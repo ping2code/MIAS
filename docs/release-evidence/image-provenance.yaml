@@ -1,0 +1,117 @@
+# MIAS image supply-chain provenance (Hardening Task 6). Public data only: no private keys, passphrases, tokens or
+# registry credentials. Validated by tests/test_supply_chain.py; workflow in docs/hardening-image-signing-sbom.md.
+schemaVersion: 1
+verifiedDate: "2026-10-04"
+signing:
+  method: cosign-key
+  tool: cosign v2.6.1
+  toolImage: ghcr.io/sigstore/cosign/cosign@sha256:2adcba84c5389dfbfe62a1fb1a4bf6dc48f7c7d6221050f6c4825db3ba9c300c
+  format: sigstore simple signing, OCI attachment tag sha256-DIGEST.sig in the same repository
+  transparencyLog: none
+  keyAlgorithm: ECDSA-P256
+  publicKeyFile: docs/release-evidence/mias-release.pub
+  publicKeyFingerprintSha256: "2d8f3664c72ed48019b48d0d5643e68f3a7b6c98b1c6c2beced159d3ea32548c"
+  privateKey: operator workstation only, outside git, passphrase-encrypted, mode 0600
+  signedIdentityPrefix: image-registry.openshift-image-registry.svc:5000/mias
+sbom:
+  format: CycloneDX
+  specVersion: "1.7"
+  tool: syft 1.54.0
+  toolImage: docker.io/anchore/syft@sha256:f43f12891e3123e337b6045bab944f53d4b0126707ca1cc9a25d6756b14085ce
+  storage: signed in-toto attestation (predicate type https://cyclonedx.org/bom) at tag sha256-DIGEST.att, plus an operator archive outside git
+images:
+  - component: mias-api
+    builtBy: mias
+    repository: image-registry.openshift-image-registry.svc:5000/mias/mias-api
+    tag: "259236684a74"
+    digest: sha256:634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196
+    sourceCommit: 259236684a745d9e0f13fe4ff12208da9f755ae2
+    ociRevision: 259236684a745d9e0f13fe4ff12208da9f755ae2
+    ociSource: https://github.com/ping2code/MIAS
+    configId: sha256:5b24dd786c7f0209a54a3fab4aa4be5c20c66c408cd6ef89f92604fcbf351ea4
+    baseImage: registry.access.redhat.com/ubi9/ubi-minimal
+    deployedBy: deploy/helm/mias values image.digest (mias-api and mias-publisher)
+    signature:
+      identity: image-registry.openshift-image-registry.svc:5000/mias/mias-api
+      attachmentTag: sha256-634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196.sig
+      attachmentDigest: sha256:378dd580211ebf9ed318aa107c535391fd948ae1c7785f862ef80d3f1eedb795
+      cosignVerified: true
+      containersPolicyVerified: true
+    sbom:
+      file: mias-api-sha256-634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196.cdx.json
+      sha256: "22bdb5fe6d332c218727f8071faf8cf19903f3352dc7f95900459ed95ce3c9cf"
+      sizeBytes: 1340072
+      packageCount: 140
+      rpmPackages: 115
+      pypiPackages: 25
+      fileCount: 3411
+      operatingSystem: rhel 9.8
+      generatedAt: "2026-10-04T04:03:54Z"
+      attestationTag: sha256-634c5372e95b6d2fc1a5e194d3ea841e60f6ae336fbc90f65f54f3e46d32b196.att
+      attestationDigest: sha256:be8fa3179dbda757e385f38dba5335999143530e4f6ce8bef18dd46222da8335
+      attestationVerified: true
+  - component: mias-ui
+    builtBy: mias
+    repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
+    tag: "90effc1778a7"
+    digest: sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0
+    sourceCommit: 90effc1778a7612e8a708194644b46b79db09641
+    ociRevision: 90effc1778a7612e8a708194644b46b79db09641
+    ociSource: https://github.com/ping2code/MIAS
+    configId: sha256:9443160dcfa7a9d3d708f002aa72c17f7d6bcec485d58e41cc4ce4cefae6bd59
+    baseImage: registry.access.redhat.com/ubi9/nginx-124
+    deployedBy: deploy/helm/mias values ui.image.digest
+    signature:
+      identity: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
+      attachmentTag: sha256-8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0.sig
+      attachmentDigest: sha256:d66450b3f63c56190ff4a210e8e69db88bbc9d8575eaedd9f7e5eb4c668cf5ab
+      cosignVerified: true
+      containersPolicyVerified: true
+    sbom:
+      file: mias-ui-sha256-8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0.cdx.json
+      sha256: "2cf407fd22de0e739202334a1074ea1c4ac196cbf76e141209eed1d5a20a653f"
+      sizeBytes: 3926824
+      packageCount: 312
+      rpmPackages: 294
+      pypiPackages: 18
+      fileCount: 11355
+      operatingSystem: rhel 9.8
+      generatedAt: "2026-10-04T04:04:28Z"
+      attestationTag: sha256-8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0.att
+      attestationDigest: sha256:5db5c27d46f67ff4585b1f13ea61ba93f54e38a3dc44f1fd8044d0b6d52170f6
+      attestationVerified: true
+# Rollback digests still in the registry. They are NOT signed: sign them before any enforcing policy is enabled.
+unsignedRetained:
+  - component: mias-api
+    digest: sha256:f915fb6c335330962ea2371c890b4cc6adb8962732e035e1b7d3c1b61c10e73a
+    tag: "f14ecd722428"
+  - component: mias-ui
+    digest: sha256:03782545d6b876dd178a8a59e308593215e7c9326a67d71d8ecd81eed754ce36
+    tag: "7c344762fbdd"
+  - component: mias-ui
+    digest: sha256:b311627d841358fbdafb4abbdc486e09100925b8c7392886c807bac1d94e896d
+    tag: "71dbb3de09d9"
+# Third-party images: mirrored, never re-signed with the MIAS key. Mirror integrity = upstream linux/amd64 config ID
+# equals the mirrored image's config ID (the manifest digest changes when the registry re-stores the image).
+thirdParty:
+  - component: otel-collector-contrib
+    builtBy: upstream
+    mirrored: true
+    signedByMias: false
+    upstreamImage: docker.io/otel/opentelemetry-collector-contrib:0.161.0
+    upstreamSource: https://github.com/open-telemetry/opentelemetry-collector-releases
+    upstreamRevision: 619d1d0d06e9488a4a38e993f09605bbc13db592
+    mirroredRepository: image-registry.openshift-image-registry.svc:5000/mias/otel-collector-contrib
+    mirroredDigest: sha256:2d75615700fdecd6981f7b352f155f3f4db74d884d73f5d92049ad4b69b41aef
+    configId: sha256:0fd3483345a3fa17f3ffe760eea2413f640724c8204ea11a58c8e3927b2c0fe7
+    upstreamConfigMatch: true
+  - component: blackbox-exporter
+    builtBy: upstream
+    mirrored: true
+    signedByMias: false
+    upstreamImage: quay.io/prometheus/blackbox-exporter:v0.28.0
+    upstreamSource: https://github.com/prometheus/blackbox_exporter
+    mirroredRepository: image-registry.openshift-image-registry.svc:5000/mias-monitoring/blackbox-exporter
+    mirroredDigest: sha256:22def1f1843206a9dc6bf476533c16c025d0594ad2867778368a1735b87c7d38
+    configId: sha256:2bb660d6acaae57b2514fa4d114428b1670c6ef84eee07834710b26fc003796b
+    upstreamConfigMatch: true
