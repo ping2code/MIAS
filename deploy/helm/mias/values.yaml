@@ -228,9 +228,10 @@ ui:
     # Route still targets nginx. "full": Stage 2, the UI Route targets the proxy, so every page except /healthz needs
     # an OAuth session (rollback: set back to "path"; no pod changes either way).
     routeMode: full
-    # Keep the router allowed to reach nginx on 8080 directly. Not needed once routeMode is full (nothing routes to
-    # 8080 then); set false to tighten mias-ui-allow-router to 8081 only, as a separately approved change.
-    routerToNginx: true
+    # Whether the router (and host-network sources) may reach nginx on 8080 directly. False since Stage 3: nginx now
+    # injects the API read token, so 8080 must be reachable only from the oauth-proxy sidecar (localhost, not subject
+    # to NetworkPolicy); mias-ui-allow-router admits 8081 only. Kubelet probes are unaffected. Rollback: true.
+    routerToNginx: false
     image:
       # oauth-proxy from the OpenShift 4.21.15 release payload (openshift/oauth-proxy 7f518c02931f); the
       # openshift/oauth-proxy ImageStream does not import in this cluster, so the release digest is pinned directly.

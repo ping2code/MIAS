@@ -138,21 +138,28 @@ class OAuthProxyTests(unittest.TestCase):
         for route in (ui, path):
             self.assertEqual(route["spec"]["tls"], route_tls("mias-ui-tls"))
             self.assertEqual(route["metadata"]["annotations"], ROUTE_ANNOTATIONS)
-        for kind_name, obj in objs.items():                                     # nothing but the Routes differs
-            if kind_name[0] != "Route":
+        for kind_name, obj in objs.items():           # nothing but the Routes and the router's 8080 rule differs
+            if kind_name[0] != "Route" and kind_name != ("NetworkPolicy", "mias-ui-allow-router"):
                 self.assertEqual(obj, self.objs[kind_name], kind_name)
         with self.assertRaises(AssertionError):
             render("ui.oauth.routeMode=sometimes")
 
-    def test_router_policy_tightening_is_a_separate_switch(self):
-        default = self.objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"]
-        self.assertEqual(default, [{"protocol": "TCP", "port": 8080}, {"protocol": "TCP", "port": 8081}])
-        objs, _ = render("ui.oauth.routerToNginx=false")
-        tight = objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"]
-        self.assertEqual(tight, [{"protocol": "TCP", "port": 8081}])            # nginx then unreachable directly
-        objs, _ = render("ui.oauth.routeMode=path", "ui.oauth.routerToNginx=false")
-        path_mode = objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"]
-        self.assertEqual(path_mode, default)                                     # Stage 1 always needs 8080
+    # Stage 3: nginx injects the API token, so the router may reach only the proxy (8081), never nginx (8080).
+    def test_router_reaches_only_the_proxy(self):
+        ports = self.objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"]
+        self.assertEqual(ports, [{"protocol": "TCP", "port": 8081}])
+        both = [{"protocol": "TCP", "port": 8080}, {"protocol": "TCP", "port": 8081}]
+        objs, _ = render("ui.oauth.routerToNginx=true")                        # the rollback value
+        self.assertEqual(objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"], both)
+        objs, _ = render("ui.oauth.routeMode=path")                              # Stage 1 always needs 8080
+        self.assertEqual(objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"], both)
+        objs, _ = render(OAUTH_OFF)                                              # no proxy: nginx on 8080 only
+        self.assertEqual(objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"],
+                         [{"protocol": "TCP", "port": 8080}])
+        off, _ = render("ui.oauth.routerToNginx=true")                          # the switch touches nothing else
+        for key, obj in self.objs.items():
+            if key != ("NetworkPolicy", "mias-ui-allow-router"):
+                self.assertEqual(obj, off[key], key)
 
     # 14-16. UI HA, API, collector and blackbox untouched
     def test_other_workloads_and_ha_unchanged(self):
@@ -173,10 +180,10 @@ class OAuthProxyTests(unittest.TestCase):
         nginx["image"] = nginx_before["image"]
         self.assertEqual(nginx, nginx_before)
 
-    # 17. NetworkPolicy: router may reach 8080 (Stage 1) and 8081; proxy egress only to the VIP:443 and API servers
+    # 17. NetworkPolicy: router may reach only the proxy (8081); proxy egress only to the VIP:443 and API servers
     def test_network_policy_minimal(self):
         router = self.objs[("NetworkPolicy", "mias-ui-allow-router")]["spec"]["ingress"][0]["ports"]
-        self.assertEqual(router, [{"protocol": "TCP", "port": 8080}, {"protocol": "TCP", "port": 8081}])
+        self.assertEqual(router, [{"protocol": "TCP", "port": 8081}])
         egress = self.objs[("NetworkPolicy", "mias-ui-egress-oauth")]["spec"]
         self.assertEqual(egress["podSelector"], {"matchLabels": {"app.kubernetes.io/name": "mias-ui"}})
         self.assertEqual(egress["policyTypes"], ["Egress"])
