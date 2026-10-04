@@ -1,0 +1,210 @@
+{{- if include "mias.syntheticActive" . }}
+{{- $ns := .Values.syntheticMonitoring.namespace }}
+# Synthetic monitoring (Hardening Task 4): a Prometheus Blackbox Exporter in its own namespace ({{ $ns }}, created out
+# of band) probes the externally routed UI health endpoint; UWM scrapes it through the Probe below, which lives in the
+# release namespace so the probe series carry namespace="{{ .Release.Namespace }}" (UWM enforces the namespace label).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: blackbox-exporter
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    {{- include "mias.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-exporter-config
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    {{- include "mias.labels" . | nindent 4 }}
+data:
+  config.yml: |
+    {{- include "mias.blackboxConfig" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    app.kubernetes.io/component: synthetic-monitoring
+    app.kubernetes.io/version: {{ .Values.syntheticMonitoring.image.versionLabel | quote }}
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: blackbox-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: blackbox-exporter
+        app.kubernetes.io/part-of: mias
+        app.kubernetes.io/component: synthetic-monitoring
+      annotations:
+        checksum/config: {{ dict "config.yml" (printf "%s\n" (include "mias.blackboxConfig" .)) | toJson | sha256sum }}
+    spec:
+      serviceAccountName: blackbox-exporter
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 10
+      # Resolve the probe host as an absolute name first (no search-domain expansion with ndots:5).
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        {{- include "mias.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: blackbox-exporter
+          image: {{ include "mias.blackboxImage" . }}
+          imagePullPolicy: {{ .Values.syntheticMonitoring.image.pullPolicy }}
+          args:
+            - --config.file=/etc/blackbox_exporter/config.yml
+            - "--web.listen-address=:9115"
+          ports:
+            - name: http
+              containerPort: 9115
+              protocol: TCP
+          securityContext:
+            {{- include "mias.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.syntheticMonitoring.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: /etc/blackbox_exporter
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: blackbox-exporter-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: blackbox-exporter
+  ports:
+    - name: http
+      port: 9115
+      targetPort: http
+      protocol: TCP
+{{- if .Values.networkPolicy.enabled }}
+---
+# Default deny for the whole synthetic-monitoring namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: synthetic-default-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# The exporter accepts only UWM Prometheus on 9115, and may reach only cluster DNS and the ingress VIP on 443.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: blackbox-exporter
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: blackbox-exporter
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-user-workload-monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9115
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+          podSelector:
+            matchLabels:
+              dns.operator.openshift.io/daemonset-dns: default
+      ports:
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.syntheticMonitoring.ingressVIP }}
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}
+---
+# The probe itself: UWM scrapes the exporter's /probe endpoint for the UI Route's /healthz.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: mias-ui-healthz
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: mias-ui-healthz
+    {{- include "mias.labels" . | nindent 4 }}
+spec:
+  jobName: mias-ui-synthetic
+  interval: {{ .Values.syntheticMonitoring.interval }}
+  scrapeTimeout: {{ .Values.syntheticMonitoring.scrapeTimeout }}
+  module: http_2xx_mias
+  prober:
+    url: blackbox-exporter.{{ $ns }}.svc:9115
+    scheme: http
+    path: /probe
+  targets:
+    staticConfig:
+      static:
+        - {{ include "mias.syntheticTarget" . | quote }}
+{{- end }}

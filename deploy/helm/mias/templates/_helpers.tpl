@@ -117,3 +117,41 @@ service:
       exporters:
         - prometheus
 {{- end -}}
+
+{{- define "mias.syntheticActive" -}}
+{{- if and .Values.syntheticMonitoring.enabled .Values.ui.enabled .Values.ui.route.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{- define "mias.blackboxImage" -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" .Values.syntheticMonitoring.image.digest) -}}
+{{- fail "syntheticMonitoring.image.digest must be sha256:<64 hex>" -}}
+{{- end -}}
+{{ .Values.syntheticMonitoring.image.repository }}@{{ .Values.syntheticMonitoring.image.digest }}
+{{- end -}}
+
+{{- define "mias.syntheticTarget" -}}
+https://{{ .Values.ui.route.host }}/healthz
+{{- end -}}
+
+{{- /* The blackbox exporter configuration (its ConfigMap's only data key and the input to its checksum). */ -}}
+{{- define "mias.blackboxConfig" -}}
+modules:
+  http_2xx_mias:
+    prober: http
+    timeout: {{ .Values.syntheticMonitoring.probeTimeout }}
+    http:
+      method: GET
+      valid_status_codes:
+        - 200
+      valid_http_versions:
+        - HTTP/1.1
+        - HTTP/2.0
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: false
+      fail_if_not_ssl: true
+      fail_if_body_not_matches_regexp:
+        - "^ok"
+      tls_config:
+        insecure_skip_verify: {{ .Values.syntheticMonitoring.tls.insecureSkipVerify }}
+{{- end -}}

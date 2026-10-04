@@ -104,6 +104,38 @@ monitoring:
     # workload change. Thresholds are fixed in templates/prometheusrule.yaml (documented in docs/hardening-uwm-alerting.md).
     enabled: true
 
+syntheticMonitoring:
+  # Hardening Task 4: a Prometheus Blackbox Exporter probes the externally routed UI health endpoint
+  # (https://<ui.route.host>/healthz) through cluster DNS, the ingress VIP, the OpenShift router and TLS. Rendered
+  # only while the UI and its Route are enabled. The exporter runs in its own namespace, created out of band (see
+  # docs/hardening-synthetic-monitoring.md); the Probe and the MiasUiSyntheticFailing alert live in the release
+  # namespace, because UWM enforces the namespace label on probe metrics and alert rules.
+  enabled: true
+  namespace: mias-monitoring
+  image:
+    # quay.io/prometheus/blackbox-exporter:v0.28.0 (index sha256:43027b43…, amd64 config sha256:2bb660d6…), mirrored
+    # to the mias-monitoring ImageStream and pinned by digest.
+    repository: image-registry.openshift-image-registry.svc:5000/mias-monitoring/blackbox-exporter
+    digest: sha256:22def1f1843206a9dc6bf476533c16c025d0594ad2867778368a1735b87c7d38
+    versionLabel: v0.28.0
+    pullPolicy: IfNotPresent
+  interval: 30s
+  scrapeTimeout: 15s
+  probeTimeout: 10s
+  tls:
+    # TEMPORARY: the lab ingress certificate is self-signed. Set to false once trusted TLS is in place.
+    insecureSkipVerify: true
+  # Egress to the router: the cluster ingress VIP (keepalived) that the Route host resolves to inside the cluster.
+  # Routers are host-network pods, so this is an ipBlock (one address, TCP 443 only). Verify after network changes.
+  ingressVIP: 192.168.5.141/32
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
 ui:
   # Phase 16B: the read-only dashboard (static files + a same-origin nginx proxy to the in-namespace mias-api
   # Service). Deployed in Phase 16F. There is no token anywhere in the chart: each browser user enters the read
