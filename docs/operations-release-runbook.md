@@ -22,7 +22,7 @@ Never combine a scientific or contract change with a platform release.
 
 ## 2. Current topology
 
-Facts as of chart 0.4.1 and Helm revision 25. **Verify current values** with §32 before relying on them.
+Facts as of chart 0.5.0 and Helm revision 28. **Verify current values** with §32 before relying on them.
 
 ```
 https://mias-ui.apps.<domain>  ─router (edge TLS)─▶ mias-ui :8080 ─same-origin proxy─▶ mias-api :8080 ─▶ /var/lib/mias/artifacts (PVC, RWO)
@@ -37,9 +37,9 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 | otel-collector | 1 replica, Recreate, digest-pinned (`observability.collector.image.digest`), ServiceMonitor scraped by UWM |
 | mias-publisher | toolbox Deployment, **normally 0 replicas** |
 | Storage | PVC `mias-artifacts` (RWO, `thin-csi`), Helm `resource-policy: keep`; PV reclaim policy **Retain** |
-| Routes | `mias-api` and `mias-ui`, edge TLS with Redirect, `disable_cookies: "true"`; self-signed lab `*.apps` certificate |
+| Routes | `mias-api` and `mias-ui`, edge TLS with Redirect, `disable_cookies: "true"`, HSTS (`routeTLS.hsts`); per-Route certificates from the **MIAS lab CA** (`docs/tls/mias-lab-ca.crt`) through `externalCertificate`, Secrets `mias-ui-tls` and `mias-api-tls` (out of band). See `docs/hardening-tls-dns-hsts.md` |
 | NetworkPolicies | 7 in `mias`: the default deny, the API's router ingress, telemetry egress, collector ingress, and 3 UI policies; 2 in `mias-monitoring` (default deny; exporter: UWM ingress, DNS and ingress VIP /32 egress) |
-| Monitoring | UWM enabled; PrometheusRule `mias-alerts` (12 rules); Thanos Ruler → platform Alertmanager |
+| Monitoring | UWM enabled; PrometheusRule `mias-alerts` (13 rules); Thanos Ruler → platform Alertmanager |
 | Synthetic | Blackbox Exporter (`mias-monitoring`, digest-pinned) probes `https://<ui route>/healthz` every 30 s through Probe `mias-ui-healthz` (in `mias`); alert `MiasUiSyntheticFailing`. See `docs/hardening-synthetic-monitoring.md` |
 | Auth | shared static read token; the UI keeps it in browser memory only |
 | Registry | internal OpenShift registry, **no external route** (push via `oc port-forward`) |
@@ -51,7 +51,8 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 - Tools: `git`, `helm` (4.x), `podman`, `node` 22 and `npm`; the project Python venv for tests; `curl`, `openssl`.
 - A change ticket or PR that states the **change type** (§5) and the **expected rollout impact** (§10).
 - The **previous known-good digests** are recorded, and their tags still exist (§25).
-- Out-of-band prerequisites exist: Secret `mias-api-auth` in `mias`; namespace `mias-monitoring` with ImageStream
+- Out-of-band prerequisites exist: Secrets `mias-api-auth`, `mias-ui-tls` and `mias-api-tls` (the last two are
+  `kubernetes.io/tls`, MIAS lab certificates) in `mias`; namespace `mias-monitoring` with ImageStream
   `blackbox-exporter` holding the pinned exporter digest (`docs/hardening-synthetic-monitoring.md` §2).
 
 ## 4. Pre-release verification (read-only)
@@ -313,11 +314,15 @@ helm upgrade mias deploy/helm/mias -n mias --reset-values --dry-run=server
 
 ## 14. Route and TLS verification
 
+Trusted TLS (Hardening Task 7). **Never use `-k`.** Verify against the MIAS lab CA:
+
 ```bash
+CA=docs/tls/mias-lab-ca.crt
 for h in mias-ui mias-api; do
   curl -s -o /dev/null -w "$h http %{http_code} %{redirect_url}\n" http://$h.apps.<domain>/      # expect 302 to https
-  curl -sk -D - -o /dev/null https://$h.apps.<domain>/health/live | grep -ci '^set-cookie'        # expect 0
-  echo | openssl s_client -connect $h.apps.<domain>:443 -servername $h.apps.<domain> 2>/dev/null | openssl x509 -noout -fingerprint -sha256 -enddate
+  curl -sS --cacert $CA -D - -o /dev/null https://$h.apps.<domain>/health/live | grep -i -E '^(strict-transport-security|set-cookie)'   # HSTS exact, no cookie
+  echo | openssl s_client -connect $h.apps.<domain>:443 -servername $h.apps.<domain> -CAfile $CA -verify_hostname $h.apps.<domain> 2>/dev/null | grep -E 'Verification:|Verify return code'   # OK / 0
+  echo | openssl s_client -connect $h.apps.<domain>:443 -servername $h.apps.<domain> 2>/dev/null | openssl x509 -noout -subject -issuer -fingerprint -sha256 -enddate
 done
 curl -sk -D - -o /dev/null https://mias-ui.apps.<domain>/ | grep -i -E '^(content-security-policy|x-content-type-options|referrer-policy|permissions-policy|cross-origin-opener-policy|cross-origin-resource-policy|server):'
 ```
@@ -328,7 +333,17 @@ curl -sk -D - -o /dev/null https://mias-ui.apps.<domain>/ | grep -i -E '^(conten
 - `nosniff`, `no-referrer`, Permissions-Policy, COOP and CORP `same-origin`;
 - `Server: nginx` with no version;
 - the certificate fingerprint and expiry as previously recorded (a change is an incident unless a TLS change was
-  planned).
+  planned). Issuer `MIAS Lab Root CA 2026`; leaves valid until 2027-11-05;
+- `strict-transport-security` exactly equal to `routeTLS.hsts` (`max-age=300` today), on HTTPS only; no
+  `includeSubDomains`, no `preload`;
+- verification OK with the CA and the right hostname (a hostname mismatch must give code 62).
+
+**Synthetic TLS:** the probe must verify normally. The rendered ConfigMap shows `insecure_skip_verify: false` and
+`ca_file`, and Thanos shows `probe_success` = 1 and `probe_http_ssl` = 1. `probe_ssl_last_chain_info` should show
+the MIAS leaf. A probe that only works with the skip is a failed release.
+
+**Browsers (Windows):** the CA must be in the current user's Root store, and NRPT must route `.ngc.sirii.org` to
+`192.168.1.60`. No hosts-file entries are needed or wanted.
 
 ## 15. Browser and UI QA
 
@@ -391,7 +406,7 @@ Cumulative counters reset when the API pod is replaced. That's normal.
 ## 18. Alert validation
 
 ```bash
-curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$THANOS/api/v1/rules?type=alert"   # mias.* groups: 12 rules, health "ok"
+curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$THANOS/api/v1/rules?type=alert"   # mias.* groups: 13 rules, health "ok"
 curl -sk -H "Authorization: Bearer $(oc whoami -t)" "https://$THANOS/api/v1/alerts"             # no MIAS alert pending or firing
 ```
 
@@ -440,6 +455,11 @@ Roll back (or fix forward, §23) if any of these hold:
    in `values.yaml`, run the Helm tests, and `helm upgrade --reset-values --wait`. This keeps git as the source of
    truth, with an explicit digest, and is reproducible.
 3. **`helm rollback <rev>`:** emergency only, with the caveats in §26.
+
+**HSTS caveat (Hardening Task 7):** browsers cache `Strict-Transport-Security` for its `max-age`. Any rollback that
+returns a Route to an untrusted certificate leaves those browsers with **no click-through** until the cached max-age
+expires. Roll HSTS back **first**, and keep max-age short until the trusted-certificate setup is settled. The order
+is in `docs/hardening-tls-dns-hsts.md` §10.
 
 ## 24. Emergency UI disable (proven live in 16F)
 
@@ -525,7 +545,7 @@ warns at 80%.
 - [ ] Both Routes: HTTPS works, HTTP returns 302, no `Set-Cookie`, headers and CSP exact, certificate as expected.
 - [ ] API health, ready and version checked; UI `/healthz` and browser QA passed (or the documented subset).
 - [ ] Telemetry: collector `up`, index healthy, no export errors.
-- [ ] Alerts: 12 rules `ok`, nothing pending or firing after settling.
+- [ ] Alerts: 13 rules `ok`, nothing pending or firing after settling.
 - [ ] Synthetic: `probe_success` = 1 and status 200 for `job="mias-ui-synthetic"`; blackbox-exporter Ready, 0 restarts.
 - [ ] UI HA: `mias-ui` 2/2 Ready on different nodes; PDB `disruptionsAllowed` = 1; both pods receive traffic.
 - [ ] Logs clean (no tokens or secrets); artifacts, PVC and PV unchanged.
@@ -543,7 +563,9 @@ warns at 80%.
   investigate.
 - `/health/ready` passes all checks;
 - no MIAS alerts firing; index healthy;
-- synthetic probe green: `probe_success{namespace="mias",job="mias-ui-synthetic"}` = 1 (the routed UI path works);
+- synthetic probe green: `probe_success{namespace="mias",job="mias-ui-synthetic"}` = 1 (the routed UI path works,
+  with TLS verified);
+- `MiasTlsCertificateExpiring` not firing; if it fires, renew (`docs/hardening-tls-dns-hsts.md` §9);
 - PVC Bound and under 80%.
 
 **Before deployment:**
@@ -559,7 +581,8 @@ warns at 80%.
 **After deployment:** §29.
 
 **Monthly:**
-- certificate and CA expiry (the lab wildcard currently expires 2028-09-11; verify);
+- certificate and CA expiry: MIAS leaves expire 2027-11-05 (the alert fires 30 days ahead), the MIAS lab CA on
+  2031-10-04, and the cluster default `*.apps` wildcard (console, OAuth) on 2028-09-11;
 - PVC usage, and registry storage (the internal registry PVC is unmanaged);
 - stale image tags against Helm history (§25);
 - alert noise and missed incidents; Alertmanager receiver verification status;
@@ -569,7 +592,12 @@ warns at 80%.
 
 ## 31. Known limitations (not solved here)
 
-- **TLS:** self-signed lab TLS (an ingress-operator CA), and no HSTS.
+- **TLS:**
+  - the MIAS Routes use a **private**, name-constrained lab CA, trusted only where it's installed (no CRL or OCSP);
+  - HSTS is staged at `max-age=300`;
+  - the cluster default `*.apps` certificate is still self-signed.
+
+  See `docs/hardening-tls-dns-hsts.md` §11.
 - **Auth:** a shared static read token; the public `mias-api` Route still exists alongside the UI proxy.
 - **Single replicas:**
   - the API is on RWO block storage, so there's no API HA; the UI depends on it for data;
@@ -629,4 +657,4 @@ warns at 80%.
 - `docs/phase14b-container.md` through `phase14f-final-openshift-validation.md`;
 - `phase15-observability.md`;
 - `phase16a…phase16f`;
-- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`, `hardening-image-signing-sbom.md`.
+- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`, `hardening-image-signing-sbom.md`, `hardening-tls-dns-hsts.md`.
