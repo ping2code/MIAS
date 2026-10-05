@@ -1,7 +1,7 @@
 # MIAS image supply-chain provenance (Hardening Task 6). Public data only: no private keys, passphrases, tokens or
 # registry credentials. Validated by tests/test_supply_chain.py; workflow in docs/hardening-image-signing-sbom.md.
 schemaVersion: 1
-verifiedDate: "2026-10-04"
+verifiedDate: "2026-10-05"
 signing:
   method: cosign-key
   tool: cosign v2.6.1
@@ -53,36 +53,42 @@ images:
   - component: mias-ui
     builtBy: mias
     repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-    tag: "ad5c2e1e664c"
-    digest: sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640
-    sourceCommit: ad5c2e1e664cb16766aea6f2d05812ac022f7ee8
-    sourceRef: claude/hardening-auth-replacement (Hardening Task 8 Stage 3; not yet merged to main)
-    ociRevision: ad5c2e1e664cb16766aea6f2d05812ac022f7ee8
+    tag: "8258e5bec00b"
+    digest: sha256:84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b
+    sourceCommit: 8258e5bec00b7384a3a52a990762f5669efbbd9f
+    sourceRef: main (operational dashboard history and detail pages; local main, not yet pushed)
+    ociRevision: 8258e5bec00b7384a3a52a990762f5669efbbd9f
     ociSource: https://github.com/ping2code/MIAS
-    configId: sha256:ce61cb34420576a67fd4ddaccb71c642f32b94d202a7ee4ed00e771b73a1be25
+    configId: sha256:d21dabf11fce093f3e5260bb9190965162665dd61f693614d7d0f5f15a7d575a
     baseImage: registry.access.redhat.com/ubi9/nginx-124
     deployedBy: deploy/helm/mias values ui.image.digest
     signature:
       identity: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-      attachmentTag: sha256-415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640.sig
-      attachmentDigest: sha256:afb2417af217e69bd42f6c0449b8499de193859d0cb58d1f6ec269d71b2bfeec
+      attachmentTag: sha256-84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b.sig
+      attachmentDigest: sha256:1d6183b1dbddb9f3135e07e46c758223b7cfad76ed7a7189282a105190e94db2
       cosignVerified: true
       containersPolicyVerified: true
     sbom:
-      file: mias-ui-sha256-415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640.cdx.json
-      sha256: "9ee628bd392222aee1469851a7eccdcc31e9aa9061306cb872eab82072e5040e"
+      file: mias-ui-sha256-84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b.cdx.json
+      sha256: "0b3fc0cb9f5a46046b396403223d8db0edd4c5309acb3cac1a84c3d331453a2d"
       sizeBytes: 3926824
       packageCount: 312
       rpmPackages: 294
       pypiPackages: 18
       fileCount: 11355
       operatingSystem: rhel 9.8
-      generatedAt: "2026-10-04T16:05:39Z"
-      attestationTag: sha256-415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640.att
-      attestationDigest: sha256:8dc017b0f1af356f26a32d11505cc6620392906764090ac157d9bcaec028f47b
+      generatedAt: "2026-10-05T13:53:57Z"
+      attestationTag: sha256-84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b.att
+      attestationDigest: sha256:53fe31b3c3751cb1ff09e2889a6e889570ec7730b6117a7507ee35e33dc76eae
       attestationVerified: true
 # Previous deployed digests kept for rollback that ARE signed (Hardening Task 6), with their SBOM attestations.
 signedRetained:
+  - component: mias-ui
+    digest: sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640
+    tag: "ad5c2e1e664c"
+    sourceCommit: ad5c2e1e664cb16766aea6f2d05812ac022f7ee8
+    role: Hardening Task 8 Stage 3 rollback (OAuth UI before the operational dashboard pages)
+    attachmentDigest: sha256:afb2417af217e69bd42f6c0449b8499de193859d0cb58d1f6ec269d71b2bfeec
   - component: mias-ui
     digest: sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0
     tag: "90effc1778a7"
