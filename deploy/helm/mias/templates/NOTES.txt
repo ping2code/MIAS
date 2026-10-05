@@ -10,7 +10,7 @@ Replicas: API {{ .Values.api.replicaCount }}{{ if .Values.ui.enabled }}, UI {{ .
 API Route: https://{{ .Values.route.host }} (bearer token from Secret {{ .Values.existingSecret.name }}; never printed here)
 {{- end }}
 {{- if and .Values.ui.enabled .Values.ui.route.enabled }}
-UI Route:  https://{{ .Values.ui.route.host }} (users sign in with the read token; it stays in browser memory)
+UI Route:  https://{{ .Values.ui.route.host }} (users sign in with OpenShift OAuth{{ if .Values.ui.oauth.enabled }}; the browser never holds the API read token{{ end }})
 {{- end }}
 
 Verify:

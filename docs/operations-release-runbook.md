@@ -22,18 +22,18 @@ Never combine a scientific or contract change with a platform release.
 
 ## 2. Current topology
 
-Facts as of chart 0.5.0 and Helm revision 28. **Verify current values** with §32 before relying on them.
+Facts as of chart 0.6.0 and Helm revision 33. **Verify current values** with §32 before relying on them.
 
 ```
-https://mias-ui.apps.<domain>  ─router (edge TLS)─▶ mias-ui :8080 ─same-origin proxy─▶ mias-api :8080 ─▶ /var/lib/mias/artifacts (PVC, RWO)
+https://mias-ui.apps.<domain>  ─router (edge TLS)─▶ mias-ui oauth-proxy :8081 (OpenShift OAuth) ─▶ nginx :8080 (+ read token) ─▶ mias-api :8080 ─▶ /var/lib/mias/artifacts (PVC, RWO)
 https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP/HTTP─▶ otel-collector ◀─scrape─ UWM Prometheus ─▶ Thanos Ruler ─▶ Alertmanager
 ```
 
 | Item | Current value |
 |---|---|
-| Platform | OpenShift 4.21.x; namespace `mias`; Helm release `mias`, chart `mias` **0.4.1** (verify current value) |
+| Platform | OpenShift 4.21.x; namespace `mias`; Helm release `mias`, chart `mias` **0.6.0** (verify current value) |
 | mias-api | 1 replica, Recreate, digest-pinned (`image.digest`), Secret `mias-api-auth` for the read token |
-| mias-ui | **2 replicas** on different workers (strict hostname topology spread), PDB `mias-ui` (minAvailable 1), RollingUpdate (maxUnavailable 0, maxSurge 1), digest-pinned (`ui.image.digest`), nginx same-origin proxy, no Secret. See `docs/hardening-ui-ha.md` |
+| mias-ui | **2 replicas** on different workers (strict hostname topology spread), PDB `mias-ui` (minAvailable 1), RollingUpdate (maxUnavailable 0, maxSurge 1), digest-pinned (`ui.image.digest`). Each pod: **oauth-proxy** sidecar (:8081, the Route target) and nginx (:8080, same-origin proxy that injects the API read token server-side). See `docs/hardening-ui-ha.md`, `docs/hardening-auth-replacement.md` |
 | otel-collector | 1 replica, Recreate, digest-pinned (`observability.collector.image.digest`), ServiceMonitor scraped by UWM |
 | mias-publisher | toolbox Deployment, **normally 0 replicas** |
 | Storage | PVC `mias-artifacts` (RWO, `thin-csi`), Helm `resource-policy: keep`; PV reclaim policy **Retain** |
@@ -41,7 +41,7 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 | NetworkPolicies | 7 in `mias`: the default deny, the API's router ingress, telemetry egress, collector ingress, and 3 UI policies; 2 in `mias-monitoring` (default deny; exporter: UWM ingress, DNS and ingress VIP /32 egress) |
 | Monitoring | UWM enabled; PrometheusRule `mias-alerts` (13 rules); Thanos Ruler → platform Alertmanager |
 | Synthetic | Blackbox Exporter (`mias-monitoring`, digest-pinned) probes `https://<ui route>/healthz` every 30 s through Probe `mias-ui-healthz` (in `mias`); alert `MiasUiSyntheticFailing`. See `docs/hardening-synthetic-monitoring.md` |
-| Auth | shared static read token; the UI keeps it in browser memory only |
+| Auth | **OpenShift OAuth** at the UI (oauth-proxy; access = `get services/mias-ui` in `mias`, granted to group `mias-viewers`); signed session cookie `_mias_session` (Secret `mias-ui-oauth-cookie`); the browser never holds the API read token: nginx adds it from `mias-api-auth`. The API still validates the shared token |
 | Registry | internal OpenShift registry, **no external route** (push via `oc port-forward`) |
 
 ## 3. Preconditions
@@ -54,6 +54,8 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 - Out-of-band prerequisites exist: Secrets `mias-api-auth`, `mias-ui-tls` and `mias-api-tls` (the last two are
   `kubernetes.io/tls`, MIAS lab certificates) in `mias`; namespace `mias-monitoring` with ImageStream
   `blackbox-exporter` holding the pinned exporter digest (`docs/hardening-synthetic-monitoring.md` §2).
+- Hardening Task 8 prerequisites exist: Secret `mias-ui-oauth-cookie` (key `session_secret`) in `mias`, and the group
+  `mias-viewers` (`docs/hardening-auth-replacement.md` §6).
 
 ## 4. Pre-release verification (read-only)
 
@@ -347,25 +349,34 @@ the MIAS leaf. A probe that only works with the skip is a failed release.
 
 ## 15. Browser and UI QA
 
-- **Unauthenticated:**
-  - `https://mias-ui.apps.<domain>/healthz` returns `ok`;
-  - deep links return the SPA with `no-store`;
-  - `/api` returns a plain 404, never SPA HTML.
+- **Unauthenticated** (behind OpenShift OAuth since Hardening Task 8):
+  - `https://mias-ui.apps.<domain>/healthz` returns `ok` (the only path open without a session; the synthetic probe
+    uses it);
+  - `/`, deep links, `/api/v1/*` and `/health/*` return **302 to the OpenShift OAuth authorize URL**;
+  - `/oauth/auth` returns **401**.
+- **OAuth login and sign-out** (fresh Incognito, DevTools Network with Preserve log):
+  - `/` leads to the OpenShift login, then the dashboard opens **directly**: no token page, no Lock button;
+  - `/oauth/auth` returns **202** while signed in;
+  - `_mias_session` is HttpOnly, Secure, SameSite Lax, Path `/`;
+  - **Sign out** goes to `/oauth/sign_out` (OpenShift may sign the browser in again silently).
+  - Never link users to `/oauth/start` (it loops; `docs/hardening-auth-replacement.md` §2).
+- **No token in the browser:**
+  - `/api/v1` requests return 200 and carry **no `Authorization` header**;
+  - local and session storage hold no token (at most `mias-ui-theme`).
 - **Real browser:** `ui/scripts/browser-qa.mjs` drives Chromium over CDP. It covers:
-  - sign-in, wrong token, return path;
+  - the OAuth deep link, and no token, sign-in or lock UI;
   - Overview, Market Intelligence list, filter and detail;
   - exact canonical text, **Copy** (clipboard equals source) and **Download** (bytes equal the API, file name
     `<hex>.json`);
   - Alerts and deliveries notice, Status;
-  - theme; lock and unlock; tablet and phone drawer; no horizontal scroll at 390 px;
-  - reduced motion; reload requires sign-in; no CSP violations; same-origin only; no token in URLs.
+  - theme; tablet and phone drawer; no horizontal scroll at 390 px;
+  - reduced motion; the session survives a reload; no CSP violations; same-origin only;
+  - no browser `Authorization`; Sign out through `/oauth/sign_out`.
 
-  Live mode: `MIAS_QA_URL=https://mias-ui.apps.<domain> MIAS_QA_LAB_TLS=1 NODE_EXTRA_CA_CERTS=<ingress CA>`, with
-  the token in `MIAS_QA_TOKEN` (env only), `PLAYWRIGHT_CORE=<install path>`, and Chromium from
-  `chromedp/headless-shell` on the host network with a shared `TMPDIR` mount for downloads. Never set
-  `MIAS_QA_RESTART` (token rotation) against production without approval. The ingress CA is the
-  `default-ingress-cert` ConfigMap in `openshift-config-managed`.
-- **Without an approved token:** run the unauthenticated subset and rely on the last authenticated QA run. Record that
+  Live mode: start Chrome with `--remote-debugging-port`, **log in to MIAS through OpenShift OAuth in that browser**,
+  then run with `MIAS_QA_URL=https://mias-ui.apps.<domain> MIAS_QA_CDP=… NODE_EXTRA_CA_CERTS=docs/tls/mias-lab-ca.crt
+  PLAYWRIGHT_CORE=<install path>`. The script reuses that session and never handles a password, cookie or token.
+- **Without an interactive login:** run the unauthenticated subset and rely on the last browser QA run. Record that
   decision.
 
 ## 16. API validation
@@ -377,7 +388,11 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://mias-api.apps.<domain>/api/v1/
 curl -sk -H @- https://mias-api.apps.<domain>/api/v1/version <<<"Authorization: Bearer $T"      # 200; build = the deployed SHA
 ```
 
-Through the UI proxy, `/health/*` returns 200 and `/api/v1/version` returns 401 without a token.
+Through the UI Route, `/health/*` and `/api/v1/*` require the OAuth session (302 without it). With a session, nginx adds
+the read token, and `/api/v1/version` returns 200 with no `Authorization` from the browser.
+
+**Server-side injection check** (no secrets printed; run from a router pod, which reaches the proxy port only):
+`/healthz` on :8081 returns 200 through the proxy to nginx, and :8080 is blocked across nodes.
 
 ## 17. UWM and telemetry validation
 
@@ -599,7 +614,16 @@ warns at 80%.
   - the cluster default `*.apps` certificate is still self-signed.
 
   See `docs/hardening-tls-dns-hsts.md` §11.
-- **Auth:** a shared static read token; the public `mias-api` Route still exists alongside the UI proxy.
+- **Auth:**
+  - users sign in with OpenShift OAuth, but the API still trusts one shared read token, injected by nginx;
+  - there's no per-user API authorization;
+  - access is checked at login only (8h sessions);
+  - the htpasswd IdP is the only one, and `kube:admin` still exists;
+  - a host-network process on the same node as a UI pod can reach nginx :8080 directly (OVN-Kubernetes local-node
+    rule), which is a deferred follow-up;
+  - the public `mias-api` Route is removed in Task 8 Stage 4.
+
+  See `docs/hardening-auth-replacement.md` §11.
 - **Single replicas:**
   - the API is on RWO block storage, so there's no API HA; the UI depends on it for data;
   - the collector is single replica;
@@ -646,6 +670,8 @@ warns at 80%.
 | Storage | `oc get pvc -n mias`; `oc get pv <volume> -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'` |
 | Alert rules | `oc get prometheusrule mias-alerts -n mias`; Thanos `/api/v1/rules?type=alert` |
 | UI HA | `oc get pods -n mias -l app.kubernetes.io/name=mias-ui -o wide`; `oc get pdb mias-ui -n mias` |
+| UI auth | `oc get route mias-ui -n mias -o jsonpath='{.spec.port.targetPort}'` (`oauth`); `oc logs deploy/mias-ui -n mias -c oauth-proxy` (logins, no request log); `oc get rolebinding mias-ui-access -n mias`; `oc get group mias-viewers` |
+| **Auth Secret rotation (mutating)** | cookie: recreate `mias-ui-oauth-cookie` (never echo), then `oc rollout restart deployment/mias-ui -n mias`; read token: update `mias-api-auth`, then restart `mias-api` and `mias-ui` (`docs/hardening-auth-replacement.md` §6) |
 | Synthetic probe | `oc get probe -n mias`; `oc get deploy,pods,networkpolicy -n mias-monitoring`; Thanos `probe_success{namespace="mias",job="mias-ui-synthetic"}` |
 | **Synthetic probe off (mutating)** | `helm upgrade … --reset-values --set syntheticMonitoring.enabled=false --wait` (no MIAS workload restarts) |
 | Render | `helm template mias deploy/helm/mias -n mias`; `helm get manifest mias -n mias` |
@@ -658,4 +684,4 @@ warns at 80%.
 - `docs/phase14b-container.md` through `phase14f-final-openshift-validation.md`;
 - `phase15-observability.md`;
 - `phase16a…phase16f`;
-- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`, `hardening-image-signing-sbom.md`, `hardening-tls-dns-hsts.md`.
+- `hardening-uwm-alerting.md`, `hardening-restart-cookie.md`, `hardening-synthetic-monitoring.md`, `hardening-ui-ha.md`, `hardening-image-signing-sbom.md`, `hardening-tls-dns-hsts.md`, `hardening-auth-replacement.md`.
