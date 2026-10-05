@@ -53,36 +53,42 @@ images:
   - component: mias-ui
     builtBy: mias
     repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-    tag: "8258e5bec00b"
-    digest: sha256:84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b
-    sourceCommit: 8258e5bec00b7384a3a52a990762f5669efbbd9f
-    sourceRef: main (operational dashboard history and detail pages; local main, not yet pushed)
-    ociRevision: 8258e5bec00b7384a3a52a990762f5669efbbd9f
+    tag: "1629a1660bf1"
+    digest: sha256:9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012
+    sourceCommit: 1629a1660bf1faf86fd7cb9c28baca4608bd44a9
+    sourceRef: claude/dashboard-operational-pages (Market Intelligence timeframe states; not yet merged to main)
+    ociRevision: 1629a1660bf1faf86fd7cb9c28baca4608bd44a9
     ociSource: https://github.com/ping2code/MIAS
-    configId: sha256:d21dabf11fce093f3e5260bb9190965162665dd61f693614d7d0f5f15a7d575a
+    configId: sha256:4a80cb73a440aae8d92317e2b07f95ccaafc9d8d38778ff6c7c9de46443a6b8c
     baseImage: registry.access.redhat.com/ubi9/nginx-124
     deployedBy: deploy/helm/mias values ui.image.digest
     signature:
       identity: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-      attachmentTag: sha256-84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b.sig
-      attachmentDigest: sha256:1d6183b1dbddb9f3135e07e46c758223b7cfad76ed7a7189282a105190e94db2
+      attachmentTag: sha256-9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012.sig
+      attachmentDigest: sha256:f1a1baae2fdca97399a79820e44324201273aa0337bc9c3d322d20f18d4a580e
       cosignVerified: true
       containersPolicyVerified: true
     sbom:
-      file: mias-ui-sha256-84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b.cdx.json
-      sha256: "0b3fc0cb9f5a46046b396403223d8db0edd4c5309acb3cac1a84c3d331453a2d"
+      file: mias-ui-sha256-9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012.cdx.json
+      sha256: "fcde14b6d60ed43f6a05017263e4c63ec7ea6c07976fed7965bcf190423b779e"
       sizeBytes: 3926824
       packageCount: 312
       rpmPackages: 294
       pypiPackages: 18
       fileCount: 11355
       operatingSystem: rhel 9.8
-      generatedAt: "2026-10-05T13:53:57Z"
-      attestationTag: sha256-84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b.att
-      attestationDigest: sha256:53fe31b3c3751cb1ff09e2889a6e889570ec7730b6117a7507ee35e33dc76eae
+      generatedAt: "2026-10-05T14:49:48Z"
+      attestationTag: sha256-9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012.att
+      attestationDigest: sha256:4a6610786e9e9cb0f688e7fbb58b50e5a7a43be3e2e8648ed238d7cc84bbb13a
       attestationVerified: true
 # Previous deployed digests kept for rollback that ARE signed (Hardening Task 6), with their SBOM attestations.
 signedRetained:
+  - component: mias-ui
+    digest: sha256:84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b
+    tag: "8258e5bec00b"
+    sourceCommit: 8258e5bec00b7384a3a52a990762f5669efbbd9f
+    role: operational dashboard pages rollback (before the Market Intelligence timeframe states)
+    attachmentDigest: sha256:1d6183b1dbddb9f3135e07e46c758223b7cfad76ed7a7189282a105190e94db2
   - component: mias-ui
     digest: sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640
     tag: "ad5c2e1e664c"

@@ -221,7 +221,7 @@ class OAuthProxyTests(unittest.TestCase):
         self.assertIn("defaultMode: 0440", self.text)
         self.assertNotIn("secretKeyRef", json.dumps(self.containers))            # never as an environment variable
         self.assertEqual(nginx["image"], "image-registry.openshift-image-registry.svc:5000/mias/mias-ui"
-                                         "@sha256:84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b")
+                                         "@sha256:9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012")
         objs, _ = render("ui.api.injectToken=false")
         dep = objs[("Deployment", "mias-ui")]["spec"]["template"]["spec"]
         self.assertNotIn("api-auth", json.dumps(dep))

@@ -176,13 +176,13 @@ ui:
   # Rollback: --set ui.enabled=false removes every mias-ui object (and the mias-api-allow-ui policy) only.
   enabled: true
   image:
-    # Operational dashboard pages: built from 8258e5bec00b7384a3a52a990762f5669efbbd9f (OCI revision label), pushed
-    # to the internal registry, cosign-signed with an attested CycloneDX SBOM (docs/release-evidence/
-    # image-provenance.yaml). Previous: ad5c2e1e664c / sha256:415e38e1… (Hardening Task 8 Stage 3; OAuth, no browser
-    # token), 90effc1778a7 / sha256:8c4e9341… (Stage 2 and earlier; token sign-in UI). (Earlier 16F images: 71dbb3de09d9 / sha256:b311627d…, 7c344762fbdd / sha256:03782545….)
+    # Market Intelligence timeframe states: built from 1629a1660bf1faf86fd7cb9c28baca4608bd44a9 (OCI revision label),
+    # pushed to the internal registry, cosign-signed with an attested CycloneDX SBOM (docs/release-evidence/
+    # image-provenance.yaml). Previous: 8258e5bec00b / sha256:84a9e073… (operational dashboard pages),
+    # ad5c2e1e664c / sha256:415e38e1… (Hardening Task 8 Stage 3; OAuth, no browser token), 90effc1778a7 / sha256:8c4e9341… (Stage 2 and earlier; token sign-in UI). (Earlier 16F images: 71dbb3de09d9 / sha256:b311627d…, 7c344762fbdd / sha256:03782545….)
     repository: image-registry.openshift-image-registry.svc:5000/mias/mias-ui
-    digest: sha256:84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b
-    versionLabel: 8258e5bec00b          # app.kubernetes.io/version only; never used to pull
+    digest: sha256:9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012
+    versionLabel: 1629a1660bf1          # app.kubernetes.io/version only; never used to pull
     pullPolicy: IfNotPresent
   # Hardening Task 5: the UI is stateless (no volume, no server-side session, router cookies off), so it scales
   # independently of the RWO-bound API. Two replicas on different workers survive one pod or node failure.

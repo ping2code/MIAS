@@ -14,7 +14,7 @@ from tests.test_openshift_manifests import parse, walk
 
 UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid placeholder for render-only tests
 # Phase 16F: the deployed mias-ui image (merged main 90effc1778a7612e8a708194644b46b79db09641), pinned in values.yaml.
-DEPLOYED_UI_DIGEST = "sha256:84a9e0736e5ec58f31c8fe0f94d4cc1b5e7fcd165319e536d665bda92f75d86b"   # operational dashboard pages
+DEPLOYED_UI_DIGEST = "sha256:9fca2c07da87d8cb393ed2bde0e0e88288fa09cd6e774fe023e4d95336dd7012"   # Market Intelligence timeframe states
 # The pre-Task 8 UI shape (no oauth-proxy); the OAuth layer is tested in tests/test_helm_auth.py.
 UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}", OAUTH_OFF, "ui.api.injectToken=false", API_ROUTE)
 UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
@@ -95,7 +95,7 @@ class HelmUiDisabledTests(unittest.TestCase):
         dep = objs[("Deployment", "mias-ui")]
         self.assertEqual(dep["spec"]["template"]["spec"]["containers"][0]["image"],
                          f"image-registry.openshift-image-registry.svc:5000/mias/mias-ui@{DEPLOYED_UI_DIGEST}")
-        self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "8258e5bec00b")
+        self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "1629a1660bf1")
         disabled, _ = render("ui.enabled=false")
         # Rollback removes exactly the UI objects and the synthetic probe of the UI Route (alerts stay)
         # (With no public API Route since Task 8 Stage 4, no Route needs a Secret either: the TLS-reader Role goes too.)
