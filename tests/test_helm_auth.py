@@ -10,7 +10,7 @@ import json
 import re
 import unittest
 
-from tests.test_helm_mias import (HELM, OAUTH_OFF, PRE_TASK8, ROUTE_ANNOTATIONS, STAGE1_OAUTH_ROUTE, UI_OAUTH_OBJECTS,
+from tests.test_helm_mias import (API_ROUTE, HELM, OAUTH_OFF, PRE_TASK8, ROUTE_ANNOTATIONS, STAGE1_OAUTH_ROUTE, UI_OAUTH_OBJECTS,
                                   render, route_tls)
 from tests.test_openshift_manifests import parse
 
@@ -121,10 +121,12 @@ class OAuthProxyTests(unittest.TestCase):
         self.assertNotIn("path", ui["spec"])
         self.assertEqual(ui["metadata"]["annotations"], ROUTE_ANNOTATIONS)
         self.assertNotIn(STAGE1_OAUTH_ROUTE, self.objs)
-        api = self.objs[("Route", "mias-api")]
+        self.assertNotIn(("Route", "mias-api"), self.objs)                      # Stage 4: no public API Route
+        with_api, _ = render(API_ROUTE)                                          # the rollback Route is unchanged
+        api = with_api[("Route", "mias-api")]
         self.assertEqual(api["spec"]["port"], {"targetPort": "http"})
         self.assertEqual(api["metadata"]["annotations"], ROUTE_ANNOTATIONS)
-        off, _ = render(OAUTH_OFF)
+        off, _ = render(OAUTH_OFF, API_ROUTE)
         self.assertEqual(api, off[("Route", "mias-api")])
 
     # Rollback to Stage 1 (routeMode=path): UI Route back on nginx, /oauth/* only through the path Route
@@ -224,6 +226,33 @@ class OAuthProxyTests(unittest.TestCase):
         dep = objs[("Deployment", "mias-ui")]["spec"]["template"]["spec"]
         self.assertNotIn("api-auth", json.dumps(dep))
         self.assertNotIn("MIAS_UI_API_TOKEN_FILE", json.dumps(dep))
+
+    # Stage 4: no public API Route. The API stays a ClusterIP Service behind the authenticated UI; route.enabled=true
+    # (the rollback) restores exactly the previous Route and TLS-reader Role, and nothing else differs.
+    def test_stage4_no_public_api_route(self):
+        self.assertNotIn(("Route", "mias-api"), self.objs)
+        self.assertEqual(sorted(k[1] for k in self.objs if k[0] == "Route"), ["mias-ui"])
+        self.assertNotIn("mias-api.apps", self.text)
+        api = self.objs[("Service", "mias-api")]["spec"]
+        self.assertEqual(api["type"], "ClusterIP")
+        for kind, name in self.objs:
+            if kind == "Service":
+                spec = self.objs[(kind, name)]["spec"]
+                self.assertNotIn(spec.get("type", "ClusterIP"), ("NodePort", "LoadBalancer"), name)
+                self.assertNotIn("externalIPs", spec, name)
+        self.assertNotIn("Ingress", {k for k, _ in self.objs})
+        role = self.objs[("Role", "mias-route-tls-reader")]
+        self.assertEqual(role["rules"][0]["resourceNames"], ["mias-ui-tls"])
+        rollback, _ = render(API_ROUTE)
+        self.assertEqual(set(rollback) - set(self.objs), {("Route", "mias-api")})
+        self.assertEqual(rollback[("Role", "mias-route-tls-reader")]["rules"][0]["resourceNames"],
+                         ["mias-api-tls", "mias-ui-tls"])
+        for key, obj in self.objs.items():
+            if key != ("Role", "mias-route-tls-reader"):
+                self.assertEqual(obj, rollback[key], key)
+        route = rollback[("Route", "mias-api")]
+        self.assertEqual((route["spec"]["host"], route["spec"]["tls"]["externalCertificate"]),
+                         ("mias-api.apps.ngc.sirii.org", {"name": "mias-api-tls"}))
 
     # 20. no Secret data anywhere in the render
     def test_no_secret_material(self):

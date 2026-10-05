@@ -18,13 +18,20 @@ def notes(*sets):
 class HelmNotesTests(unittest.TestCase):
     def test_default_notes_point_operators_to_the_runbook_and_checks(self):
         text = notes()
-        for expected in ("docs/operations-release-runbook.md", "https://mias-api.apps.ngc.sirii.org",
-                         "https://mias-ui.apps.ngc.sirii.org", "/health/ready", "/healthz",
+        for expected in ("docs/operations-release-runbook.md", "API:       internal only",
+                         "oc exec -n mias deploy/mias-api -- curl -s http://127.0.0.1:8080/health/ready",
+                         "https://mias-ui.apps.ngc.sirii.org", "/health/ready", "/healthz", "OpenShift OAuth",
                          "oc get prometheusrule mias-alerts", "mias-publisher", "--replicas=0",
                          "Never delete the mias-artifacts PVC"):
             self.assertIn(expected, text)
         self.assertRegex(text, r"API image: \S+@sha256:[0-9a-f]{64}")
         self.assertRegex(text, r"UI image: +\S+@sha256:[0-9a-f]{64}")
+        # Task 8 Stage 4: no public API Route, so no external API URL anywhere in the notes; the token is never asked for.
+        self.assertNotIn("mias-api.apps", text)
+        self.assertNotIn("read token; it stays in browser memory", text)
+        with_route = notes("route.enabled=true")                                  # the rollback shows the URL again
+        self.assertIn("API Route: https://mias-api.apps.ngc.sirii.org", with_route)
+        self.assertIn("curl -sk https://mias-api.apps.ngc.sirii.org/health/ready", with_route)
 
     def test_notes_follow_toggles_and_hold_no_secrets(self):
         text = notes("ui.enabled=false", "monitoring.alerts.enabled=false")

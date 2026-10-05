@@ -54,7 +54,11 @@ tmp:
   sizeLimit: 64Mi
 
 route:
-  enabled: true
+  # Hardening Task 8 Stage 4: no public API Route. The API is reachable only inside the cluster (Service mias-api,
+  # ClusterIP); browsers use the authenticated UI (OpenShift OAuth -> oauth-proxy -> nginx, which adds the read token).
+  # Operators check the API with oc exec / oc port-forward (runbook §16). Rollback: true (same host, certificate and
+  # annotations; the out-of-band Secret mias-api-tls is kept for that).
+  enabled: false
   host: mias-api.apps.ngc.sirii.org
   tls:
     # Hardening Task 7: the Route serves this certificate (issued by the MIAS lab CA, docs/tls/mias-lab-ca.crt)

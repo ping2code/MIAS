@@ -8,6 +8,8 @@ UI image:  {{ include "mias.uiImage" . }}
 Replicas: API {{ .Values.api.replicaCount }}{{ if .Values.ui.enabled }}, UI {{ .Values.ui.replicaCount }}{{ end }}; publisher {{ .Values.publisher.replicaCount }} (scale to 1 only while publishing, then back to 0).
 {{- if .Values.route.enabled }}
 API Route: https://{{ .Values.route.host }} (bearer token from Secret {{ .Values.existingSecret.name }}; never printed here)
+{{- else }}
+API:       internal only (Service mias-api, ClusterIP; no public Route)
 {{- end }}
 {{- if and .Values.ui.enabled .Values.ui.route.enabled }}
 UI Route:  https://{{ .Values.ui.route.host }} (users sign in with OpenShift OAuth{{ if .Values.ui.oauth.enabled }}; the browser never holds the API read token{{ end }})
@@ -15,7 +17,11 @@ UI Route:  https://{{ .Values.ui.route.host }} (users sign in with OpenShift OAu
 
 Verify:
   oc get pods,deploy -n {{ .Release.Namespace }}
+{{- if .Values.route.enabled }}
   curl -sk https://{{ .Values.route.host }}/health/ready
+{{- else }}
+  oc exec -n {{ .Release.Namespace }} deploy/mias-api -- curl -s http://127.0.0.1:8080/health/ready
+{{- end }}
 {{- if and .Values.ui.enabled .Values.ui.route.enabled }}
   curl -sk https://{{ .Values.ui.route.host }}/healthz
 {{- end }}

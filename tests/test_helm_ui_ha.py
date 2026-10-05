@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, PRE_TASK8, ROUTE_ANNOTATIONS, pre_oauth_route, render
+from tests.test_helm_mias import API_ROUTE, CHART, HELM, PRE_TASK8, ROUTE_ANNOTATIONS, pre_oauth_route, render
 from tests.test_helm_restart_cookie import render_chart
 
 UI_SELECTOR = {"matchLabels": {"app.kubernetes.io/name": "mias-ui"}}
@@ -140,8 +140,9 @@ class UiHighAvailabilityTests(unittest.TestCase):
 
     # 15-16. Routes unchanged, router cookies still disabled; the UI Service is untouched
     def test_routes_and_cookies_unchanged(self):
+        with_api_route, _ = render(API_ROUTE)                                  # the API Route is off since Task 8 Stage 4
         for name in ("mias-api", "mias-ui"):
-            route = self.objs[("Route", name)]                               # minus Tasks 7-8 (cert ref, UI port)
+            route = with_api_route[("Route", name)]                          # minus Tasks 7-8 (cert ref, UI port)
             self.assertEqual(spec_hash(pre_oauth_route(route)), BASELINE_SPECS[("Route", name)], name)
             self.assertEqual(route["metadata"]["annotations"], COOKIES, name)
         oauth_off, _ = render(*PRE_TASK8)                                     # Task 8 adds only the oauth Service port

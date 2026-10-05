@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, ROUTE_ANNOTATIONS, UI_ROUTE_PORT, render, route_tls
+from tests.test_helm_mias import API_ROUTE, CHART, HELM, ROUTE_ANNOTATIONS, UI_ROUTE_PORT, render, route_tls
 from tests.test_openshift_manifests import parse
 
 
@@ -105,7 +105,7 @@ class RouteCookieTests(unittest.TestCase):
     COOKIE = ROUTE_ANNOTATIONS                         # disable_cookies (Task 2) plus HSTS (Task 7)
 
     def test_both_routes_disable_the_router_cookie_and_keep_their_spec(self):
-        objs, _ = render()
+        objs, _ = render(API_ROUTE)                    # the API Route is off by default since Task 8 Stage 4
         api = objs[("Route", "mias-api")]
         ui = objs[("Route", "mias-ui")]
         for route in (api, ui):
@@ -118,10 +118,10 @@ class RouteCookieTests(unittest.TestCase):
         self.assertEqual((ui["spec"]["host"], ui["spec"]["to"]["name"]), ("mias-ui.apps.ngc.sirii.org", "mias-ui"))
 
     def test_route_toggles_still_work(self):
-        objs, _ = render("ui.enabled=false")
+        objs, _ = render(API_ROUTE, "ui.enabled=false")
         self.assertNotIn(("Route", "mias-ui"), objs)
         self.assertEqual(objs[("Route", "mias-api")]["metadata"]["annotations"], self.COOKIE)
-        objs, _ = render("ui.route.enabled=false")
+        objs, _ = render(API_ROUTE, "ui.route.enabled=false")
         self.assertNotIn(("Route", "mias-ui"), objs)
         self.assertIn(("Route", "mias-api"), objs)
         objs, _ = render("route.enabled=false")

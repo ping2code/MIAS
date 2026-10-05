@@ -8,7 +8,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import (CHART, DIGEST, HELM, OAUTH_OFF, PRE_TASK8, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, UI_OAUTH_OBJECTS,
+from tests.test_helm_mias import (API_ROUTE, CHART, DIGEST, HELM, OAUTH_OFF, PRE_TASK8, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, UI_OAUTH_OBJECTS,
                                   render, route_tls)
 from tests.test_openshift_manifests import parse, walk
 
@@ -16,7 +16,7 @@ UI_DIGEST = "sha256:" + "ab" * 32                     # a syntactically valid pl
 # Phase 16F: the deployed mias-ui image (merged main 90effc1778a7612e8a708194644b46b79db09641), pinned in values.yaml.
 DEPLOYED_UI_DIGEST = "sha256:415e38e1921dd99540df79d16e7db2e8b3cc7d8638303ccb569eb0424d5f0640"   # Task 8 Stage 3
 # The pre-Task 8 UI shape (no oauth-proxy); the OAuth layer is tested in tests/test_helm_auth.py.
-UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}", OAUTH_OFF, "ui.api.injectToken=false")
+UI_ON = ("ui.enabled=true", f"ui.image.digest={UI_DIGEST}", OAUTH_OFF, "ui.api.injectToken=false", API_ROUTE)
 UI_OBJECTS = {("ServiceAccount", "mias-ui"), ("ConfigMap", "mias-ui-config"), ("Deployment", "mias-ui"),
               ("Service", "mias-ui"), ("Route", "mias-ui"), ("NetworkPolicy", "mias-ui-allow-router"),
               ("NetworkPolicy", "mias-ui-egress-api"), ("NetworkPolicy", "mias-api-allow-ui"),
@@ -86,7 +86,7 @@ class HelmUiDisabledTests(unittest.TestCase):
     def test_disabled_render_equals_phase15(self):
         # With the UI and alerts off, every object equals Phase 15 except the derived/added values (see above).
         for sets, expected in PHASE15_OBJECTS.items():
-            self.assertEqual(canonical_objects_hash(*sets, "ui.enabled=false", "monitoring.alerts.enabled=false"),
+            self.assertEqual(canonical_objects_hash(API_ROUTE, *sets, "ui.enabled=false", "monitoring.alerts.enabled=false"),
                              expected, sets)
 
     def test_default_deploys_the_pinned_ui_image(self):
@@ -98,7 +98,8 @@ class HelmUiDisabledTests(unittest.TestCase):
         self.assertEqual(dep["metadata"]["labels"]["app.kubernetes.io/version"], "ad5c2e1e664c")
         disabled, _ = render("ui.enabled=false")
         # Rollback removes exactly the UI objects and the synthetic probe of the UI Route (alerts stay)
-        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS | UI_OAUTH_OBJECTS | SYNTHETIC_OBJECTS)
+        # (With no public API Route since Task 8 Stage 4, no Route needs a Secret either: the TLS-reader Role goes too.)
+        self.assertEqual(set(objs) - set(disabled), UI_OBJECTS | UI_OAUTH_OBJECTS | SYNTHETIC_OBJECTS | ROUTE_TLS_RBAC)
         for key, obj in disabled.items():
             if key in (ALERTS, TLS_ROLE, ("NetworkPolicy", "mias-ui-allow-router")):
                 continue                                            # the UI alerts and UI cert grant follow ui.enabled
@@ -133,7 +134,7 @@ class HelmUiEnabledTests(unittest.TestCase):
 
     def test_objects_and_phase15_untouched(self):
         self.assertTrue(UI_OBJECTS <= set(self.objs))
-        base, _ = render("ui.enabled=false")
+        base, _ = render(API_ROUTE, "ui.enabled=false")
         self.assertEqual(set(self.objs) - set(base), UI_OBJECTS | SYNTHETIC_OBJECTS)
         for key, obj in base.items():
             if key in (ALERTS, TLS_ROLE):

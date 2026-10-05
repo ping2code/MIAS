@@ -12,7 +12,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import CHART, HELM, HSTS, ROOT, ROUTE_TLS_RBAC, pre_oauth_route, render, route_tls
+from tests.test_helm_mias import API_ROUTE, CHART, HELM, HSTS, ROOT, ROUTE_TLS_RBAC, pre_oauth_route, render, route_tls
 from tests.test_openshift_manifests import parse
 
 CA_FILE = os.path.join(ROOT, "docs", "tls", "mias-lab-ca.crt")
@@ -42,7 +42,9 @@ def pem_der(text):
 class RouteTlsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.objs, cls.text = render()
+        # Both Routes' TLS is tested with the API Route rendered (Task 8 Stage 4 disables it by default; the template
+        # with its certificate reference and HSTS is the rollback).
+        cls.objs, cls.text = render(API_ROUTE)
         cls.routes = {name: cls.objs[("Route", name)] for name in HOSTS}
 
     # 1. HSTS renders exactly, on both Routes; no includeSubDomains, no preload
@@ -52,7 +54,7 @@ class RouteTlsTests(unittest.TestCase):
         self.assertRegex(HSTS, r"^max-age=\d+$")
         self.assertNotIn("includeSubDomains", self.text)
         self.assertNotIn("preload", self.text)
-        objs, _ = render("routeTLS.hsts=")
+        objs, _ = render(API_ROUTE, "routeTLS.hsts=")
         for name in HOSTS:
             self.assertNotIn("haproxy.router.openshift.io/hsts_header", objs[("Route", name)]["metadata"]["annotations"])
 
@@ -67,7 +69,7 @@ class RouteTlsTests(unittest.TestCase):
             self.assertEqual(spec_hash(pre_oauth_route(route)), BASELINE_SPECS[("Route", name)], name)   # target, wildcard
             self.assertNotIn("certificate", route["spec"]["tls"])           # no inline cert/key on the Route
             self.assertNotIn("key", route["spec"]["tls"])
-        objs, _ = render("route.tls.externalCertificateSecret=", "ui.route.tls.externalCertificateSecret=")
+        objs, _ = render(API_ROUTE, "route.tls.externalCertificateSecret=", "ui.route.tls.externalCertificateSecret=")
         for name in HOSTS:                                                  # fallback: the ingress default cert
             self.assertEqual(objs[("Route", name)]["spec"]["tls"],
                              {"termination": "edge", "insecureEdgeTerminationPolicy": "Redirect"})
@@ -87,9 +89,9 @@ class RouteTlsTests(unittest.TestCase):
                                                 "namespace": "openshift-ingress"}])
         for kind in ("ClusterRole", "ClusterRoleBinding", "Secret"):
             self.assertNotIn(kind, {k for k, _ in self.objs})
-        objs, _ = render("ui.enabled=false")                               # the UI cert grant follows the UI Route
+        objs, _ = render(API_ROUTE, "ui.enabled=false")                               # the UI cert grant follows the UI Route
         self.assertEqual(objs[("Role", "mias-route-tls-reader")]["rules"][0]["resourceNames"], ["mias-api-tls"])
-        objs, _ = render("ui.route.enabled=false", "route.enabled=false")
+        objs, _ = render(API_ROUTE, "ui.route.enabled=false", "route.enabled=false")
         self.assertFalse(ROUTE_TLS_RBAC & set(objs))
 
     # 6. the probe verifies TLS normally, against the public MIAS lab CA
@@ -134,7 +136,7 @@ class RouteTlsTests(unittest.TestCase):
         for name in ("mias-api", "otel-collector", "mias-publisher"):
             key = ("Deployment", name)
             self.assertEqual(spec_hash(self.objs[key]), BASELINE_SPECS[key], name)
-        fallback, _ = render(*SYNTHETIC_FALLBACK)
+        fallback, _ = render(API_ROUTE, *SYNTHETIC_FALLBACK)
         self.assertEqual(self.objs[("Deployment", "mias-ui")], fallback[("Deployment", "mias-ui")])
         blackbox = self.objs[("Deployment", "blackbox-exporter")]["spec"]["template"]
         old = fallback[("Deployment", "blackbox-exporter")]["spec"]["template"]
@@ -145,7 +147,7 @@ class RouteTlsTests(unittest.TestCase):
         old["metadata"]["annotations"].pop("checksum/config")
         self.assertEqual(blackbox, old)                                     # and nothing else in its pod template
         for name in ("mias-api", "mias-ui", "otel-collector", "mias-publisher"):
-            objs, _ = render("routeTLS.hsts=max-age=31536000")
+            objs, _ = render(API_ROUTE, "routeTLS.hsts=max-age=31536000")
             self.assertEqual(objs[("Deployment", name)], self.objs[("Deployment", name)], name)   # HSTS: Route only
 
     # 12. PDB and topology spread unchanged
@@ -166,7 +168,7 @@ class RouteTlsTests(unittest.TestCase):
                          ("1h", {"severity": "warning", "component": "tls", "part_of": "mias"}))
         self.assertEqual(set(expiry["annotations"]), {"summary", "description", "runbook_hint"})
         self.assertEqual(len(alerts), 13)
-        objs, _ = render("syntheticMonitoring.enabled=false")
+        objs, _ = render(API_ROUTE, "syntheticMonitoring.enabled=false")
         names = {r["alert"] for g in objs[("PrometheusRule", "mias-alerts")]["spec"]["groups"] for r in g["rules"]}
         self.assertNotIn("MiasTlsCertificateExpiring", names)              # it needs the probe's metric
 
@@ -178,7 +180,7 @@ class RouteTlsTests(unittest.TestCase):
 
     # 15. ui.enabled=false still removes everything UI (Route, PDB, probe) and keeps the API Route's TLS and HSTS
     def test_ui_disabled(self):
-        objs, text = render("ui.enabled=false")
+        objs, text = render(API_ROUTE, "ui.enabled=false")
         self.assertNotIn("mias-ui", text)
         self.assertNotIn(("Route", "mias-ui"), objs)
         self.assertNotIn(("PodDisruptionBudget", "mias-ui"), objs)

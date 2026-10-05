@@ -15,7 +15,7 @@ import unittest
 
 from tests.test_helm_alerts import CORE, EXPECTED as ALERT_SPECS
 from tests.test_helm_mias import (CHART, HELM, ROUTE_ANNOTATIONS, SYNTHETIC_EXPORTER, SYNTHETIC_NS, SYNTHETIC_OBJECTS,
-                                  PRE_TASK8, pre_oauth_route, render)
+                                  API_ROUTE, PRE_TASK8, pre_oauth_route, render)
 from tests.test_helm_restart_cookie import gojson_sha, render_chart
 from tests.test_openshift_manifests import parse
 
@@ -293,11 +293,13 @@ class SyntheticMonitoringTests(unittest.TestCase):
     # 16. no Route change from synthetic monitoring (host, TLS, cookies, target); Task 7's certificate reference and
     # HSTS are the only later Route changes (tests/test_helm_tls.py)
     def test_no_route_changes(self):
+        on, _ = render(API_ROUTE)                                              # API Route off since Task 8 Stage 4
+        off, _ = render(API_ROUTE, "syntheticMonitoring.enabled=false")
         for name in ("mias-api", "mias-ui"):
             key = ("Route", name)
-            self.assertEqual(spec_hash(pre_oauth_route(self.objs[key])), BASELINE_SPECS[key], name)
-            self.assertEqual(self.objs[key]["metadata"]["annotations"], ROUTE_ANNOTATIONS, name)
-            self.assertEqual(self.objs[key], self.off[key], name)
+            self.assertEqual(spec_hash(pre_oauth_route(on[key])), BASELINE_SPECS[key], name)
+            self.assertEqual(on[key]["metadata"]["annotations"], ROUTE_ANNOTATIONS, name)
+            self.assertEqual(on[key], off[key], name)
         self.assertEqual([k for k in self.objs if k[0] == "Route"], [k for k in self.off if k[0] == "Route"])
 
     # 17. no storage change (the artifact PVC keeps its spec and keep policy)

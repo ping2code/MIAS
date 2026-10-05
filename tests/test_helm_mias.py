@@ -38,8 +38,11 @@ OAUTH_OFF = "ui.oauth.enabled=false"
 # The complete pre-Task 8 UI (= the Stage 2 rollback image and settings): no proxy, no server-side token, the
 # Phase 16F/Task 2 image. Rendering with it reproduces chart 0.5.0 exactly (tests/test_helm_auth.py).
 STAGE2_UI_DIGEST = "sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85fe0dd4988cd0"
+# Hardening Task 8 Stage 4: no public API Route by default. The Route template stays (the rollback); tests of the
+# Route's own properties render it with API_ROUTE.
+API_ROUTE = "route.enabled=true"
 PRE_TASK8 = (OAUTH_OFF, "ui.api.injectToken=false", f"ui.image.digest={STAGE2_UI_DIGEST}",
-             "ui.image.versionLabel=90effc1778a7")
+             "ui.image.versionLabel=90effc1778a7", API_ROUTE)
 UI_OAUTH_OBJECTS = {("Role", "mias-ui-access"), ("RoleBinding", "mias-ui-access"),
                     ("NetworkPolicy", "mias-ui-egress-oauth")}
 STAGE1_OAUTH_ROUTE = ("Route", "mias-ui-oauth")       # routeMode=path only (Stage 1)
@@ -104,7 +107,7 @@ class HelmChartTests(unittest.TestCase):
             ("ServiceAccount", "mias-api"), ("ServiceAccount", "mias-publisher"), ("ConfigMap", "mias-api-config"),
             ("ConfigMap", "mias-publisher-config"), ("PersistentVolumeClaim", "mias-artifacts"),
             ("Deployment", "mias-api"), ("Deployment", "mias-publisher"), ("Service", "mias-api"),
-            ("Route", "mias-api"), ("NetworkPolicy", "mias-default-deny"), ("NetworkPolicy", "mias-api-allow-router"),
+            ("NetworkPolicy", "mias-default-deny"), ("NetworkPolicy", "mias-api-allow-router"),   # no API Route (Task 8)
             # Phase 15 observability (tests/test_helm_observability.py)
             ("ServiceAccount", "otel-collector"), ("ConfigMap", "otel-collector-config"),
             ("Deployment", "otel-collector"), ("Service", "otel-collector"), ("ServiceMonitor", "otel-collector"),
@@ -205,7 +208,10 @@ class HelmChartTests(unittest.TestCase):
         svc = self.objs[("Service", "mias-api")]["spec"]
         self.assertEqual((svc["type"], svc["ports"]), ("ClusterIP", [{"name": "http", "port": 8080,
                                                                       "targetPort": "http", "protocol": "TCP"}]))
-        route = self.objs[("Route", "mias-api")]
+        self.assertNotIn(("Route", "mias-api"), self.objs)                    # Task 8 Stage 4: internal API only
+        self.assertEqual([k for k in self.objs if k[0] == "Route"], [("Route", "mias-ui")])
+        objs, _ = render(API_ROUTE)                                              # the rollback Route, unchanged
+        route = objs[("Route", "mias-api")]
         self.assertEqual(route["spec"]["host"], "mias-api.apps.ngc.sirii.org")
         self.assertEqual(route["spec"]["tls"], route_tls("mias-api-tls"))      # Hardening Task 7: MIAS lab cert
         # Hardening Task 2: no router sticky cookie (stateless backend); Task 7: HSTS. Nothing else overrides defaults.
@@ -238,7 +244,7 @@ class HelmChartTests(unittest.TestCase):
         """With the 14E hardening switched off, the chart reproduces the raw 14C/14D manifests' specs."""
         objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false", "observability.enabled=false",
                          f"image.digest={RAW_DIGEST}", "image.versionLabel=f14ecd722428",
-                         "route.tls.externalCertificateSecret=", "routeTLS.hsts=")
+                         "route.tls.externalCertificateSecret=", "routeTLS.hsts=", API_ROUTE)
         pairs = {("Deployment", "mias-api"): "base/deployment.yaml", ("Service", "mias-api"): "base/service.yaml",
                  ("Route", "mias-api"): "base/route.yaml", ("ConfigMap", "mias-api-config"): "base/configmap.yaml",
                  ("PersistentVolumeClaim", "mias-artifacts"): "base/pvc.yaml",
