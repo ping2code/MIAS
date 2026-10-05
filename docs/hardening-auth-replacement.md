@@ -14,6 +14,7 @@ The API's own authentication is unchanged: mias-api still validates the same bea
 | 1 | oauth-proxy sidecar in both UI replicas; only `/oauth/*` on the UI host reaches it (path Route) | 30 | in-browser login, 202, sign-out, cross-replica session |
 | 2 | UI Route → proxy :8081 (every page needs a session except `/healthz`) | 31 | OAuth redirect on `/`; probe healthy |
 | 3 | frontend without any token; nginx injects the token; signed UI image; router → 8081 only | 32, 33 | browser: dashboard loads after OAuth, no token UI, no `Authorization` from the browser |
+| 4 | public `mias-api` Route removed (`route.enabled: false`); the API is ClusterIP-only | 34 | §12 |
 
 Chart **0.6.0**. The UI image is `sha256:415e38e1…` (source `ad5c2e1e664c`). API, collector and blackbox never
 restarted.
@@ -206,4 +207,25 @@ The UI image was built from exactly `ad5c2e1e664c` via `git archive`.
   rotation).
 - **Same-node bypass:** see §5.
 - **Single IdP:** the htpasswd IdP is the only one, and `kube:admin` still exists.
-- **Public API Route:** it still existed when Stages 1–3 closed; Stage 4 removes it.
+- **Public API Route:** removed in Stage 4 (§12).
+
+## 12. Stage 4: public API Route removed
+
+- **Change:** `route.enabled: false` (`deploy/helm/mias/values.yaml`). It deletes only `Route/mias-api`, and the
+  Route-TLS Role then lists only `mias-ui-tls`.
+- **Unchanged:** the Service `mias-api` (ClusterIP), the API Deployment, the PVC, the API auth, the UI path, the
+  NetworkPolicies and the synthetic probe. No pod restarts.
+- **Consumers checked first:**
+  - **Monitoring:** no Probe, ServiceMonitor, PodMonitor, rule, CronJob or Job referenced the API host.
+  - **Browser:** the UI uses the internal Service.
+  - **Traffic:** the router's per-Route counters showed only operator checks, plus one burst that was a Task 5
+    continuity measurement; there was no recurring client.
+- **Operator access:** `oc exec … curl http://127.0.0.1:8080/…` or `oc port-forward svc/mias-api` (runbook §16).
+  NOTES shows the internal check.
+- **Exposure afterwards:**
+  - no Route or Ingress to mias-api;
+  - every MIAS Service is ClusterIP, with no NodePort, LoadBalancer or external IPs;
+  - the only public entry point is the authenticated UI.
+- **Rollback:** `route.enabled: true`, then `helm upgrade --reset-values --wait`. That recreates the identical Route
+  (same host, `externalCertificate: mias-api-tls`, HSTS, `disable_cookies`; a tested invariant). The out-of-band
+  Secret `mias-api-tls` is kept for that.

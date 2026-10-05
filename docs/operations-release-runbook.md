@@ -26,7 +26,7 @@ Facts as of chart 0.6.0 and Helm revision 33. **Verify current values** with §3
 
 ```
 https://mias-ui.apps.<domain>  ─router (edge TLS)─▶ mias-ui oauth-proxy :8081 (OpenShift OAuth) ─▶ nginx :8080 (+ read token) ─▶ mias-api :8080 ─▶ /var/lib/mias/artifacts (PVC, RWO)
-https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP/HTTP─▶ otel-collector ◀─scrape─ UWM Prometheus ─▶ Thanos Ruler ─▶ Alertmanager
+(no public API Route since Task 8 Stage 4)  mias-api :8080 (ClusterIP only) ─OTLP/HTTP─▶ otel-collector ◀─scrape─ UWM Prometheus ─▶ Thanos Ruler ─▶ Alertmanager
 ```
 
 | Item | Current value |
@@ -37,7 +37,7 @@ https://mias-api.apps.<domain> ─router (edge TLS)─▶ mias-api :8080 ─OTLP
 | otel-collector | 1 replica, Recreate, digest-pinned (`observability.collector.image.digest`), ServiceMonitor scraped by UWM |
 | mias-publisher | toolbox Deployment, **normally 0 replicas** |
 | Storage | PVC `mias-artifacts` (RWO, `thin-csi`), Helm `resource-policy: keep`; PV reclaim policy **Retain** |
-| Routes | `mias-api` and `mias-ui`, edge TLS with Redirect, `disable_cookies: "true"`, HSTS (`routeTLS.hsts`); per-Route certificates from the **MIAS lab CA** (`docs/tls/mias-lab-ca.crt`) through `externalCertificate`, Secrets `mias-ui-tls` and `mias-api-tls` (out of band). See `docs/hardening-tls-dns-hsts.md` |
+| Routes | **`mias-ui` only** (the public `mias-api` Route was removed in Task 8 Stage 4: `route.enabled: false`; the API is ClusterIP-only), edge TLS with Redirect, `disable_cookies: "true"`, HSTS (`routeTLS.hsts`); per-Route certificates from the **MIAS lab CA** (`docs/tls/mias-lab-ca.crt`) through `externalCertificate`, Secrets `mias-ui-tls` and `mias-api-tls` (out of band). See `docs/hardening-tls-dns-hsts.md` |
 | NetworkPolicies | 7 in `mias`: the default deny, the API's router ingress, telemetry egress, collector ingress, and 3 UI policies; 2 in `mias-monitoring` (default deny; exporter: UWM ingress, DNS and ingress VIP /32 egress) |
 | Monitoring | UWM enabled; PrometheusRule `mias-alerts` (13 rules); Thanos Ruler → platform Alertmanager |
 | Synthetic | Blackbox Exporter (`mias-monitoring`, digest-pinned) probes `https://<ui route>/healthz` every 30 s through Probe `mias-ui-healthz` (in `mias`); alert `MiasUiSyntheticFailing`. See `docs/hardening-synthetic-monitoring.md` |
@@ -320,9 +320,9 @@ Trusted TLS (Hardening Task 7). **Never use `-k`.** Verify against the MIAS lab 
 
 ```bash
 CA=docs/tls/mias-lab-ca.crt
-for h in mias-ui mias-api; do
+for h in mias-ui; do       # the only public Route since Task 8 Stage 4 (add mias-api only if route.enabled is true)
   curl -s -o /dev/null -w "$h http %{http_code} %{redirect_url}\n" http://$h.apps.<domain>/      # expect 302 to https
-  curl -sS --cacert $CA -D - -o /dev/null https://$h.apps.<domain>/health/live | grep -i -E '^(strict-transport-security|set-cookie)'   # HSTS exact, no cookie
+  curl -sS --cacert $CA -D - -o /dev/null https://$h.apps.<domain>/healthz | grep -i -E '^(strict-transport-security|set-cookie)'   # HSTS exact, no cookie
   echo | openssl s_client -connect $h.apps.<domain>:443 -servername $h.apps.<domain> -CAfile $CA -verify_hostname $h.apps.<domain> 2>/dev/null | grep -E 'Verification:|Verify return code'   # OK / 0
   echo | openssl s_client -connect $h.apps.<domain>:443 -servername $h.apps.<domain> 2>/dev/null | openssl x509 -noout -subject -issuer -fingerprint -sha256 -enddate
 done
@@ -381,12 +381,20 @@ the MIAS leaf. A probe that only works with the skip is a failed release.
 
 ## 16. API validation
 
+There is **no public API Route** (Task 8 Stage 4): check the API inside the cluster. The token is expanded inside
+the pod from its own environment and never printed locally:
+
 ```bash
-curl -sk https://mias-api.apps.<domain>/health/live          # {"status":"live"}
-curl -sk https://mias-api.apps.<domain>/health/ready         # status "ready", every check "pass"
-curl -sk -o /dev/null -w '%{http_code}\n' https://mias-api.apps.<domain>/api/v1/version         # 401 without a token
-curl -sk -H @- https://mias-api.apps.<domain>/api/v1/version <<<"Authorization: Bearer $T"      # 200; build = the deployed SHA
+oc exec -n mias deploy/mias-api -- curl -s http://127.0.0.1:8080/health/live                     # {"status":"live"}
+oc exec -n mias deploy/mias-api -- curl -s http://127.0.0.1:8080/health/ready                    # "ready", every check "pass"
+oc exec -n mias deploy/mias-api -- curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/api/v1/version   # 401 without a token
+oc exec -n mias deploy/mias-api -- sh -c 'curl -s -H "Authorization: Bearer $MIAS_API_READ_TOKEN" http://127.0.0.1:8080/api/v1/version'   # 200; build = the deployed SHA
+oc get route mias-api -n mias                                                                    # NotFound (expected)
 ```
+
+Alternatively, for health only: `oc port-forward -n mias svc/mias-api 18080:8080`, then
+`curl -s http://127.0.0.1:18080/health/ready`. Never expose the API with a new Route, Ingress, NodePort or
+LoadBalancer; re-enabling `route.enabled` is a rollback decision, not routine access.
 
 Through the UI Route, `/health/*` and `/api/v1/*` require the OAuth session (302 without it). With a session, nginx adds
 the read token, and `/api/v1/version` returns 200 with no `Authorization` from the browser.
@@ -558,7 +566,8 @@ warns at 80%.
 
 - [ ] Only the intended objects changed (render diff matched the live result).
 - [ ] Only the expected workloads restarted, once; no loops; publisher 0.
-- [ ] Both Routes: HTTPS works, HTTP returns 302, no `Set-Cookie`, headers and CSP exact, certificate as expected.
+- [ ] UI Route: HTTPS works, HTTP returns 302, no router `Set-Cookie`, headers and CSP exact, certificate as expected;
+  `oc get route mias-api -n mias` is NotFound (no public API Route).
 - [ ] API health, ready and version checked; UI `/healthz` and browser QA passed (or the documented subset).
 - [ ] Telemetry: collector `up`, index healthy, no export errors.
 - [ ] Alerts: 13 rules `ok`, nothing pending or firing after settling.
@@ -621,7 +630,7 @@ warns at 80%.
   - the htpasswd IdP is the only one, and `kube:admin` still exists;
   - a host-network process on the same node as a UI pod can reach nginx :8080 directly (OVN-Kubernetes local-node
     rule), which is a deferred follow-up;
-  - the public `mias-api` Route is removed in Task 8 Stage 4.
+  - the public `mias-api` Route was removed in Task 8 Stage 4; the API is reachable only inside the cluster.
 
   See `docs/hardening-auth-replacement.md` §11.
 - **Single replicas:**
