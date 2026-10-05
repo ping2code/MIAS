@@ -93,17 +93,17 @@ describe("Overview", () => {
   });
 });
 
-describe("placeholders and navigation", () => {
+describe("operational pages and navigation", () => {
   it.each([
-    ["/options-intelligence", "Options Intelligence", "Detailed view arrives in a later Phase 16 step"],
-    ["/trade-setups", "Trade Setups", "Detailed view arrives in a later Phase 16 step"],
-    ["/invalidation-checks", "Invalidation Checks", "Detailed view arrives in a later Phase 16 step"],
-  ])("%s is a working placeholder", async (path, title, note) => {
+    ["/options-intelligence", "Options Intelligence"],
+    ["/trade-setups", "Trade Setups"],
+    ["/invalidation-checks", "Invalidation Checks"],
+  ])("%s has a working history", async (path, title) => {
     server.use(...apiHandlers());
     renderApp(path);
     expect(await screen.findByRole("heading", { name: title, level: 1 })).toBeInTheDocument();
-    expect(screen.getByText(note)).toBeInTheDocument();
-    expect(await screen.findByText("As of")).toBeInTheDocument();
+    expect(screen.queryByText("Detailed view arrives in a later Phase 16 step")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "History" })).toBeInTheDocument();
   });
 
   it("shows the empty state on a placeholder with no data", async () => {

@@ -12,7 +12,7 @@ import { RequestError } from "../components/RequestError";
 import { Tabs } from "../components/Tabs";
 import { isArtifactId } from "../lib/artifactId";
 
-type DetailFamily = "market-intelligence" | "alerts";
+type DetailFamily = keyof FamilyViews;
 
 const TABS = [
   { id: "summary", label: "Summary" },

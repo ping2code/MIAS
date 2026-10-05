@@ -6,10 +6,10 @@ import { AlertDetailPage } from "../pages/alerts/AlertDetailPage";
 import { AlertListPage } from "../pages/alerts/AlertListPage";
 import { MarketIntelligenceDetailPage } from "../pages/market-intelligence/MarketIntelligenceDetailPage";
 import { MarketIntelligenceListPage } from "../pages/market-intelligence/MarketIntelligenceListPage";
-import { PlaceholderPage } from "../pages/PlaceholderPage";
+import { OperationalHistoryPage, OperationalDetailPage } from "../pages/OperationalPages";
 import { StatusPage } from "../pages/StatusPage";
 
-const LATER = "Detailed view arrives in a later Phase 16 step";
+
 
 export function AppRoutes() {
   return (
@@ -22,9 +22,12 @@ export function AppRoutes() {
         <Route path="market-intelligence/:id" element={<MarketIntelligenceDetailPage />} />
         <Route path="alerts" element={<AlertListPage />} />
         <Route path="alerts/:id" element={<AlertDetailPage />} />
-        <Route path="options-intelligence" element={<PlaceholderPage family="options-intelligence" note={LATER} />} />
-        <Route path="trade-setups" element={<PlaceholderPage family="trade-setups" note={LATER} />} />
-        <Route path="invalidation-checks" element={<PlaceholderPage family="invalidation-checks" note={LATER} />} />
+        <Route path="options-intelligence" element={<OperationalHistoryPage family="options-intelligence" />} />
+        <Route path="options-intelligence/:id" element={<OperationalDetailPage family="options-intelligence" />} />
+        <Route path="trade-setups" element={<OperationalHistoryPage family="trade-setups" />} />
+        <Route path="trade-setups/:id" element={<OperationalDetailPage family="trade-setups" />} />
+        <Route path="invalidation-checks" element={<OperationalHistoryPage family="invalidation-checks" />} />
+        <Route path="invalidation-checks/:id" element={<OperationalDetailPage family="invalidation-checks" />} />
         <Route path="status" element={<StatusPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
