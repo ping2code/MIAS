@@ -1,0 +1,11 @@
+[Unit]
+Description=MIAS market-session operational cycle
+
+[Timer]
+OnCalendar=*-*-* *:00,30:00
+AccuracySec=1s
+Persistent=false
+Unit=mias-operational.service
+
+[Install]
+WantedBy=timers.target

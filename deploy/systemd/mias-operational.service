@@ -1,0 +1,11 @@
+[Unit]
+Description=MIAS validated operational market cycle
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pentu/MyRepos/MIAS
+ExecStart=/bin/bash -c 'set -e; set +x; source /home/pentu/.mias-env; exec /home/pentu/MyRepos/MIAS/.venv/bin/python /home/pentu/MyRepos/MIAS/scripts/mias_operational_cycle.py --scheduled'
+TimeoutStartSec=45min
+ExecStopPost=/home/pentu/MyRepos/MIAS/.venv/bin/python /home/pentu/MyRepos/MIAS/scripts/mias_publish_batch.py --cleanup-owned-publisher
+UMask=0077

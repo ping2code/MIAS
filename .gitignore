@@ -29,3 +29,6 @@ Thumbs.db
 
 # MIAS runtime state (artifact store, receipts); operator data, never committed
 /runtime/
+
+# Operational artifacts and halt/lock state; never commit live snapshots
+/operations/
