@@ -21,8 +21,10 @@ from persistence.models import technical_snapshots
 from persistence.technical_snapshot_repository import content_hash, row_from_db
 from sqlalchemy import select
 
+import mias_publish_batch as publisher
+
 ROOT = REPO / 'operations'
-HALTED = ROOT / 'HALTED.json'
+HALTED = publisher.HALTED
 PYTHON = str(REPO / '.venv/bin/python')
 
 def expected_start(calendar, cutoff, interval):
@@ -96,7 +98,11 @@ def execute():
         if '--scheduled' in sys.argv and not scheduled_window(datetime.now(timezone.utc)):
             print('{"status":"OUTSIDE_OPERATIONAL_WINDOW"}')
             return 0
+        stage, run = 'preflight', None
         try:
+            # The MIAS cluster and a working login first: fail before minutes of generation, never retried.
+            publisher.verify_cluster_identity()
+            stage = 'technical_generation'
             os.environ.update(MARKET_DATA_PROVIDER='massive_stocks',
                 MARKET_DATA_INCLUDE_EXTENDED_HOURS='false',
                 TECHNICAL_SNAPSHOT_PERSISTENCE_SHADOW_ENABLED='true',
@@ -106,28 +112,42 @@ def execute():
             result = subprocess.run([PYTHON,'-m','technical.runner','--symbols','META,NVDA','--timeframes','1d,1h,5m'],
                                     cwd=REPO,text=True,capture_output=True,timeout=900)
             if result.returncode:
-                raise RuntimeError('technical generation failed')
+                raise RuntimeError(f'technical generation failed (exit {result.returncode})')
             check_persistence_log(result.stdout+result.stderr)
+            stage = 'freshness'
             verify_freshness(cutoff)
+            stage = 'batch_generation'
             result = subprocess.run([PYTHON,str(REPO/'scripts/mias_generate_batch.py')],cwd=REPO,
                                     text=True,capture_output=True,timeout=1500)
             print(result.stdout,flush=True)
             if result.returncode:
-                raise RuntimeError('batch validation failed')
+                raise RuntimeError(f'batch validation failed (exit {result.returncode})')
             records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
             final = records[-1]
             if final.get('status') != 'VALIDATED':
                 raise ValueError('missing batch validation receipt')
-            from mias_publish_batch import publish
-            publish(final['output_directory'])
+            stage, run = 'publish', final['output_directory']
+            publisher.publish(run)
             print('{"status":"CYCLE_COMPLETE"}',flush=True)
             return 0
         except Exception as error:
-            record = {'status':'HALTED','error_type':type(error).__name__,
-                      'at':datetime.now(timezone.utc).isoformat()}
-            HALTED.write_text(json.dumps(record)+'\n')
-            print(json.dumps(record),flush=True)
+            print(json.dumps(halt_record(error, stage, run)),flush=True)
             return 1
+
+def halt_record(error, stage, run):
+    """Record the specific failure (stage, command, redacted detail) as HALTED.json; never overwrite an existing halt."""
+    record = {'status':'HALTED','error_type':type(error).__name__,'stage':stage,
+              'at':datetime.now(timezone.utc).isoformat()}
+    if run:
+        record['run'] = run
+    if isinstance(error, publisher.PublishError):
+        record.update(error.record(), cycle_stage=stage)
+    else:
+        if getattr(error, 'stage', None):
+            record.update(stage=error.stage, cycle_stage=stage)
+        record['detail'] = publisher.redact(str(error))[:600]
+    record['halt_recorded'] = publisher.write_halt(record)
+    return record
 
 if __name__ == '__main__':
     sys.exit(execute())

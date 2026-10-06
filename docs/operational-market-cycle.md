@@ -22,6 +22,12 @@ Credentials are loaded from the existing /home/pentu/.mias-env without printing 
 
 Runs and receipts live under operations/runs/ and are ignored by Git. A file lock prevents overlapping cycles. On any operational or validation failure, operations/HALTED.json is written; subsequent scheduled runs refuse to proceed. There is no automatic retry after a validation failure.
 
+OpenShift access: every cycle first requires KUBECONFIG=/home/pentu/.kube/mias-config (set by the unit's override.conf), the server https://api.ngc.sirii.org:6443 and a working `oc whoami`. A failure halts at stage `preflight` before any generation; authentication failures are never retried.
+
+The halt record is specific and is never overwritten. HALTED.json is created with exclusive create, mode 0600, by whichever step fails first. It records `stage` (for example `pod_create`, `publish`, `api_visibility`), `cycle_stage`, `run`, `category` (`authentication`, `configuration`, `timeout`, `command`, `api`, `conflict`), the redacted `detail`, and for an `oc` failure the `command` (never an exec payload), `exit_code` and redacted `stderr`. A `pod_create` timeout also records the publisher deployment status and recent publisher events. ExecStopPost writes `service_interrupted` only when no halt exists (for example a timeout or a kill), with SERVICE_RESULT, EXIT_CODE and EXIT_STATUS.
+
+Bounded waits replace fixed sleeps. Publisher pod creation is polled for up to 240 s: a kube-controller-manager leader failover can delay ReplicaSet pod creation, which is what stopped the 2026-10-05 12:00 cycle under the earlier 60 s limit. API visibility is polled every 10 s for up to 300 s: the API index refresh slows as the store grows, which is what stopped the 09:30 cycle after the earlier fixed 35 s sleep. Only readiness failures and 404 (not yet indexed) are retried; 401, 403 or an invalid body fail at once. The publisher is returned to zero before the API checks, and on every failure.
+
 Inspect:
 - systemctl --user status mias-operational.timer mias-operational.service
 - journalctl --user -u mias-operational.service
@@ -30,7 +36,8 @@ Inspect:
 
 Investigate a halted run before clearing its marker. If publishing was interrupted, reconcile the sole-writer store and API first; individual artifacts are immutable and publishing is idempotent, but a batch is not transactionally atomic across artifacts.
 
-Manual full run after review:
+Manual full run after review (inside the market-session window):
+export KUBECONFIG=/home/pentu/.kube/mias-config
 source /home/pentu/.mias-env
 .venv/bin/python scripts/mias_operational_cycle.py
 
