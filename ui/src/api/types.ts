@@ -86,6 +86,51 @@ export interface OptionsIntelligenceView {
   contract_count: number;
 }
 
+/** `options-intelligence-activity-v1` (derived, descriptive): GET /api/v1/options-intelligence/activity. */
+export interface ActivityComparison {
+  status: "comparable" | "no_prior_snapshot" | "prior_from_other_session" | "prior_ambiguous";
+  prior_options_intelligence_id: string | null;
+  prior_as_of: string | null;
+  session_date: string;
+}
+
+export type ActivitySide = "CALL" | "PUT" | "BALANCED" | "UNAVAILABLE";
+export type ActivityMomentum = ActivitySide | "INSUFFICIENT_PRIOR" | "VOLUME_CORRECTION";
+export type ActivityConcentration = "below_spot" | "at_spot" | "above_spot" | "mixed" | "unavailable";
+export type ChangeReason = "not_comparable" | "value_unavailable" | "prior_zero" | null;
+
+export interface OptionsIntelligenceActivityView {
+  options_intelligence_id: string;
+  symbol: string;
+  as_of: string;
+  contract_count: number;
+  expiration_count: number;
+  call_volume: number | null;
+  put_volume: number | null;
+  put_call_volume_ratio: string | null;
+  put_call_volume_ratio_reason: string | null;
+  iv_median: string | null;
+  volume_gt_oi_count: number;
+  call_breadth: number;
+  put_breadth: number;
+  call_concentration: ActivityConcentration;
+  put_concentration: ActivityConcentration;
+  concentration_reason: string | null;
+  comparison: ActivityComparison;
+  call_volume_change: number | null;
+  call_volume_change_pct: string | null;
+  call_volume_change_reason: ChangeReason;
+  put_volume_change: number | null;
+  put_volume_change_pct: string | null;
+  put_volume_change_reason: ChangeReason;
+  volume_gt_oi_change: number | null;
+  call_breadth_change: number | null;
+  put_breadth_change: number | null;
+  activity_bias: ActivitySide;
+  momentum_15m: ActivityMomentum;
+  trend_summary: string;
+}
+
 export interface TradeSetupView {
   assessment_id: string;
   assessment_format_version: string;

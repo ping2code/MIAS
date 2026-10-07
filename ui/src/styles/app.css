@@ -211,6 +211,20 @@ h1:focus, h2:focus, main:focus { outline: none; }
 .list-card { padding: 0; overflow: hidden; }
 .list-card > .card-header { padding: var(--sp-3) var(--sp-5); border-bottom: 1px solid var(--border); margin: 0; }
 .list-card > .state, .list-card > .state-error { margin: var(--sp-4) var(--sp-5); }
+.activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-list.is-stale { opacity: 0.6; }
+.activity-list > li + li { border-top: 1px solid var(--border); }
+.activity-card { padding: var(--sp-4) var(--sp-5); }
+.activity-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.activity-header h3 { margin: 0; font-size: var(--fs-md); font-weight: 650; overflow-wrap: anywhere; }
+.activity-meta { margin: var(--sp-1) 0 var(--sp-3); color: var(--subtle); font-size: var(--fs-sm); }
+.activity-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: var(--sp-2) var(--sp-5); margin: 0; }
+.activity-metric { display: flex; justify-content: space-between; gap: var(--sp-3); align-items: baseline; min-width: 0; }
+.activity-metric dt { color: var(--subtle); font-size: var(--fs-sm); }
+.activity-metric dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.activity-change { margin-left: var(--sp-2); color: var(--subtle); font-size: var(--fs-sm); }
+.activity-trend { margin: var(--sp-3) 0 0; }
+.activity-trend-term { color: var(--subtle); font-size: var(--fs-sm); margin-right: var(--sp-2); }
 .list-card > .pagination { padding: var(--sp-3) var(--sp-5); }
 
 /* ---------- Key/value lists ---------- */

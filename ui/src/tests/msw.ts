@@ -1,6 +1,10 @@
 import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
 import { fixture, type CapturedResponse } from "./fixtures";
+import activity from "./fixtures/options_activity.json";
+
+/** `GET /api/v1/options-intelligence/activity`, captured from the real API over four real phase9-v2 reports. */
+export const ACTIVITY_FIXTURE = activity as CapturedResponse;
 
 export const server = setupServer();
 
@@ -33,6 +37,9 @@ export function apiHandlers(overrides: Partial<Record<string, CapturedResponse>>
     http.get("*/health/live", () => respond(pick("live"))),
     http.get("*/health/ready", () => respond(pick("ready"))),
     http.get("*/api/v1/version", guarded("version")),
+    http.get("*/api/v1/options-intelligence/activity", ({ request }) =>
+      respond(authorized(request) ? (overrides["options-intelligence:activity"] ?? ACTIVITY_FIXTURE) : fixture("unauthorized")),
+    ),
     http.get("*/api/v1/:family/latest", ({ request, params }) => {
       if (!authorized(request)) return respond(fixture("unauthorized"));
       return respond(pick(`latest:${String(params.family)}`));

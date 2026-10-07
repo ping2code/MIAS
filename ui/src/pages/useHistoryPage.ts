@@ -1,8 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { historyQuery, type HistoryFilters } from "../api/queries";
-import type { ArtifactFamily } from "../api/types";
+import { historyQuery, optionsActivityQuery, type HistoryFilters, type PagedQuery } from "../api/queries";
+import type { ArtifactFamily, FamilyViews, OptionsIntelligenceActivityView } from "../api/types";
 import { useApiClient } from "../app/context";
 import { loadPage, nextPage, previousPage, savePage } from "../lib/cursorTrail";
 import { filtersFromSearch, filtersToSearch } from "../lib/filters";
@@ -14,13 +14,23 @@ import { filtersFromSearch, filtersToSearch } from "../lib/filters";
  */
 export function useHistoryPage<F extends ArtifactFamily>(family: F) {
   const client = useApiClient();
+  return useListPage<FamilyViews[F]>((filters, cursor) => historyQuery(client, family, filters, cursor));
+}
+
+/** The options-intelligence activity views, paged exactly like the history (same filters and cursors). */
+export function useOptionsActivityPage() {
+  const client = useApiClient();
+  return useListPage<OptionsIntelligenceActivityView>((filters, cursor) => optionsActivityQuery(client, filters, cursor));
+}
+
+function useListPage<T>(makeQuery: (filters: HistoryFilters, cursor: string | null) => PagedQuery<T>) {
   const location = useLocation();
   const navigate = useNavigate();
   const filters = useMemo(() => filtersFromSearch(new URLSearchParams(location.search)), [location.search]);
   const page = loadPage((location.state as { page?: unknown } | null)?.page);
 
   const query = useQuery({
-    ...historyQuery(client, family, filters, page.cursor),
+    ...makeQuery(filters, page.cursor),
     // Keep the previous page visible while moving between pages of the same filters (never across filters).
     placeholderData: (previous, previousQuery) =>
       previousQuery !== undefined && sameFilters(previousQuery.queryKey[3], filters) ? keepPreviousData(previous) : undefined,

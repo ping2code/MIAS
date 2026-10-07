@@ -7,6 +7,7 @@ import { AlertListPage } from "../pages/alerts/AlertListPage";
 import { MarketIntelligenceDetailPage } from "../pages/market-intelligence/MarketIntelligenceDetailPage";
 import { MarketIntelligenceListPage } from "../pages/market-intelligence/MarketIntelligenceListPage";
 import { OperationalHistoryPage, OperationalDetailPage } from "../pages/OperationalPages";
+import { OptionsIntelligencePage } from "../pages/options/OptionsIntelligencePage";
 import { StatusPage } from "../pages/StatusPage";
 
 
@@ -22,7 +23,7 @@ export function AppRoutes() {
         <Route path="market-intelligence/:id" element={<MarketIntelligenceDetailPage />} />
         <Route path="alerts" element={<AlertListPage />} />
         <Route path="alerts/:id" element={<AlertDetailPage />} />
-        <Route path="options-intelligence" element={<OperationalHistoryPage family="options-intelligence" />} />
+        <Route path="options-intelligence" element={<OptionsIntelligencePage />} />
         <Route path="options-intelligence/:id" element={<OperationalDetailPage family="options-intelligence" />} />
         <Route path="trade-setups" element={<OperationalHistoryPage family="trade-setups" />} />
         <Route path="trade-setups/:id" element={<OperationalDetailPage family="trade-setups" />} />

@@ -4,7 +4,7 @@
  */
 import { queryOptions } from "@tanstack/react-query";
 import type { ApiClient } from "./client";
-import type { ArtifactFamily, HistoryParams } from "./types";
+import type { ApiResult, ArtifactFamily, HistoryParams, ListResponse } from "./types";
 
 export const HEALTH_INTERVAL_MS = 30_000;
 export const VERSION_INTERVAL_MS = 5 * 60_000;
@@ -22,6 +22,20 @@ export const queryKeys = {
       "api",
       family,
       "history",
+      {
+        symbol: filters.symbol ?? null,
+        asOfFrom: filters.asOfFrom ?? null,
+        asOfTo: filters.asOfTo ?? null,
+        limit: filters.limit,
+        cursor,
+      },
+    ] as const,
+  /** Same layout as history (filters at index 3), so list pages share the placeholder logic. */
+  optionsActivity: (filters: HistoryFilters, cursor: string | null) =>
+    [
+      "api",
+      "options-intelligence",
+      "activity",
       {
         symbol: filters.symbol ?? null,
         asOfFrom: filters.asOfFrom ?? null,
@@ -49,18 +63,41 @@ export interface HistoryFilters {
  * (Phase 16A §10). Previous data stays visible while the next page loads.
  */
 export function historyQuery<F extends ArtifactFamily>(client: ApiClient, family: F, filters: HistoryFilters, cursor: string | null) {
+  return pagedQuery(queryKeys.history(family, filters, cursor), cursor === null, (signal) =>
+    client.history(family, historyParams(filters, cursor), { signal }),
+  );
+}
+
+/** A cursor-paged list query: only the first page is re-polled; later pages stay stable so cursors stay valid. */
+export function pagedQuery<T>(
+  queryKey: readonly unknown[],
+  firstPage: boolean,
+  fetch: (signal: AbortSignal) => Promise<ApiResult<ListResponse<T>>>,
+) {
+  return queryOptions({
+    queryKey,
+    queryFn: ({ signal }) => fetch(signal),
+    refetchInterval: firstPage ? HISTORY_FIRST_PAGE_INTERVAL_MS : false,
+    staleTime: firstPage ? HISTORY_FIRST_PAGE_INTERVAL_MS : Infinity,
+  });
+}
+
+export type PagedQuery<T> = ReturnType<typeof pagedQuery<T>>;
+
+function historyParams(filters: HistoryFilters, cursor: string | null): HistoryParams {
   const params: HistoryParams = { limit: filters.limit };
   if (filters.symbol !== undefined) params.symbol = filters.symbol;
   if (filters.asOfFrom !== undefined) params.asOfFrom = filters.asOfFrom;
   if (filters.asOfTo !== undefined) params.asOfTo = filters.asOfTo;
   if (cursor !== null) params.cursor = cursor;
-  const firstPage = cursor === null;
-  return queryOptions({
-    queryKey: queryKeys.history(family, filters, cursor),
-    queryFn: ({ signal }) => client.history(family, params, { signal }),
-    refetchInterval: firstPage ? HISTORY_FIRST_PAGE_INTERVAL_MS : false,
-    staleTime: firstPage ? HISTORY_FIRST_PAGE_INTERVAL_MS : Infinity,
-  });
+  return params;
+}
+
+/** One page of options-intelligence activity views, polled like a history page. */
+export function optionsActivityQuery(client: ApiClient, filters: HistoryFilters, cursor: string | null) {
+  return pagedQuery(queryKeys.optionsActivity(filters, cursor), cursor === null, (signal) =>
+    client.optionsActivity(historyParams(filters, cursor), { signal }),
+  );
 }
 
 /** Alert delivery receipts: refreshed on demand only (no polling). */

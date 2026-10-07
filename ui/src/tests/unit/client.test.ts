@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createApiClient, type ClientOptions } from "../../api/client";
+import { createApiClient, DEFAULT_TIMEOUT_MS, type ClientOptions } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import { REQUEST_ID_PATTERN } from "../../api/requestId";
 import { fixture, TEST_TOKEN } from "../fixtures";
@@ -185,7 +185,7 @@ describe("retry policy", () => {
     expect(sleeps).toEqual([1000]);
   });
 
-  it("times out each attempt after 10 s and retries timeouts", async () => {
+  it("times out each attempt after DEFAULT_TIMEOUT_MS and retries timeouts", async () => {
     vi.useFakeTimers();
     try {
       const hang = (init: RequestInit): Promise<Response> =>
@@ -196,10 +196,10 @@ describe("retry policy", () => {
         });
       const { client, calls, sleeps } = setup([hang, hang, hang]);
       const pending = client.version().catch((e: unknown) => e);
-      await vi.advanceTimersByTimeAsync(9_999);
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS - 1);
       expect(calls).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
-      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(2 * DEFAULT_TIMEOUT_MS + 4_000);
       const error = await pending;
       expect(error).toMatchObject({ kind: "timeout" });
       expect(calls).toHaveLength(3);

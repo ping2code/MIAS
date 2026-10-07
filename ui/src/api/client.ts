@@ -26,6 +26,7 @@ import {
   type HistoryParams,
   type ItemResponse,
   type ListResponse,
+  type OptionsIntelligenceActivityView,
   type LivenessView,
   type ReadinessView,
   type VersionView,
@@ -106,6 +107,34 @@ function listValidator<F extends ArtifactFamily>(family: F): Validator<ListRespo
     (v.meta.next_cursor === null || typeof v.meta.next_cursor === "string") &&
     Array.isArray(v.data) &&
     v.data.every((item) => isArtifactView(family, item));
+}
+
+const isActivityList: Validator<ListResponse<OptionsIntelligenceActivityView>> = (
+  v,
+): v is ListResponse<OptionsIntelligenceActivityView> =>
+  isRecord(v) &&
+  isMeta(v.meta) &&
+  isRecord(v.meta) &&
+  typeof v.meta.limit === "number" &&
+  (v.meta.next_cursor === null || typeof v.meta.next_cursor === "string") &&
+  Array.isArray(v.data) &&
+  v.data.every(
+    (item) =>
+      isArtifactView("options-intelligence", item) &&
+      isRecord(item) &&
+      isRecord(item.comparison) &&
+      typeof item.activity_bias === "string" &&
+      typeof item.trend_summary === "string",
+  );
+
+function historySearch(params: HistoryParams): string {
+  const query = new URLSearchParams();
+  if (params.symbol !== undefined) query.set("symbol", params.symbol);
+  if (params.asOfFrom !== undefined) query.set("as_of_from", params.asOfFrom);
+  if (params.asOfTo !== undefined) query.set("as_of_to", params.asOfTo);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.cursor !== undefined) query.set("cursor", params.cursor);
+  return query.size > 0 ? `?${query.toString()}` : "";
 }
 
 const isDeliveryList: Validator<DeliveryListResponse> = (v): v is DeliveryListResponse =>
@@ -302,19 +331,22 @@ export function createApiClient(options: ClientOptions) {
       ),
     version: (call?: CallOptions) =>
       request<VersionView>({ path: "/api/v1/version", route: "/api/v1/version", body: "json", validate: isVersion }, call),
-    history: <F extends ArtifactFamily>(family: F, params: HistoryParams = {}, call?: CallOptions) => {
-      const query = new URLSearchParams();
-      if (params.symbol !== undefined) query.set("symbol", params.symbol);
-      if (params.asOfFrom !== undefined) query.set("as_of_from", params.asOfFrom);
-      if (params.asOfTo !== undefined) query.set("as_of_to", params.asOfTo);
-      if (params.limit !== undefined) query.set("limit", String(params.limit));
-      if (params.cursor !== undefined) query.set("cursor", params.cursor);
-      const suffix = query.size > 0 ? `?${query.toString()}` : "";
-      return request<ListResponse<FamilyViews[F]>>(
-        { path: `/api/v1/${family}${suffix}`, route: `/api/v1/${family}`, body: "json", validate: listValidator(family) },
+    history: <F extends ArtifactFamily>(family: F, params: HistoryParams = {}, call?: CallOptions) =>
+      request<ListResponse<FamilyViews[F]>>(
+        { path: `/api/v1/${family}${historySearch(params)}`, route: `/api/v1/${family}`, body: "json", validate: listValidator(family) },
         call,
-      );
-    },
+      ),
+    /** Derived activity views over the options-intelligence history (same parameters and cursors). */
+    optionsActivity: (params: HistoryParams = {}, call?: CallOptions) =>
+      request<ListResponse<OptionsIntelligenceActivityView>>(
+        {
+          path: `/api/v1/options-intelligence/activity${historySearch(params)}`,
+          route: "/api/v1/options-intelligence/activity",
+          body: "json",
+          validate: isActivityList,
+        },
+        call,
+      ),
     latest: <F extends ArtifactFamily>(family: F, symbol: string, asOf?: string, call?: CallOptions) => {
       const query = new URLSearchParams({ symbol });
       if (asOf !== undefined) query.set("as_of", asOf);
