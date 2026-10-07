@@ -12,7 +12,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import API_ROUTE, CHART, HELM, HSTS, ROOT, ROUTE_TLS_RBAC, pre_oauth_route, render, route_tls
+from tests.test_helm_mias import API_ROUTE, CHART, HELM, HSTS, PRE_RESOURCES, ROOT, ROUTE_TLS_RBAC, pre_oauth_route, render, route_tls
 from tests.test_openshift_manifests import parse
 
 CA_FILE = os.path.join(ROOT, "docs", "tls", "mias-lab-ca.crt")
@@ -44,7 +44,7 @@ class RouteTlsTests(unittest.TestCase):
     def setUpClass(cls):
         # Both Routes' TLS is tested with the API Route rendered (Task 8 Stage 4 disables it by default; the template
         # with its certificate reference and HSTS is the rollback).
-        cls.objs, cls.text = render(API_ROUTE)
+        cls.objs, cls.text = render(API_ROUTE, *PRE_RESOURCES)    # baselines predate the 2026-10-06 resources/size
         cls.routes = {name: cls.objs[("Route", name)] for name in HOSTS}
 
     # 1. HSTS renders exactly, on both Routes; no includeSubDomains, no preload
@@ -147,7 +147,7 @@ class RouteTlsTests(unittest.TestCase):
         old["metadata"]["annotations"].pop("checksum/config")
         self.assertEqual(blackbox, old)                                     # and nothing else in its pod template
         for name in ("mias-api", "mias-ui", "otel-collector", "mias-publisher"):
-            objs, _ = render(API_ROUTE, "routeTLS.hsts=max-age=31536000")
+            objs, _ = render(API_ROUTE, *PRE_RESOURCES, "routeTLS.hsts=max-age=31536000")
             self.assertEqual(objs[("Deployment", name)], self.objs[("Deployment", name)], name)   # HSTS: Route only
 
     # 12. PDB and topology spread unchanged

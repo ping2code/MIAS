@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import unittest
 
-from tests.test_helm_mias import API_ROUTE, CHART, HELM, PRE_TASK8, ROUTE_ANNOTATIONS, pre_oauth_route, render
+from tests.test_helm_mias import API_ROUTE, CHART, HELM, PRE_RESOURCES, PRE_TASK8, ROUTE_ANNOTATIONS, pre_oauth_route, render
 from tests.test_helm_restart_cookie import render_chart
 
 UI_SELECTOR = {"matchLabels": {"app.kubernetes.io/name": "mias-ui"}}
@@ -48,7 +48,7 @@ def matches(selector, labels):
 class UiHighAvailabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.objs, cls.text = render()
+        cls.objs, cls.text = render(*PRE_RESOURCES)                # baselines predate the 2026-10-06 resources/size
         cls.dep = cls.objs[("Deployment", "mias-ui")]
         cls.pod = cls.dep["spec"]["template"]["spec"]
         cls.pod_labels = cls.dep["spec"]["template"]["metadata"]["labels"]
@@ -133,7 +133,7 @@ class UiHighAvailabilityTests(unittest.TestCase):
             text = open(path, encoding="utf-8").read()
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(re.sub(r"^version: .*$", "version: 9.9.9", text, flags=re.M))
-            other = render_chart(chart)
+            other = render_chart(chart, *PRE_RESOURCES)
         for name in ("mias-api", "otel-collector", "blackbox-exporter", "mias-publisher", "mias-ui"):
             self.assertEqual(other[("Deployment", name)]["spec"]["template"],
                              self.objs[("Deployment", name)]["spec"]["template"], name)
@@ -176,7 +176,7 @@ class UiHighAvailabilityTests(unittest.TestCase):
 
     # 20. ui.enabled=false removes the UI Deployment, Service, Route and PDB cleanly
     def test_ui_disabled_removes_everything_ui(self):
-        objs, text = render("ui.enabled=false")
+        objs, text = render(*PRE_RESOURCES, "ui.enabled=false")
         for key in (("Deployment", "mias-ui"), ("Service", "mias-ui"), ("Route", "mias-ui"),
                     ("PodDisruptionBudget", "mias-ui")):
             self.assertNotIn(key, objs)

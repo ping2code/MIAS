@@ -8,7 +8,7 @@ import re
 import subprocess
 import unittest
 
-from tests.test_helm_mias import (API_ROUTE, CHART, DIGEST, HELM, OAUTH_OFF, PRE_TASK8, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, UI_OAUTH_OBJECTS,
+from tests.test_helm_mias import (API_ROUTE, CHART, DIGEST, HELM, OAUTH_OFF, PRE_RESOURCES, PRE_TASK8, ROUTE_TLS_RBAC, SYNTHETIC_OBJECTS, UI_OAUTH_OBJECTS,
                                   render, route_tls)
 from tests.test_openshift_manifests import parse, walk
 
@@ -86,7 +86,8 @@ class HelmUiDisabledTests(unittest.TestCase):
     def test_disabled_render_equals_phase15(self):
         # With the UI and alerts off, every object equals Phase 15 except the derived/added values (see above).
         for sets, expected in PHASE15_OBJECTS.items():
-            self.assertEqual(canonical_objects_hash(API_ROUTE, *sets, "ui.enabled=false", "monitoring.alerts.enabled=false"),
+            self.assertEqual(canonical_objects_hash(API_ROUTE, *PRE_RESOURCES, *sets, "ui.enabled=false",
+                                                    "monitoring.alerts.enabled=false"),
                              expected, sets)
 
     def test_default_deploys_the_pinned_ui_image(self):

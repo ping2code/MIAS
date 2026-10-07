@@ -15,7 +15,7 @@ import unittest
 
 from tests.test_helm_alerts import CORE, EXPECTED as ALERT_SPECS
 from tests.test_helm_mias import (CHART, HELM, ROUTE_ANNOTATIONS, SYNTHETIC_EXPORTER, SYNTHETIC_NS, SYNTHETIC_OBJECTS,
-                                  API_ROUTE, PRE_TASK8, pre_oauth_route, render)
+                                  API_ROUTE, PRE_RESOURCES, PRE_TASK8, pre_oauth_route, render)
 from tests.test_helm_restart_cookie import gojson_sha, render_chart
 from tests.test_openshift_manifests import parse
 
@@ -48,8 +48,8 @@ def alert_rules(objs):
 class SyntheticMonitoringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.objs, cls.text = render()
-        cls.off, cls.off_text = render("syntheticMonitoring.enabled=false")
+        cls.objs, cls.text = render(*PRE_RESOURCES)                # baselines predate the 2026-10-06 resources/size
+        cls.off, cls.off_text = render(*PRE_RESOURCES, "syntheticMonitoring.enabled=false")
         cls.dep = cls.objs[("Deployment", "blackbox-exporter")]
         cls.pod = cls.dep["spec"]["template"]["spec"]
         cls.c = cls.pod["containers"][0]
@@ -256,7 +256,7 @@ class SyntheticMonitoringTests(unittest.TestCase):
             self.assertNotEqual(bumped, text)
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(bumped)
-            other = render_chart(chart)
+            other = render_chart(chart, *PRE_RESOURCES)
         self.assertEqual(other[("Deployment", "blackbox-exporter")]["metadata"]["labels"]["helm.sh/chart"], "mias-9.9.9")
         for name in ("mias-api", "mias-ui", "otel-collector", "mias-publisher", "blackbox-exporter"):
             self.assertEqual(other[("Deployment", name)]["spec"]["template"],

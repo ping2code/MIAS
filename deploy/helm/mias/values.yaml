@@ -16,13 +16,15 @@ existingSecret:
 api:
   replicaCount: 1                     # RWO storage: one replica, Recreate strategy
   docsEnabled: false
+  # 2026-10-06: the full index rebuild (every artifact re-validated each refresh) needs more CPU and memory as the
+  # options-intelligence store grows; these match the live settings applied in Helm revision 38.
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
       cpu: 500m
       memory: 512Mi
+    limits:
+      cpu: "4"
+      memory: 4Gi
 
 publisher:
   replicaCount: 0                     # operator toolbox: scale to 1 only while publishing
@@ -42,7 +44,7 @@ persistence:
   enabled: true                       # true: the chart manages the PVC (kept on uninstall); false: use an existing claim
   pvc:
     name: mias-artifacts
-    size: 1Gi
+    size: 10Gi                        # expanded online from 1Gi on 2026-10-06 (thin-csi allows expansion); never shrink
     storageClass: thin-csi
 
 podSecurity:

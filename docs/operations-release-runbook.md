@@ -544,6 +544,12 @@ unrecoverable.
 - the publisher writes only through `artifact_store.runner`;
 - artifact files are mode 0444.
 
+**Size and API resources (2026-10-06):** the PVC was expanded online from 1Gi to **10Gi** (`thin-csi` allows
+expansion; a PVC can never shrink, so never lower `persistence.pvc.size`). The API runs with requests **500m CPU /
+512Mi** and limits **4 CPU / 4Gi**, because the full index rebuild re-validates every artifact on each refresh. Both
+were first applied live with `--set` (Helm revision 38) and are now the chart defaults. A later
+`helm upgrade --reset-values` keeps them without any `--set`.
+
 **Never:**
 - `oc delete pvc/pv`;
 - `helm uninstall` without an explicit plan;

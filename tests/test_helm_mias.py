@@ -41,8 +41,13 @@ STAGE2_UI_DIGEST = "sha256:8c4e93412a62f3d9d9e696e531b56afa7847959e55a3c774ea85f
 # Hardening Task 8 Stage 4: no public API Route by default. The Route template stays (the rollback); tests of the
 # Route's own properties render it with API_ROUTE.
 API_ROUTE = "route.enabled=true"
+# 2026-10-06: API resources and the PVC size were reconciled with the live settings (500m/512Mi requests, 4/4Gi
+# limits, 10Gi). Earlier tasks' "nothing else changed" baselines render with the previous values, so they still prove
+# that nothing else changed.
+PRE_RESOURCES = ("api.resources.requests.cpu=50m", "api.resources.requests.memory=128Mi",
+                 "api.resources.limits.cpu=500m", "api.resources.limits.memory=512Mi", "persistence.pvc.size=1Gi")
 PRE_TASK8 = (OAUTH_OFF, "ui.api.injectToken=false", f"ui.image.digest={STAGE2_UI_DIGEST}",
-             "ui.image.versionLabel=90effc1778a7", API_ROUTE)
+             "ui.image.versionLabel=90effc1778a7", API_ROUTE, *PRE_RESOURCES)
 UI_OAUTH_OBJECTS = {("Role", "mias-ui-access"), ("RoleBinding", "mias-ui-access"),
                     ("NetworkPolicy", "mias-ui-egress-oauth")}
 STAGE1_OAUTH_ROUTE = ("Route", "mias-ui-oauth")       # routeMode=path only (Stage 1)
@@ -172,7 +177,7 @@ class HelmChartTests(unittest.TestCase):
         pvc = self.objs[("PersistentVolumeClaim", "mias-artifacts")]
         self.assertEqual(pvc["metadata"]["annotations"], {"helm.sh/resource-policy": "keep"})
         self.assertEqual((pvc["spec"]["accessModes"], pvc["spec"]["storageClassName"],
-                          pvc["spec"]["resources"]["requests"]["storage"]), (["ReadWriteOnce"], "thin-csi", "1Gi"))
+                          pvc["spec"]["resources"]["requests"]["storage"]), (["ReadWriteOnce"], "thin-csi", "10Gi"))
         objs, _ = render("persistence.enabled=false")
         self.assertNotIn(("PersistentVolumeClaim", "mias-artifacts"), objs)   # existing claim, still referenced
         self.assertEqual(objs[("Deployment", "mias-api")]["spec"]["template"]["spec"]["volumes"][0]
@@ -199,8 +204,8 @@ class HelmChartTests(unittest.TestCase):
         self.assertEqual(self.api_c["startupProbe"]["httpGet"], {"path": "/health/live", "port": "http"})
         self.assertEqual(self.api_c["livenessProbe"]["httpGet"], {"path": "/health/live", "port": "http"})
         self.assertEqual(self.api_c["readinessProbe"]["httpGet"], {"path": "/health/ready", "port": "http"})
-        self.assertEqual(self.api_c["resources"], {"requests": {"cpu": "50m", "memory": "128Mi"},
-                                                   "limits": {"cpu": "500m", "memory": "512Mi"}})
+        self.assertEqual(self.api_c["resources"], {"requests": {"cpu": "500m", "memory": "512Mi"},
+                                                   "limits": {"cpu": "4", "memory": "4Gi"}})
         self.assertEqual(self.pub_c["resources"], {"requests": {"cpu": "10m", "memory": "64Mi"},
                                                    "limits": {"cpu": "500m", "memory": "512Mi"}})
 
@@ -244,7 +249,7 @@ class HelmChartTests(unittest.TestCase):
         """With the 14E hardening switched off, the chart reproduces the raw 14C/14D manifests' specs."""
         objs, _ = render("podSecurity.fsGroupChangePolicy=", "networkPolicy.enabled=false", "observability.enabled=false",
                          f"image.digest={RAW_DIGEST}", "image.versionLabel=f14ecd722428",
-                         "route.tls.externalCertificateSecret=", "routeTLS.hsts=", API_ROUTE)
+                         "route.tls.externalCertificateSecret=", "routeTLS.hsts=", API_ROUTE, *PRE_RESOURCES)
         pairs = {("Deployment", "mias-api"): "base/deployment.yaml", ("Service", "mias-api"): "base/service.yaml",
                  ("Route", "mias-api"): "base/route.yaml", ("ConfigMap", "mias-api-config"): "base/configmap.yaml",
                  ("PersistentVolumeClaim", "mias-artifacts"): "base/pvc.yaml",
