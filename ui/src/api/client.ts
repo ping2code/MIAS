@@ -6,7 +6,7 @@
  *   carry the same-origin oauth-proxy session cookie (HttpOnly; nginx strips cookies before the API) and nginx
  *   adds the read token server-side. No `Authorization` header is ever set here.
  * - Every request sends a fresh `X-Request-ID`; the echoed id is returned with results and errors.
- * - 10 s timeout per attempt (AbortController), caller cancellation honoured, redirects never followed (an ended
+ * - 60 s timeout per attempt (AbortController), caller cancellation honoured, redirects never followed (an ended
  *   proxy session answers with a redirect to the OpenShift login, which surfaces as a network error).
  * - Retries: at most 2 (after 1 s, then 3 s), only for network errors, timeouts, 500 internal, 502/503/504.
  * - A final 401, 403 or network error invokes `onPossibleSessionLoss` once per failing call, so the app can check
@@ -31,7 +31,7 @@ import {
   type VersionView,
 } from "./types";
 
-export const DEFAULT_TIMEOUT_MS = 10_000;
+export const DEFAULT_TIMEOUT_MS = 60_000;
 export const RETRY_BACKOFF_MS: readonly number[] = [1_000, 3_000];
 
 export interface ClientOptions {
