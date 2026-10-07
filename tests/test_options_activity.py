@@ -60,7 +60,7 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(s.iv_median, d["volatility"]["overall"]["median"])
         self.assertEqual(s.contract_count, len(d["contracts"]))
         self.assertEqual(s.expiration_count, d["chain_completeness"]["expiration_count"])
-        self.assertEqual(s.volume_gt_oi_count, 1)       # 690 call: 500 > 400, current session
+        self.assertEqual(s.current_session_volume_gt_oi_count, 1)       # 690 call: 500 > 400, current session
 
     def test_volume_gt_oi_counts_only_current_session_records(self):
         d = options_intelligence()
@@ -70,7 +70,7 @@ class SummaryTests(unittest.TestCase):
         for c in d["contracts"]:
             if c["volume_exceeds_open_interest"] is True:
                 c["day"]["session_relation"] = "previous_session"        # a pre-open report's day records
-        self.assertEqual(oa.summarize(d).volume_gt_oi_count, 0)
+        self.assertEqual(oa.summarize(d).current_session_volume_gt_oi_count, 0)
 
     def test_breadth_counts_distinct_strikes_with_current_session_volume(self):
         s = oa.summarize(options_intelligence())
@@ -107,7 +107,7 @@ def summary(**overrides):
                       options_intelligence_format_version="phase9-v2", rules_version="phase9-rules-v2",
                       snapshot_id="sha256:" + "0" * 64, contract_count=7326, expiration_count=24,
                       call_volume=100_000, put_volume=80_000, put_call_volume_ratio="0.8",
-                      put_call_volume_ratio_reason=None, iv_median="0.314", volume_gt_oi_count=157, call_breadth=50,
+                      put_call_volume_ratio_reason=None, iv_median="0.314", current_session_volume_gt_oi_count=157, call_breadth=50,
                       put_breadth=40, call_concentration="unavailable", put_concentration="unavailable",
                       concentration_reason="underlying_price_unavailable", underlying_price_status="unavailable")
     return replace(base, **overrides)
@@ -120,7 +120,7 @@ class CompareTests(unittest.TestCase):
     def test_first_snapshot_of_session_fabricates_nothing(self):
         v = oa.compare(summary(**LATER), None, oa.NO_PRIOR)
         self.assertEqual(v["comparison"]["status"], "no_prior_snapshot")
-        for key in ("call_volume_change", "call_volume_change_pct", "put_volume_change", "volume_gt_oi_change",
+        for key in ("call_volume_change", "call_volume_change_pct", "put_volume_change", "current_session_volume_gt_oi_change",
                     "call_breadth_change", "put_breadth_change"):
             self.assertIsNone(v[key], key)
         self.assertEqual(v["call_volume_change_reason"], "not_comparable")
@@ -128,12 +128,12 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(v["trend_summary"], oa.TREND_INSUFFICIENT)
 
     def test_call_dominant_and_accelerating(self):
-        cur = summary(call_volume=118_000, put_volume=85_000, volume_gt_oi_count=184, call_breadth=58, put_breadth=40,
+        cur = summary(call_volume=118_000, put_volume=85_000, current_session_volume_gt_oi_count=184, call_breadth=58, put_breadth=40,
                       **LATER)
         v = oa.compare(cur, summary(), oa.COMPARABLE)
         self.assertEqual((v["call_volume_change"], v["call_volume_change_pct"]), (18_000, "18.00"))
         self.assertEqual((v["put_volume_change"], v["put_volume_change_pct"]), (5_000, "6.25"))
-        self.assertEqual((v["volume_gt_oi_change"], v["call_breadth_change"], v["put_breadth_change"]), (27, 8, 0))
+        self.assertEqual((v["current_session_volume_gt_oi_change"], v["call_breadth_change"], v["put_breadth_change"]), (27, 8, 0))
         self.assertEqual((v["activity_bias"], v["momentum_15m"]), ("CALL", "CALL"))
         self.assertEqual(v["trend_summary"], "Call activity strengthening. Call activity broadening across more strikes.")
         self.assertEqual(v["comparison"], {"status": "comparable", "prior_as_of": "2026-10-06T14:00:00+00:00",

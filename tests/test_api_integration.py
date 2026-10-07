@@ -282,10 +282,10 @@ LOCKED_VIEWS = {
                                 "symbol", "as_of", "snapshot_id", "contract_count"],
     "OptionsIntelligenceActivityView": [
         "options_intelligence_id", "symbol", "as_of", "contract_count", "expiration_count", "call_volume", "put_volume",
-        "put_call_volume_ratio", "put_call_volume_ratio_reason", "iv_median", "volume_gt_oi_count", "call_breadth",
+        "put_call_volume_ratio", "put_call_volume_ratio_reason", "iv_median", "current_session_volume_gt_oi_count", "call_breadth",
         "put_breadth", "call_concentration", "put_concentration", "concentration_reason", "comparison",
         "call_volume_change", "call_volume_change_pct", "call_volume_change_reason", "put_volume_change",
-        "put_volume_change_pct", "put_volume_change_reason", "volume_gt_oi_change", "call_breadth_change",
+        "put_volume_change_pct", "put_volume_change_reason", "current_session_volume_gt_oi_change", "call_breadth_change",
         "put_breadth_change", "activity_bias", "momentum_15m", "trend_summary"],
     "ActivityComparison": ["status", "prior_options_intelligence_id", "prior_as_of", "session_date"],
     "TradeSetupView": ["assessment_id", "assessment_format_version", "rules_version", "symbol", "as_of",

@@ -61,7 +61,7 @@ describe("Options Intelligence activity (options-intelligence-activity-v1)", () 
   it("never fabricates changes without a same-session prior", async () => {
     const [first, other] = (await cards([FIRST, OTHER_SESSION])) as [HTMLElement, HTMLElement];
     expect(metric(first, "Call Volume")).toBe("300no prior same-session snapshot");
-    expect(metric(first, "Volume > OI")).toBe(String(FIRST.volume_gt_oi_count));          // no change shown
+    expect(metric(first, "Current-session Vol > OI")).toBe(String(FIRST.current_session_volume_gt_oi_count));          // no change shown
     expect(metric(first, "15m Momentum")).toBe("Insufficient prior snapshot");
     expect(within(first).getByText("Insufficient prior same-session snapshot for intraday trend.")).toBeInTheDocument();
     expect(within(first).getByText(/No earlier report for this symbol/)).toBeInTheDocument();

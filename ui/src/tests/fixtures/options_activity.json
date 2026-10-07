@@ -34,8 +34,8 @@
     "put_volume_change_reason": "not_comparable",
     "symbol": "META",
     "trend_summary": "Insufficient prior same-session snapshot for intraday trend.",
-    "volume_gt_oi_change": null,
-    "volume_gt_oi_count": 0
+    "current_session_volume_gt_oi_change": null,
+    "current_session_volume_gt_oi_count": 0
    },
    {
     "activity_bias": "CALL",
@@ -70,8 +70,8 @@
     "put_volume_change_reason": "not_comparable",
     "symbol": "NVDA",
     "trend_summary": "Insufficient prior same-session snapshot for intraday trend.",
-    "volume_gt_oi_change": null,
-    "volume_gt_oi_count": 0
+    "current_session_volume_gt_oi_change": null,
+    "current_session_volume_gt_oi_count": 0
    },
    {
     "activity_bias": "CALL",
@@ -106,8 +106,8 @@
     "put_volume_change_reason": null,
     "symbol": "META",
     "trend_summary": "Call activity strengthening. Put activity broadening across more strikes.",
-    "volume_gt_oi_change": 0,
-    "volume_gt_oi_count": 0
+    "current_session_volume_gt_oi_change": 0,
+    "current_session_volume_gt_oi_count": 0
    },
    {
     "activity_bias": "CALL",
@@ -142,8 +142,8 @@
     "put_volume_change_reason": "not_comparable",
     "symbol": "META",
     "trend_summary": "Insufficient prior same-session snapshot for intraday trend.",
-    "volume_gt_oi_change": null,
-    "volume_gt_oi_count": 0
+    "current_session_volume_gt_oi_change": null,
+    "current_session_volume_gt_oi_count": 0
    }
   ],
   "meta": {

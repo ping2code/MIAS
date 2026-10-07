@@ -127,7 +127,7 @@ export function ActivityCard({ row }: { row: OptionsIntelligenceActivityView }) 
         <Metric term="Put Volume" value={count(row.put_volume)} change={row.put_volume === null ? null : percentChange(row.put_volume_change_pct, row.put_volume_change_reason)} />
         <Metric term="Put/Call Volume" value={ratio(row.put_call_volume_ratio)} />
         <Metric term="IV Median" value={ivPercent(row.iv_median)} />
-        <Metric term="Volume > OI" value={count(row.volume_gt_oi_count)} change={countChange(row.volume_gt_oi_change)} />
+        <Metric term="Current-session Vol > OI" value={count(row.current_session_volume_gt_oi_count)} change={countChange(row.current_session_volume_gt_oi_change)} />
         <Metric term="Call Breadth" value={strikes(row.call_breadth)} change={countChange(row.call_breadth_change)} />
         <Metric term="Put Breadth" value={strikes(row.put_breadth)} change={countChange(row.put_breadth_change)} />
         <Metric term="Call Concentration" value={CONCENTRATION_LABEL[row.call_concentration]} />

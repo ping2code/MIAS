@@ -110,7 +110,7 @@ export interface OptionsIntelligenceActivityView {
   put_call_volume_ratio: string | null;
   put_call_volume_ratio_reason: string | null;
   iv_median: string | null;
-  volume_gt_oi_count: number;
+  current_session_volume_gt_oi_count: number;
   call_breadth: number;
   put_breadth: number;
   call_concentration: ActivityConcentration;
@@ -123,7 +123,7 @@ export interface OptionsIntelligenceActivityView {
   put_volume_change: number | null;
   put_volume_change_pct: string | null;
   put_volume_change_reason: ChangeReason;
-  volume_gt_oi_change: number | null;
+  current_session_volume_gt_oi_change: number | null;
   call_breadth_change: number | null;
   put_breadth_change: number | null;
   activity_bias: ActivitySide;

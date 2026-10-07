@@ -34,14 +34,14 @@ full immutable OptionsIntelligence artifact (7–14 MB)
 | `call_volume`, `put_volume` | `activity.call_volume_total`, `activity.put_volume_total`: Phase 9 current-session day records only; `null` when there are none |
 | `put_call_volume_ratio` (+ reason) | copied from `activity` (Phase 9 formula) |
 | `iv_median` | `volatility.overall.median`, a decimal fraction (the UI shows a percentage) |
-| `volume_gt_oi_count` | contracts with Phase 9 `volume_exceeds_open_interest == true` **and** a `current_session` day record |
+| `current_session_volume_gt_oi_count` | contracts with Phase 9 `volume_exceeds_open_interest == true` **and** a `current_session` day record |
 | `call_breadth`, `put_breadth` | distinct strikes of that type with `current_session_volume > 0` |
 | `*_concentration` | the Phase 9 `strike_relation` (below / equal / above the underlying price) holding the largest share of that type's current-session volume: `below_spot`, `at_spot` or `above_spot`; a tie is `mixed`. `unavailable` without an underlying price (phase9-v2 records none: `price_reason = not_used_in_v1`) or without current-session volume |
 | `comparison.status` | `comparable`, `no_prior_snapshot`, `prior_from_other_session` or `prior_ambiguous` |
 | session | the America/New_York calendar date of `as_of` (Phase 9's session date) |
 | `*_volume_change` | current − prior cumulative current-session volume |
 | `*_volume_change_pct` | change ÷ prior × 100, two decimals; `null` with a reason: `not_comparable`, `value_unavailable` or `prior_zero` |
-| `volume_gt_oi_change`, `*_breadth_change` | current − prior; `null` when not comparable |
+| `current_session_volume_gt_oi_change`, `*_breadth_change` | current − prior; `null` when not comparable |
 | `activity_bias` | `CALL` if call > put volume, `PUT` if put > call, `BALANCED` if equal, `UNAVAILABLE` if either is missing |
 | `momentum_15m` | the side with the larger volume increment since the prior report (`CALL`, `PUT` or `BALANCED`). Otherwise `INSUFFICIENT_PRIOR` (no same-session prior), `UNAVAILABLE` (missing volume) or `VOLUME_CORRECTION` (a cumulative volume went down). |
 | `trend_summary` | one sentence from a closed rule set (`trend_summary()`; every sentence is enumerated in the tests), plus an optional "… broadening across more strikes." clause when breadth increased |
@@ -52,7 +52,8 @@ such rule needs explicit approval first.
 **Not compared:** the previous trading day is never used for intraday changes, and another symbol is never compared.
 Missing values are never turned into zero changes.
 
-**Volume > OI** is restricted to current-session day records. Phase 9 computes `volume_exceeds_open_interest` from
+**Current-session Vol > OI** (`current_session_volume_gt_oi_count`; decision 2026-10-06) is restricted to
+current-session day records. It is not the raw Phase 9 relation. Phase 9 computes `volume_exceeds_open_interest` from
 whatever day record a contract has. Before the open that record is the previous session's: 463 to 806 contracts were
 flagged in the 07:35 ET reports of 2026-10-06, which had no current-session volume. Counting them would mix sessions.
 

@@ -55,7 +55,7 @@ def options_activity(artifact_id, s, prior_status, prior_id, prior_summary):
                 contract_count=s.contract_count, expiration_count=s.expiration_count,
                 call_volume=s.call_volume, put_volume=s.put_volume, put_call_volume_ratio=s.put_call_volume_ratio,
                 put_call_volume_ratio_reason=s.put_call_volume_ratio_reason, iv_median=s.iv_median,
-                volume_gt_oi_count=s.volume_gt_oi_count, call_breadth=s.call_breadth, put_breadth=s.put_breadth,
+                current_session_volume_gt_oi_count=s.current_session_volume_gt_oi_count, call_breadth=s.call_breadth, put_breadth=s.put_breadth,
                 call_concentration=s.call_concentration, put_concentration=s.put_concentration,
                 concentration_reason=s.concentration_reason, **derived)
 

@@ -109,7 +109,7 @@ class OptionsIntelligenceActivityView(_View):
     put_call_volume_ratio: Optional[str]
     put_call_volume_ratio_reason: Optional[str]
     iv_median: Optional[str]
-    volume_gt_oi_count: int
+    current_session_volume_gt_oi_count: int
     call_breadth: int
     put_breadth: int
     call_concentration: Literal["below_spot", "at_spot", "above_spot", "mixed", "unavailable"]
@@ -122,7 +122,7 @@ class OptionsIntelligenceActivityView(_View):
     put_volume_change: Optional[int]
     put_volume_change_pct: Optional[str]
     put_volume_change_reason: Optional[Literal["not_comparable", "value_unavailable", "prior_zero"]]
-    volume_gt_oi_change: Optional[int]
+    current_session_volume_gt_oi_change: Optional[int]
     call_breadth_change: Optional[int]
     put_breadth_change: Optional[int]
     activity_bias: Literal["CALL", "PUT", "BALANCED", "UNAVAILABLE"]

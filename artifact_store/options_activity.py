@@ -11,7 +11,7 @@ contract pick, entry, exit, size, target or stop.
   current-session day records only; ``None`` when the artifact has none);
 - ``put_call_volume_ratio`` (+ reason): copied from ``activity``;
 - ``iv_median``: ``volatility.overall.median`` (a decimal fraction, copied);
-- ``volume_gt_oi_count``: contracts whose Phase 9 ``volume_exceeds_open_interest`` is true **and** whose day record is
+- ``current_session_volume_gt_oi_count``: contracts whose Phase 9 ``volume_exceeds_open_interest`` is true **and** whose day record is
   current-session (``day.session_relation``). Phase 9 compares whatever day record the contract has with its open
   interest, so before the open the relation describes the previous session; counting only current-session records
   keeps sessions apart, as the volume totals do;
@@ -72,7 +72,7 @@ class Summary:
     put_call_volume_ratio: str | None
     put_call_volume_ratio_reason: str | None
     iv_median: str | None
-    volume_gt_oi_count: int
+    current_session_volume_gt_oi_count: int
     call_breadth: int
     put_breadth: int
     call_concentration: str
@@ -141,7 +141,7 @@ def summarize(data):
         put_call_volume_ratio=activity["put_call_volume_ratio"],
         put_call_volume_ratio_reason=activity["put_call_volume_ratio_reason"],
         iv_median=data["volatility"]["overall"]["median"],
-        volume_gt_oi_count=sum(1 for c in contracts if c["volume_exceeds_open_interest"] is True
+        current_session_volume_gt_oi_count=sum(1 for c in contracts if c["volume_exceeds_open_interest"] is True
                                and c["day"]["session_relation"] == "current_session"),
         call_breadth=len(strikes["call"]), put_breadth=len(strikes["put"]),
         call_concentration=_concentration(contracts, "call", price_available),
@@ -232,7 +232,7 @@ def compare(current, prior, prior_status):
     p = prior if ok else None
     call_delta, call_pct, call_reason = _change(current.call_volume, p and p.call_volume, ok)
     put_delta, put_pct, put_reason = _change(current.put_volume, p and p.put_volume, ok)
-    oi_delta = current.volume_gt_oi_count - p.volume_gt_oi_count if ok else None
+    oi_delta = current.current_session_volume_gt_oi_count - p.current_session_volume_gt_oi_count if ok else None
     call_breadth_change = current.call_breadth - p.call_breadth if ok else None
     put_breadth_change = current.put_breadth - p.put_breadth if ok else None
     bias = _side(current.call_volume, current.put_volume)
@@ -241,7 +241,7 @@ def compare(current, prior, prior_status):
         comparison=dict(status=status, prior_as_of=p.as_of if ok else None, session_date=current.session_date),
         call_volume_change=call_delta, call_volume_change_pct=call_pct, call_volume_change_reason=call_reason,
         put_volume_change=put_delta, put_volume_change_pct=put_pct, put_volume_change_reason=put_reason,
-        volume_gt_oi_change=oi_delta, call_breadth_change=call_breadth_change, put_breadth_change=put_breadth_change,
+        current_session_volume_gt_oi_change=oi_delta, call_breadth_change=call_breadth_change, put_breadth_change=put_breadth_change,
         activity_bias=bias, momentum_15m=momentum,
         trend_summary=trend_summary(bias, momentum, call_breadth_change, put_breadth_change,
                                     new_volume=not (call_delta == 0 and put_delta == 0)))
