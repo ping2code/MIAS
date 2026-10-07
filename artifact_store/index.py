@@ -23,14 +23,14 @@ Queries (per kind):
   ascending, inside the inclusive window, one bounded page at a time, with an opaque cursor bound to the query.
 """
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
 import re
 
-from artifact_store import files, store
+from artifact_store import files, options_activity, store
 from artifact_store.errors import AmbiguousLatest, ArtifactInvalid, InvalidQuery, NotFound, StoreUnavailable
 from artifact_store.kinds import KIND_NAMES
 from artifact_store.layout import FILE_NAME, checked_id, is_temp
@@ -89,10 +89,26 @@ class Entry:
     instant: datetime          # its UTC instant (ordering only)
     digest: str                # SHA-256 of the stored bytes
     size: int
+    summary: object = field(default=None, compare=False, repr=False)   # derived read model (options-intelligence)
 
     @property
     def order(self):           # as_of descending, then id ascending
         return (-micros(self.instant), self.artifact_id)
+
+
+# Derived, rebuildable read models computed from the already-validated object during the build (no extra parse).
+SUMMARIZERS = {"options-intelligence": options_activity.summarize}
+
+
+def _summary(kind, data):
+    """The read model, or None if it cannot be derived (never fails the build: readers fall back to the file)."""
+    summarize = SUMMARIZERS.get(kind)
+    if summarize is None:
+        return None
+    try:
+        return summarize(data)
+    except Exception:                         # a read-model defect must not take the store down
+        return None
 
 
 def _entries(root_fd, kind):
@@ -117,7 +133,7 @@ def _entries(root_fd, kind):
             if raw != parsed.canonical:
                 raise ArtifactInvalid("artifact file is not in canonical form")
             entries.append(Entry(kind, parsed.artifact_id, parsed.symbol, parsed.as_of, utc(parsed.as_of),
-                                 hashlib.sha256(raw).hexdigest(), len(raw)))
+                                 hashlib.sha256(raw).hexdigest(), len(raw), _summary(kind, parsed.data)))
     return entries
 
 
@@ -140,6 +156,16 @@ class Index:
             for entry in ordered:
                 self._by_symbol.setdefault((kind, entry.symbol), []).append(entry)
         self._by_symbol = {key: tuple(value) for key, value in self._by_symbol.items()}
+        self._prior = {}
+        for (kind, _), ordered in self._by_symbol.items():
+            if kind in SUMMARIZERS:
+                for i, entry in enumerate(ordered):
+                    self._prior[(kind, entry.artifact_id)] = _previous(ordered, i)
+
+    def prior(self, kind, entry):
+        """(status, entry or None): the immediately previous report of the same symbol, strictly earlier as_of.
+        Status is options_activity.COMPARABLE, NO_PRIOR, or PRIOR_AMBIGUOUS (two reports share that as_of)."""
+        return self._prior.get((kind, entry.artifact_id), (options_activity.NO_PRIOR, None))
 
     def counts(self):
         return {kind: len(self._by_id[kind]) for kind in KIND_NAMES}
@@ -184,6 +210,19 @@ class Index:
         more = len(page) > limit
         page = page[:limit]
         return tuple(page), (encode_cursor(page[-1], scope) if more else None)
+
+
+def _previous(ordered, i):
+    """In an as_of-descending tuple, the entry just before ordered[i] in time (ties at that instant: ambiguous)."""
+    current = ordered[i].instant
+    j = i + 1
+    while j < len(ordered) and ordered[j].instant >= current:
+        j += 1
+    if j == len(ordered):
+        return options_activity.NO_PRIOR, None
+    if j + 1 < len(ordered) and ordered[j + 1].instant == ordered[j].instant:
+        return options_activity.PRIOR_AMBIGUOUS, None
+    return options_activity.COMPARABLE, ordered[j]
 
 
 def _scope(kind, symbol, as_of_from, as_of_to):

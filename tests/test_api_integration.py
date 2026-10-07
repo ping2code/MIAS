@@ -269,6 +269,7 @@ class CanonicalIntegrityTests(Phase13Case):
 
 LOCKED_ROUTES = {("GET", "/health/live"), ("GET", "/health/ready"), ("GET", "/api/v1/version"),
                  ("GET", "/api/v1/alerts/{artifact_id}/deliveries")}
+LOCKED_ROUTES |= {("GET", "/api/v1/options-intelligence/activity")}         # 2026-10-06 additive contract decision
 for _path in PATHS.values():
     LOCKED_ROUTES |= {("GET", f"/api/v1/{_path}"), ("GET", f"/api/v1/{_path}/latest"),
                       ("GET", f"/api/v1/{_path}/{{artifact_id}}"), ("GET", f"/api/v1/{_path}/{{artifact_id}}/canonical")}
@@ -279,6 +280,14 @@ LOCKED_VIEWS = {
                                "conflict_codes", "attention"],
     "OptionsIntelligenceView": ["options_intelligence_id", "options_intelligence_format_version", "rules_version",
                                 "symbol", "as_of", "snapshot_id", "contract_count"],
+    "OptionsIntelligenceActivityView": [
+        "options_intelligence_id", "symbol", "as_of", "contract_count", "expiration_count", "call_volume", "put_volume",
+        "put_call_volume_ratio", "put_call_volume_ratio_reason", "iv_median", "volume_gt_oi_count", "call_breadth",
+        "put_breadth", "call_concentration", "put_concentration", "concentration_reason", "comparison",
+        "call_volume_change", "call_volume_change_pct", "call_volume_change_reason", "put_volume_change",
+        "put_volume_change_pct", "put_volume_change_reason", "volume_gt_oi_change", "call_breadth_change",
+        "put_breadth_change", "activity_bias", "momentum_15m", "trend_summary"],
+    "ActivityComparison": ["status", "prior_options_intelligence_id", "prior_as_of", "session_date"],
     "TradeSetupView": ["assessment_id", "assessment_format_version", "rules_version", "symbol", "as_of",
                        "outcome_status", "no_setup_reasons", "market_bias_state", "eligible_side", "candidate_count",
                        "market_intelligence_id", "options_intelligence_id", "policy_id"],

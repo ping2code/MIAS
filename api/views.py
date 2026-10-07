@@ -90,6 +90,46 @@ class OptionsIntelligenceView(_View):
     contract_count: int
 
 
+class ActivityComparison(_View):
+    status: Literal["comparable", "no_prior_snapshot", "prior_from_other_session", "prior_ambiguous"]
+    prior_options_intelligence_id: Optional[str]
+    prior_as_of: Optional[str]
+    session_date: str
+
+
+class OptionsIntelligenceActivityView(_View):
+    """options-intelligence-activity-v1: a derived, descriptive summary of one report and its same-session change."""
+    options_intelligence_id: str
+    symbol: str
+    as_of: str
+    contract_count: int
+    expiration_count: int
+    call_volume: Optional[int]
+    put_volume: Optional[int]
+    put_call_volume_ratio: Optional[str]
+    put_call_volume_ratio_reason: Optional[str]
+    iv_median: Optional[str]
+    volume_gt_oi_count: int
+    call_breadth: int
+    put_breadth: int
+    call_concentration: Literal["below_spot", "at_spot", "above_spot", "mixed", "unavailable"]
+    put_concentration: Literal["below_spot", "at_spot", "above_spot", "mixed", "unavailable"]
+    concentration_reason: Optional[str]
+    comparison: ActivityComparison
+    call_volume_change: Optional[int]
+    call_volume_change_pct: Optional[str]
+    call_volume_change_reason: Optional[Literal["not_comparable", "value_unavailable", "prior_zero"]]
+    put_volume_change: Optional[int]
+    put_volume_change_pct: Optional[str]
+    put_volume_change_reason: Optional[Literal["not_comparable", "value_unavailable", "prior_zero"]]
+    volume_gt_oi_change: Optional[int]
+    call_breadth_change: Optional[int]
+    put_breadth_change: Optional[int]
+    activity_bias: Literal["CALL", "PUT", "BALANCED", "UNAVAILABLE"]
+    momentum_15m: Literal["CALL", "PUT", "BALANCED", "UNAVAILABLE", "INSUFFICIENT_PRIOR", "VOLUME_CORRECTION"]
+    trend_summary: str
+
+
 class TradeSetupView(_View):
     assessment_id: str
     assessment_format_version: str
@@ -173,6 +213,7 @@ MarketIntelligenceResponse = _envelope(MarketIntelligenceView, "MarketIntelligen
 MarketIntelligenceList = _list_envelope(MarketIntelligenceView, "MarketIntelligenceList")
 OptionsIntelligenceResponse = _envelope(OptionsIntelligenceView, "OptionsIntelligenceResponse")
 OptionsIntelligenceList = _list_envelope(OptionsIntelligenceView, "OptionsIntelligenceList")
+OptionsIntelligenceActivityList = _list_envelope(OptionsIntelligenceActivityView, "OptionsIntelligenceActivityList")
 TradeSetupResponse = _envelope(TradeSetupView, "TradeSetupResponse")
 TradeSetupList = _list_envelope(TradeSetupView, "TradeSetupList")
 InvalidationCheckResponse = _envelope(InvalidationCheckView, "InvalidationCheckResponse")

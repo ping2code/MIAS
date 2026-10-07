@@ -14,7 +14,7 @@ If the name already holds identical bytes, the result is ``already_present`` (a 
 non-regular file under the name is ``StoreConflict``: an immutable artifact is never replaced. There is no delete,
 replace or purge. The root must already exist; a missing kind directory is created (never through a symlink).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 import secrets
@@ -35,6 +35,7 @@ class Parsed:
     symbol: str
     as_of: str
     canonical: bytes
+    data: dict = field(default=None, compare=False, repr=False)   # the validated object (index read models only)
 
 
 def _no_duplicate_keys(pairs):
@@ -64,7 +65,7 @@ def parse(kind, raw):
         canonical = spec.canonical_bytes(data)
     except Exception:                         # every domain validation failure, whatever its type, fails closed
         raise ArtifactInvalid(f"object is not a valid {kind} artifact") from None
-    return Parsed(kind, artifact_id, symbol, as_of, canonical)
+    return Parsed(kind, artifact_id, symbol, as_of, canonical, data)
 
 
 def read_source(path):

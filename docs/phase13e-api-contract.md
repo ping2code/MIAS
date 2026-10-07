@@ -114,7 +114,9 @@ Results:
 - **Fail closed:** an unexpected file, symlink, directory, invalid object, name/id mismatch, non-canonical bytes or
   duplicate id fails the whole build. Only interrupted-publish `.artifact-*.tmp` files are ignored.
 - **Metadata only:** the index keeps kind, id, symbol, the sealed `as_of`, its UTC instant, and the bytes' SHA-256 and
-  size.
+  size. For `options-intelligence` it also keeps a small derived read model (`artifact_store.options_activity`),
+  computed from the object already parsed for validation. It is rebuilt with the index, never persisted, and the
+  file stays the only source of truth. If it cannot be derived, readers fall back to the file.
 - **Refresh:** at startup, then every **30 seconds** (fixed) in a daemon thread that stops at shutdown. Each refresh
   builds a complete new snapshot and swaps it in with one assignment, so readers never see a partial index.
 - **Failed refresh:** the previous snapshot keeps serving reads and `artifact_index` fails readiness until a refresh
@@ -152,6 +154,7 @@ GET /api/v1/{family}/latest              ?symbol=[&as_of=]
 GET /api/v1/{family}/{id}                view
 GET /api/v1/{family}/{id}/canonical      exact bytes
 GET /api/v1/alerts/{id}/deliveries       receipt view
+GET /api/v1/options-intelligence/activity  history parameters; activity views
 ```
 
 `{family}` is one of `market-intelligence`, `options-intelligence`, `trade-setups`, `invalidation-checks` or `alerts`.
@@ -187,10 +190,17 @@ a canonical object.
 | `trade-setup-summary-v1` | `assessment_id`, `assessment_format_version`, `rules_version`, `symbol`, `as_of`, `outcome_status`, `no_setup_reasons`, `market_bias_state`, `eligible_side`, `candidate_count`, `market_intelligence_id`, `options_intelligence_id`, `policy_id` |
 | `invalidation-check-summary-v1` | `invalidation_id`, `invalidation_format_version`, `rules_version`, `symbol`, `as_of`, `result`, `reason`, `assessment_id`, `side`, `required_pattern`, `observed_pattern`, `observed_technical_status`, `market_intelligence_id` |
 | `alert-summary-v1` | `alert_id`, `alert_format_version`, `rules_version`, `alert_code`, `symbol`, `subject_kind`, `assessment_id`, `transition{previous, current}`, `as_of`, `facts`, `source_refs[{role, object_kind, id}]` |
+| `options-intelligence-activity-v1` | `options_intelligence_id`, `symbol`, `as_of`, `contract_count`, `expiration_count`, `call_volume`, `put_volume`, `put_call_volume_ratio`, `put_call_volume_ratio_reason`, `iv_median`, `volume_gt_oi_count`, `call_breadth`, `put_breadth`, `call_concentration`, `put_concentration`, `concentration_reason`, `comparison{status, prior_options_intelligence_id, prior_as_of, session_date}`, `call_volume_change`, `call_volume_change_pct`, `call_volume_change_reason`, `put_volume_change`, `put_volume_change_pct`, `put_volume_change_reason`, `volume_gt_oi_change`, `call_breadth_change`, `put_breadth_change`, `activity_bias`, `momentum_15m`, `trend_summary` |
 | `alert-deliveries-v1` | `alert_id`, `channel`, `sequence`, `status`, `provider_message_id`, `attempts`, `safe_error_code`, `attempted_at`, `completed_at`, `delivery_contract_version`, `render_version` |
 
 **Views are projections.** They copy existing validated fields; the only derived values are counts of lists the
 object already holds. There are no scores, ranks, recommendations or "best" picks.
+
+**The one derived view:** `options-intelligence-activity-v1` is descriptive arithmetic over a report and the
+immediately previous report for the same symbol from the same session (the America/New_York date of `as_of`). It
+contains no direction, recommendation or contract pick. Definitions are in `artifact_store/options_activity.py` and
+`docs/options-intelligence-activity.md`. The `options-intelligence-summary-v1` view is unchanged, and is now served
+from the index read model (tested to be identical).
 
 **Other locked bodies:**
 - liveness: `{status}`;
@@ -341,6 +351,10 @@ After Phase 13 closes, changing any of the following needs an explicit version o
 
 Additive fields may be considered later through a deliberate contract decision. They must never alter canonical
 objects.
+
+**Contract decisions:**
+- 2026-10-06: added the route `GET /api/v1/options-intelligence/activity` and the view
+  `options-intelligence-activity-v1`. This is additive: existing routes and views are unchanged.
 
 ## Operator walkthrough (local, placeholders only)
 

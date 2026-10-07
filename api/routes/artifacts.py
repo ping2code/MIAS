@@ -10,6 +10,11 @@ For each kind (``market-intelligence``, ``options-intelligence``, ``trade-setups
 - ``GET /<path>/{id}/canonical``: the exact stored bytes (``ETag`` = the content id, immutable caching), re-checked
   against the index digest on every read.
 
+``GET /options-intelligence/activity`` (same parameters and cursors as the history): the derived, descriptive
+``options-intelligence-activity-v1`` view of each report and its same-session comparison, built from the index's read
+model. The options-intelligence summary views are also served from that read model (identical output, no file read);
+``/canonical`` always reads and re-checks the stored bytes.
+
 ``GET /alerts/{id}/deliveries``: the Phase 12E receipts for that alert, in sequence order, from
 ``MIAS_RECEIPT_ROOT`` via ``alert_engine.receipts.read_receipts`` (never Redis).
 
@@ -26,9 +31,11 @@ from alert_engine.receipts import ReceiptError, read_receipts
 from api import views
 from api.artifacts import API_VERSION, limit_param, query, served_at, store_errors, store_for
 from api.errors import ApiError
-from api.projections import DELIVERY_VIEW, PROJECTIONS, VIEW_NAMES, delivery
+from api.projections import (ACTIVITY_VIEW, DELIVERY_VIEW, PROJECTIONS, VIEW_NAMES, delivery,
+                             options_activity, options_intelligence_from_summary)
 from api.request_context import current_request_id
 from artifact_store.index import query_limit
+from artifact_store.options_activity import summarize
 from artifact_store.layout import ARTIFACT_ID
 
 ROUTES = (("market-intelligence", "market-intelligence", views.MarketIntelligenceResponse,
@@ -59,8 +66,42 @@ def _span(request, kind, operation):
     return telemetry.artifact_span(kind, operation) if telemetry is not None else nullcontext()
 
 
+def _summary(store, entry):
+    """The index's read model, or (only if it could not be derived at build time) one derived from the file."""
+    return entry.summary if entry.summary is not None else summarize(json.loads(store.read_bytes(entry)))
+
+
 def _view(store, kind, entry):
+    if kind == "options-intelligence" and entry.summary is not None:      # no file read or parse (7-14 MB each)
+        return options_intelligence_from_summary(entry.artifact_id, entry.summary)
     return PROJECTIONS[kind](json.loads(store.read_bytes(entry)))
+
+
+def _activity(store, snapshot, entry):
+    status, prior = snapshot.prior("options-intelligence", entry)
+    return options_activity(entry.artifact_id, _summary(store, entry), status,
+                            prior.artifact_id if prior else None, _summary(store, prior) if prior else None)
+
+
+def _register_activity(router):
+    """GET /options-intelligence/activity: the history query (same parameters and cursors) as activity views."""
+    kind = "options-intelligence"
+
+    def activity(request: Request):
+        params = query(request, ("symbol", "as_of_from", "as_of_to", "limit", "cursor"))
+        store = store_for(request)
+        with _span(request, kind, "activity"), store_errors():
+            limit = query_limit(limit_param(params.get("limit")))
+            snapshot = store.snapshot()
+            entries, cursor = snapshot.history(
+                kind, symbol=params.get("symbol"), as_of_from=params.get("as_of_from"),
+                as_of_to=params.get("as_of_to"), limit=limit, cursor=params.get("cursor"))
+            data = [_activity(store, snapshot, e) for e in entries]
+        return {"data": data, "meta": _meta(request, ACTIVITY_VIEW, limit=limit, next_cursor=cursor)}
+
+    # Registered before /{artifact_id} so "activity" is never read as an id (as with /latest).
+    router.add_api_route("/options-intelligence/activity", activity, methods=["GET"],
+                         response_model=views.OptionsIntelligenceActivityList, name="options_intelligence_activity")
 
 
 def _register(router, path, kind, item_model, list_model):
@@ -130,6 +171,7 @@ def _register(router, path, kind, item_model, list_model):
 
 def build_router():
     router = APIRouter(prefix="/api/v1", tags=["artifacts"])
+    _register_activity(router)
     for path, kind, item_model, list_model in ROUTES:
         _register(router, path, kind, item_model, list_model)
     return router

@@ -2,14 +2,18 @@
 
 Each view copies fields that already exist in the sealed object, under stable names; the only derived values are
 counts of lists the object already holds. No score, rank, confidence, recommendation or "best" selection is produced,
-and the canonical object is never modified.
+and the canonical object is never modified. The options-intelligence views can also be built from the index's
+rebuildable read model (``artifact_store.options_activity``); ``options-intelligence-activity-v1`` adds its descriptive
+same-session comparison.
 """
+from artifact_store.options_activity import COMPARABLE, compare
 
 VIEW_NAMES = {"market-intelligence": "market-intelligence-summary-v1",
               "options-intelligence": "options-intelligence-summary-v1",
               "trade-setup": "trade-setup-summary-v1", "invalidation-check": "invalidation-check-summary-v1",
               "alert": "alert-summary-v1"}
 DELIVERY_VIEW = "alert-deliveries-v1"
+ACTIVITY_VIEW = "options-intelligence-activity-v1"
 DELIVERY_FIELDS = ("alert_id", "channel", "sequence", "status", "provider_message_id", "attempts", "safe_error_code",
                    "attempted_at", "completed_at", "delivery_contract_version", "render_version")
 
@@ -31,6 +35,29 @@ def options_intelligence(d):
                 options_intelligence_format_version=d["options_intelligence_format_version"],
                 rules_version=d["rules_version"], symbol=ref["underlying"], as_of=ref["as_of"],
                 snapshot_id=ref["snapshot_id"], contract_count=len(d["contracts"]))
+
+
+def options_intelligence_from_summary(artifact_id, s):
+    """The options-intelligence-summary-v1 view from the index's read model: identical to ``options_intelligence``
+    of the full object (tested), without reading or parsing the stored file."""
+    return dict(options_intelligence_id=artifact_id,
+                options_intelligence_format_version=s.options_intelligence_format_version,
+                rules_version=s.rules_version, symbol=s.symbol, as_of=s.as_of, snapshot_id=s.snapshot_id,
+                contract_count=s.contract_count)
+
+
+def options_activity(artifact_id, s, prior_status, prior_id, prior_summary):
+    """options-intelligence-activity-v1 from read models only (see artifact_store.options_activity)."""
+    derived = compare(s, prior_summary, prior_status)
+    derived["comparison"]["prior_options_intelligence_id"] = (
+        prior_id if derived["comparison"]["status"] == COMPARABLE else None)
+    return dict(options_intelligence_id=artifact_id, symbol=s.symbol, as_of=s.as_of,
+                contract_count=s.contract_count, expiration_count=s.expiration_count,
+                call_volume=s.call_volume, put_volume=s.put_volume, put_call_volume_ratio=s.put_call_volume_ratio,
+                put_call_volume_ratio_reason=s.put_call_volume_ratio_reason, iv_median=s.iv_median,
+                volume_gt_oi_count=s.volume_gt_oi_count, call_breadth=s.call_breadth, put_breadth=s.put_breadth,
+                call_concentration=s.call_concentration, put_concentration=s.put_concentration,
+                concentration_reason=s.concentration_reason, **derived)
 
 
 def trade_setup(d):
